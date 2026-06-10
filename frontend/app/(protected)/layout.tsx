@@ -8,7 +8,7 @@ import ChatbotPanel from "@/components/ChatbotPanel";
 
 import { 
   LayoutDashboard, Building2, Briefcase, Users, LogOut, 
-  Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings
+  Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload
 } from "lucide-react";
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -29,14 +29,129 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   // Chat drawer collapse state
   const [isChatOpen, setIsChatOpen] = useState(true);
 
+  // Onboarding Tour States
+  const [activeTutorial, setActiveTutorial] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
+  const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
+
+  const tourSteps = [
+    {
+      title: "Welcome to Kozker Recruiter AI",
+      content: `Welcome, ${profile?.full_name || onboardName || "Recruiter"}! Let's take a quick 1-minute tour of your new AI-powered recruiting workspace.`,
+      targetId: "",
+    },
+    {
+      title: "Sidebar Navigation",
+      content: "This is your control sidebar. You can manage your Clients & Mandate Requirements, check the AI Job Catalog, and review the Candidate Sourcing Pool.",
+      targetId: "sidebar-navigation",
+      position: "right",
+    },
+    {
+      title: "Clients & Mandate Requirements",
+      content: "Register organizational clients and add hiring mandates. You can upload mandate description documents directly to extract requirement details automatically.",
+      targetId: "nav-clients",
+      position: "right",
+    },
+    {
+      title: "Job Catalog",
+      content: "View all AI-generated or manually created job drafts. Manage recruitment pipeline, confirm drafts, adjust skill weights, and run candidate scoring.",
+      targetId: "nav-jobs",
+      position: "right",
+    },
+    {
+      title: "Sourcing Pool",
+      content: "The universal sourcing pool. Review all indexed profiles, perform bulk CSV uploads, and track active client pipeline assignments.",
+      targetId: "nav-pool",
+      position: "right",
+    },
+    {
+      title: "AI Copilot Command Panel",
+      content: "Click this button to open the AI Copilot. It reads the current page context to help you audit resumes and query recruitment stats.",
+      targetId: "header-chatbot-toggle",
+      position: "left-bottom",
+    },
+    {
+      title: "Ready to Recruit!",
+      content: "You're all set! Let's find your next hire.",
+      targetId: "",
+    }
+  ];
+
+  // Check if we should auto-start the tour
+  React.useEffect(() => {
+    if (profile?.is_onboarded) {
+      const showTut = localStorage.getItem("show_kozker_tutorial");
+      if (showTut === "true") {
+        setActiveTutorial(true);
+        setTourStep(0);
+      }
+    }
+  }, [profile]);
+
+  // Bounding rect calculator
+  React.useEffect(() => {
+    if (!activeTutorial) return;
+    const step = tourSteps[tourStep];
+    if (!step.targetId) {
+      setTooltipPos({
+        top: window.innerHeight / 2 - 100,
+        left: window.innerWidth / 2 - 175,
+      });
+      return;
+    }
+
+    const el = document.getElementById(step.targetId);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      let top = rect.top + window.scrollY;
+      let left = rect.left + window.scrollX;
+
+      if (step.position === "right") {
+        top = rect.top + rect.height / 2 - 60;
+        left = rect.right + 15;
+      } else if (step.position === "left-bottom") {
+        top = rect.bottom + 15;
+        left = rect.left - 300;
+      }
+
+      // Safety checks
+      if (left < 10) left = 10;
+      if (left + 350 > window.innerWidth) left = window.innerWidth - 360;
+      if (top < 10) top = 10;
+      if (top + 200 > window.innerHeight) top = window.innerHeight - 210;
+
+      setTooltipPos({ top, left });
+    } else {
+      setTooltipPos({
+        top: window.innerHeight / 2 - 100,
+        left: window.innerWidth / 2 - 175,
+      });
+    }
+  }, [tourStep, activeTutorial]);
+
+  const handleSkipTutorial = () => {
+    setActiveTutorial(false);
+    localStorage.removeItem("show_kozker_tutorial");
+  };
+
+  const handleNextStep = () => {
+    if (tourStep < tourSteps.length - 1) {
+      setTourStep(prev => prev + 1);
+    } else {
+      setActiveTutorial(false);
+      localStorage.removeItem("show_kozker_tutorial");
+    }
+  };
+
   const handleOnboard = async () => {
     try {
       await updateProfile.mutateAsync({
         full_name: onboardName,
         is_onboarded: true,
-        // Since we removed 'metadata' from the top level user, agencyName and domainName
-        // could be added to 'profiles' table if needed. For now we satisfy the requirement.
       });
+      localStorage.setItem("show_kozker_tutorial", "true");
+      setActiveTutorial(true);
+      setTourStep(0);
     } catch (err) {
       console.error("Onboarding failed", err);
     }
@@ -168,7 +283,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-neutral-50 text-neutral-800 font-sans selection:bg-primary/20">
       {/* Sidebar Navigation */}
-      <aside className="w-64 border-r border-neutral-200 bg-neutral-white flex flex-col justify-between h-full select-none z-30 shadow-xs">
+      <aside id="sidebar-navigation" className="w-64 border-r border-neutral-200 bg-neutral-white flex flex-col justify-between h-full select-none z-30 shadow-xs">
         <div>
           <div className="p-5 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -197,6 +312,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               return (
                 <Link
                   key={item.id}
+                  id={`nav-${item.id}`}
                   href={item.href}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm font-medium transition-all cursor-pointer ${
                     isActive 
@@ -248,6 +364,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           
           <div className="flex items-center gap-3">
             <button
+              id="header-chatbot-toggle"
               onClick={() => setIsChatOpen(!isChatOpen)}
               className={`p-2 border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors ${
                 isChatOpen ? "bg-neutral-50 border-primary/40 text-primary" : "text-neutral-500 bg-neutral-white"
@@ -269,6 +386,77 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         onClose={() => setIsChatOpen(false)} 
         currentPage={pathname.substring(1) || "dashboard"} 
       />
+
+      {/* Onboarding Tour Tooltips */}
+      {activeTutorial && (
+        <div className="fixed inset-0 bg-neutral-950/40 z-50 flex items-center justify-center backdrop-blur-xs">
+          {/* Highlight target element */}
+          {tourSteps[tourStep].targetId && (
+            <div 
+              className="fixed border-2 border-primary rounded-sm shadow-[0_0_15px_rgba(255,110,48,0.5)] bg-transparent z-50 transition-all duration-300 pointer-events-none"
+              style={{
+                ...(() => {
+                  const el = document.getElementById(tourSteps[tourStep].targetId);
+                  if (!el) return { display: "none" };
+                  const rect = el.getBoundingClientRect();
+                  return {
+                    top: rect.top - 4,
+                    left: rect.left - 4,
+                    width: rect.width + 8,
+                    height: rect.height + 8,
+                  };
+                })()
+              }}
+            />
+          )}
+
+          {/* Floating Tooltip Card */}
+          <div 
+            className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-5 space-y-4 shadow-xl z-50 transition-all duration-300 absolute"
+            style={{
+              top: tooltipPos.top,
+              left: tooltipPos.left,
+            }}
+          >
+            <div className="space-y-1">
+              <span className="text-[9px] bg-primary/10 border border-primary/20 text-primary font-mono px-2 py-0.5 rounded-sm uppercase font-bold tracking-wider">
+                Workspace Tour • Step {tourStep + 1} of {tourSteps.length}
+              </span>
+              <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider pt-1">
+                {tourSteps[tourStep].title}
+              </h3>
+              <p className="text-neutral-500 text-xs leading-relaxed">
+                {tourSteps[tourStep].content}
+              </p>
+            </div>
+
+            <div className="flex justify-between items-center pt-2 border-t border-neutral-100 text-xs">
+              <button
+                onClick={handleSkipTutorial}
+                className="text-neutral-400 hover:text-neutral-600 transition-colors cursor-pointer font-medium uppercase text-[10px] tracking-wider"
+              >
+                Skip Tour
+              </button>
+              <div className="flex gap-2">
+                {tourStep > 0 && (
+                  <button
+                    onClick={() => setTourStep(prev => prev - 1)}
+                    className="px-2.5 py-1 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-600 cursor-pointer font-medium text-[10px] tracking-wider uppercase"
+                  >
+                    Back
+                  </button>
+                )}
+                <button
+                  onClick={handleNextStep}
+                  className="px-3.5 py-1 bg-primary hover:bg-primary/95 text-neutral-white rounded-sm cursor-pointer font-semibold text-[10px] tracking-wider uppercase"
+                >
+                  {tourStep === tourSteps.length - 1 ? "Get Started" : "Next"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
