@@ -29,6 +29,9 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   // Chat drawer collapse state
   const [isChatOpen, setIsChatOpen] = useState(true);
 
+  // Exit Confirmation Modal State
+  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
+
   // Onboarding Tour States
   const [activeTutorial, setActiveTutorial] = useState(false);
   const [tourStep, setTourStep] = useState(0);
@@ -343,7 +346,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             </div>
           </div>
           <button
-            onClick={() => logout()}
+            onClick={() => setIsExitConfirmOpen(true)}
             className="w-full flex items-center justify-center gap-1.5 py-1.5 border border-neutral-200 hover:bg-neutral-150 rounded-sm text-[10px] uppercase font-mono font-bold text-neutral-500 hover:text-neutral-800 transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5 text-neutral-400" />
@@ -389,12 +392,18 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
       {/* Onboarding Tour Tooltips */}
       {activeTutorial && (
-        <div className="fixed inset-0 bg-neutral-950/40 z-50 flex items-center justify-center backdrop-blur-xs">
-          {/* Highlight target element */}
+        <div className="fixed inset-0 z-50 pointer-events-none">
+          {/* Backdrop for welcome/finish steps (no targetId) */}
+          {!tourSteps[tourStep].targetId && (
+            <div className="absolute inset-0 bg-neutral-950/40 backdrop-blur-xs pointer-events-auto" />
+          )}
+
+          {/* Highlight target element (dim surrounding area without blur) */}
           {tourSteps[tourStep].targetId && (
             <div 
-              className="fixed border-2 border-primary rounded-sm shadow-[0_0_15px_rgba(255,110,48,0.5)] bg-transparent z-50 transition-all duration-300 pointer-events-none"
+              className="fixed border-2 border-primary rounded-sm bg-transparent z-50 transition-all duration-300 pointer-events-none"
               style={{
+                boxShadow: "0 0 0 9999px rgba(12, 10, 9, 0.45), 0 0 15px rgba(255,110,48,0.5)",
                 ...(() => {
                   const el = document.getElementById(tourSteps[tourStep].targetId);
                   if (!el) return { display: "none" };
@@ -412,7 +421,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
           {/* Floating Tooltip Card */}
           <div 
-            className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-5 space-y-4 shadow-xl z-50 transition-all duration-300 absolute"
+            className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-5 space-y-4 shadow-xl z-50 transition-all duration-300 absolute pointer-events-auto"
             style={{
               top: tooltipPos.top,
               left: tooltipPos.left,
@@ -453,6 +462,39 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                   {tourStep === tourSteps.length - 1 ? "Get Started" : "Next"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exit Workspace Confirmation Modal */}
+      {isExitConfirmOpen && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-6 space-y-4 shadow-xl text-neutral-700">
+            <div className="space-y-1">
+              <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider">Exit Workspace?</h3>
+              <p className="text-neutral-450 text-xs">Are you sure you want to exit your active workspace? You will be signed out of your account.</p>
+            </div>
+            
+            <div className="flex justify-end gap-2.5 pt-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setIsExitConfirmOpen(false)}
+                className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 cursor-pointer font-medium uppercase text-[10px] tracking-wider"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExitConfirmOpen(false);
+                  logout();
+                }}
+                className="px-4 py-1.5 bg-error text-neutral-white font-medium hover:bg-error/95 rounded-sm cursor-pointer flex items-center gap-1.5 text-[10px] tracking-wider uppercase"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Exit Workspace
+              </button>
             </div>
           </div>
         </div>
