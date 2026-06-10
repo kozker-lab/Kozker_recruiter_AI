@@ -171,6 +171,7 @@ export default function ClientsView() {
             Clients
           </span>
           <button
+            id="add-client-btn"
             onClick={() => setIsClientModalOpen(true)}
             className="p-1 hover:bg-neutral-200 rounded-sm text-primary transition-colors cursor-pointer border border-neutral-200"
             title="Create Client"
@@ -221,6 +222,7 @@ export default function ClientsView() {
           </div>
           {activeClient && (
             <button
+              id="add-requirement-btn"
               onClick={() => setIsReqModalOpen(true)}
               className="px-2.5 py-1 bg-primary text-neutral-white font-medium text-[10px] tracking-wider uppercase transition-colors rounded-sm cursor-pointer flex items-center gap-1"
             >

@@ -287,6 +287,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
         <div className="flex items-center gap-2 font-mono text-xs">
           {activeJob?.status === "draft" && (
             <button
+              id="confirm-job-btn"
               onClick={() => confirmJobMutation.mutate()}
               className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer flex items-center gap-1.5 text-neutral-600 font-semibold"
             >
@@ -297,6 +298,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
 
           {activeJob?.status === "confirmed" && (
             <button
+              id="scan-publish-job-btn"
               onClick={() => scanPublishMutation.mutate()}
               className="px-3 py-1.5 bg-primary text-neutral-white hover:bg-primary/95 rounded-sm cursor-pointer flex items-center gap-1.5 uppercase tracking-wider font-semibold text-[10px]"
             >
@@ -544,6 +546,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
 
           <div className="flex justify-end gap-2.5 pt-4 border-t border-neutral-100 mt-6">
             <button
+              id="approve-rank-candidates-btn"
               onClick={() => saveSkillsMutation.mutate(localSkills)}
               disabled={saveSkillsMutation.isPending}
               className="px-4 py-2 bg-success hover:bg-success/95 text-neutral-white font-medium rounded-sm cursor-pointer flex items-center gap-1.5 uppercase tracking-wider font-semibold text-[10px]"

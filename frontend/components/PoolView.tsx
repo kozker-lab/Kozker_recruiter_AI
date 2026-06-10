@@ -173,6 +173,7 @@ export default function PoolView() {
             Bulk Import CSV
           </button>
           <button
+            id="add-candidate-btn"
             onClick={() => setIsAddOpen(true)}
             className="px-3 py-1.5 bg-primary text-neutral-white hover:bg-primary/95 rounded-sm cursor-pointer flex items-center gap-1.5 uppercase font-semibold text-[10px]"
           >

@@ -8,7 +8,8 @@ import ChatbotPanel from "@/components/ChatbotPanel";
 
 import { 
   LayoutDashboard, Building2, Briefcase, Users, LogOut, 
-  Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload
+  Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
+  X, AlertCircle
 } from "lucide-react";
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -36,113 +37,226 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [activeTutorial, setActiveTutorial] = useState(false);
   const [tourStep, setTourStep] = useState(0);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
+  const [isBannerDismissed, setIsBannerDismissed] = useState(false);
 
   const tourSteps = [
     {
       title: "Welcome to Kozker Recruiter AI",
-      content: `Welcome, ${profile?.full_name || onboardName || "Recruiter"}! Let's take a quick 1-minute tour of your new AI-powered recruiting workspace.`,
+      content: "Let's take an interactive walkthrough of your new AI-powered recruiting workspace to learn how everything works.",
       targetId: "",
+      path: "/welcome"
     },
     {
-      title: "Sidebar Navigation",
-      content: "This is your control sidebar. You can manage your Clients & Mandate Requirements, check the AI Job Catalog, and review the Candidate Sourcing Pool.",
+      title: "Workspace Command Center",
+      content: "This is your main dashboard. Here you can track active pipelines, monitor AI processing queues, and review system audit trails.",
       targetId: "sidebar-navigation",
       position: "right",
+      path: "/dashboard"
     },
     {
       title: "Clients & Mandate Requirements",
-      content: "Register organizational clients and add hiring mandates. You can upload mandate description documents directly to extract requirement details automatically.",
+      content: "Register organizational clients and configure hiring mandates here. Let's navigate to the Clients page.",
       targetId: "nav-clients",
       position: "right",
+      path: "/clients"
     },
     {
-      title: "Job Catalog",
-      content: "View all AI-generated or manually created job drafts. Manage recruitment pipeline, confirm drafts, adjust skill weights, and run candidate scoring.",
+      title: "Register Organization",
+      content: "Click this '+' button to register a new organization like Google, Stripe, or Vercel.",
+      targetId: "add-client-btn",
+      position: "right",
+      path: "/clients"
+    },
+    {
+      title: "Uploading Hiring Mandates",
+      content: "Once a client is registered, click 'Add Requirement' to upload descriptions (PDF, DOCX, TXT) and let AI extract key requirement skills.",
+      targetId: "add-requirement-btn",
+      position: "left-bottom",
+      path: "/clients"
+    },
+    {
+      title: "AI Job Catalog",
+      content: "AI-generated job drafts are stored in this catalog. Let's switch to the Job Catalog.",
       targetId: "nav-jobs",
       position: "right",
+      path: "/jobs"
+    },
+    {
+      title: "Guiding Job Openings",
+      content: "Open any draft from the catalog. In the workspace, you can edit titles, confirm AI drafts, adjust skills weights, and trigger matching.",
+      targetId: "nav-jobs",
+      position: "right",
+      path: "/jobs"
     },
     {
       title: "Sourcing Pool",
-      content: "The universal sourcing pool. Review all indexed profiles, perform bulk CSV uploads, and track active client pipeline assignments.",
+      content: "Review sourced candidate profiles in this central catalog. Let's navigate to the Sourcing Pool.",
       targetId: "nav-pool",
       position: "right",
+      path: "/pool"
+    },
+    {
+      title: "Adding Sourced Talent",
+      content: "Click 'Add Candidate' to paste resume text summaries manually, or use 'Bulk Import CSV' to upload talent indexes in batches.",
+      targetId: "add-candidate-btn",
+      position: "left-bottom",
+      path: "/pool"
     },
     {
       title: "AI Copilot Command Panel",
-      content: "Click this button to open the AI Copilot. It reads the current page context to help you audit resumes and query recruitment stats.",
+      content: "Open the Recruiter AI Companion anywhere. Ask it to audit candidate profiles, check database stats, or generate custom questions in real-time.",
       targetId: "header-chatbot-toggle",
       position: "left-bottom",
+      path: "/dashboard"
     },
     {
-      title: "Ready to Recruit!",
-      content: "You're all set! Let's find your next hire.",
+      title: "You're Ready to Hire!",
+      content: "Congratulations! You have completed the recruitment workflow walkthrough. Start exploring your workspace now!",
       targetId: "",
+      path: "/dashboard"
     }
   ];
 
-  // Check if we should auto-start the tour
+  // Redirect to Welcome page if onboarding is complete but tutorial state is not initialized
+  React.useEffect(() => {
+    if (profile?.is_onboarded) {
+      const isCompleted = localStorage.getItem("kozker_tutorial_completed") === "true";
+      const isSkipped = localStorage.getItem("kozker_tutorial_skipped") === "true";
+      const hasSessionRedirected = sessionStorage.getItem("kozker_welcome_redirected") === "true";
+      
+      if (!isCompleted && !isSkipped && !hasSessionRedirected && pathname !== "/welcome") {
+        sessionStorage.setItem("kozker_welcome_redirected", "true");
+        router.push("/welcome");
+      }
+    }
+  }, [profile, pathname, router]);
+
+  // Check if we should auto-start or resume the tour
   React.useEffect(() => {
     if (profile?.is_onboarded) {
       const showTut = localStorage.getItem("show_kozker_tutorial");
       if (showTut === "true") {
+        const savedStepStr = localStorage.getItem("kozker_tutorial_step");
+        const savedStep = savedStepStr ? parseInt(savedStepStr, 10) : 0;
+        setTourStep(savedStep);
         setActiveTutorial(true);
-        setTourStep(0);
       }
     }
   }, [profile]);
 
-  // Bounding rect calculator
+  // Bounding rect calculator & DOM Polling
   React.useEffect(() => {
     if (!activeTutorial) return;
     const step = tourSteps[tourStep];
-    if (!step.targetId) {
-      setTooltipPos({
-        top: window.innerHeight / 2 - 100,
-        left: window.innerWidth / 2 - 175,
-      });
+    
+    // Route transition if needed
+    if (step.path && pathname !== step.path) {
+      router.push(step.path);
       return;
     }
 
-    const el = document.getElementById(step.targetId);
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      let top = rect.top + window.scrollY;
-      let left = rect.left + window.scrollX;
-
-      if (step.position === "right") {
-        top = rect.top + rect.height / 2 - 60;
-        left = rect.right + 15;
-      } else if (step.position === "left-bottom") {
-        top = rect.bottom + 15;
-        left = rect.left - 300;
+    const locateElement = () => {
+      if (!step.targetId) {
+        setTooltipPos({
+          top: window.innerHeight / 2 - 100,
+          left: window.innerWidth / 2 - 175,
+        });
+        return;
       }
 
-      // Safety checks
-      if (left < 10) left = 10;
-      if (left + 350 > window.innerWidth) left = window.innerWidth - 360;
-      if (top < 10) top = 10;
-      if (top + 200 > window.innerHeight) top = window.innerHeight - 210;
+      const el = document.getElementById(step.targetId);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        let top = rect.top + window.scrollY;
+        let left = rect.left + window.scrollX;
 
-      setTooltipPos({ top, left });
-    } else {
-      setTooltipPos({
-        top: window.innerHeight / 2 - 100,
-        left: window.innerWidth / 2 - 175,
-      });
-    }
-  }, [tourStep, activeTutorial]);
+        if (step.position === "right") {
+          top = rect.top + rect.height / 2 - 60;
+          left = rect.right + 15;
+        } else if (step.position === "left-bottom") {
+          top = rect.bottom + 15;
+          left = rect.left - 300;
+        } else if (step.position === "top") {
+          top = rect.top - 180;
+          left = rect.left + rect.width / 2 - 175;
+        } else if (step.position === "bottom") {
+          top = rect.bottom + 15;
+          left = rect.left + rect.width / 2 - 175;
+        }
+
+        // Safety checks to ensure it fits in screen
+        if (left < 10) left = 10;
+        if (left + 350 > window.innerWidth) left = window.innerWidth - 360;
+        if (top < 10) top = 10;
+        if (top + 200 > window.innerHeight) top = window.innerHeight - 210;
+
+        setTooltipPos({ top, left });
+      } else {
+        // Fallback to center of screen while element is loading
+        setTooltipPos({
+          top: window.innerHeight / 2 - 100,
+          left: window.innerWidth / 2 - 175,
+        });
+      }
+    };
+
+    locateElement();
+    const interval = setInterval(locateElement, 300);
+    return () => clearInterval(interval);
+  }, [tourStep, activeTutorial, pathname]);
 
   const handleSkipTutorial = () => {
     setActiveTutorial(false);
+    localStorage.setItem("kozker_tutorial_skipped", "true");
+    localStorage.setItem("kozker_tutorial_step", tourStep.toString());
     localStorage.removeItem("show_kozker_tutorial");
+    router.push("/dashboard");
   };
 
   const handleNextStep = () => {
     if (tourStep < tourSteps.length - 1) {
-      setTourStep(prev => prev + 1);
+      const nextStep = tourStep + 1;
+      setTourStep(nextStep);
+      localStorage.setItem("kozker_tutorial_step", nextStep.toString());
+      
+      const step = tourSteps[nextStep];
+      if (step.path && pathname !== step.path) {
+        router.push(step.path);
+      }
     } else {
       setActiveTutorial(false);
+      localStorage.setItem("kozker_tutorial_completed", "true");
+      localStorage.removeItem("kozker_tutorial_skipped");
+      localStorage.removeItem("kozker_tutorial_step");
       localStorage.removeItem("show_kozker_tutorial");
+      router.push("/dashboard");
+    }
+  };
+
+  const handleBackStep = () => {
+    if (tourStep > 0) {
+      const prevStep = tourStep - 1;
+      setTourStep(prevStep);
+      localStorage.setItem("kozker_tutorial_step", prevStep.toString());
+      
+      const step = tourSteps[prevStep];
+      if (step.path && pathname !== step.path) {
+        router.push(step.path);
+      }
+    }
+  };
+
+  const handleResumeTutorial = () => {
+    const savedStepStr = localStorage.getItem("kozker_tutorial_step");
+    const savedStep = savedStepStr ? parseInt(savedStepStr, 10) : 0;
+    setTourStep(savedStep);
+    setActiveTutorial(true);
+    localStorage.setItem("show_kozker_tutorial", "true");
+    localStorage.removeItem("kozker_tutorial_skipped");
+    
+    const step = tourSteps[savedStep];
+    if (step.path && pathname !== step.path) {
+      router.push(step.path);
     }
   };
 
@@ -152,9 +266,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         full_name: onboardName,
         is_onboarded: true,
       });
-      localStorage.setItem("show_kozker_tutorial", "true");
-      setActiveTutorial(true);
-      setTourStep(0);
+      router.push("/welcome");
     } catch (err) {
       console.error("Onboarding failed", err);
     }
@@ -499,6 +611,77 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       )}
+
+      {/* Floating Tutorial Progress & Resume Banner */}
+      {!activeTutorial && pathname !== "/welcome" && profile?.is_onboarded && !isBannerDismissed && (() => {
+        const isCompleted = localStorage.getItem("kozker_tutorial_completed") === "true";
+        if (isCompleted) return null;
+
+        const savedStepStr = localStorage.getItem("kozker_tutorial_step");
+        const savedStep = savedStepStr ? parseInt(savedStepStr, 10) : 0;
+        const progressPercent = Math.round((savedStep / (tourSteps.length - 1)) * 100);
+
+        return (
+          <div className="fixed bottom-6 right-6 bg-neutral-900 border border-neutral-800 text-neutral-100 p-4 rounded-sm shadow-2xl max-w-sm w-full z-45 flex flex-col gap-3.5 select-none font-sans text-xs">
+            <div className="flex justify-between items-start gap-2">
+              <div className="flex gap-2.5 items-start">
+                <div className="p-1.5 bg-primary/10 rounded-sm text-primary">
+                  <Sparkles className="w-4 h-4 animate-pulse" />
+                </div>
+                <div className="space-y-0.5">
+                  <h4 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-white">
+                    Walkthrough Progress
+                  </h4>
+                  <p className="text-neutral-400 text-[10px] leading-relaxed">
+                    Resume the interactive walkthrough to learn all features and workflows of Kozker.
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsBannerDismissed(true)}
+                className="text-neutral-500 hover:text-neutral-350 cursor-pointer"
+                title="Dismiss banner"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-[9px] font-mono text-neutral-400">
+                <span>Progress: {progressPercent}%</span>
+                <span>Step {savedStep + 1} of {tourSteps.length}</span>
+              </div>
+              <div className="w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-primary h-full transition-all duration-300" 
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                onClick={() => {
+                  localStorage.setItem("kozker_tutorial_completed", "true");
+                  localStorage.removeItem("kozker_tutorial_step");
+                  localStorage.removeItem("kozker_tutorial_skipped");
+                  setIsBannerDismissed(true);
+                }}
+                className="px-2.5 py-1 border border-neutral-800 hover:bg-neutral-800 text-neutral-450 hover:text-neutral-350 rounded-sm font-mono text-[9px] uppercase tracking-wider cursor-pointer"
+              >
+                Don't show again
+              </button>
+              <button
+                onClick={handleResumeTutorial}
+                className="px-3 py-1 bg-primary hover:bg-primary/95 text-neutral-white rounded-sm font-semibold uppercase tracking-wider text-[9px] cursor-pointer"
+              >
+                Resume Walkthrough
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
