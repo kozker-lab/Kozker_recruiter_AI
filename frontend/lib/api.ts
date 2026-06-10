@@ -5,7 +5,7 @@ import {
 } from "../types";
 
 // Base Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 // Persistent memory-store for mock fallback
 // Serves as a local stateful database to make the UI completely interactive
@@ -1205,9 +1205,30 @@ const handleMockRequest = <T>(
 
         // Generic 404
         return reject(new Error(`Endpoint mock not found: ${method} ${path}`));
-      } catch (err) {
-        return reject(err);
-      }
     }, 400);
   });
 };
+
+// Helper function for uploading and parsing a PDF/DOCX file
+export const apiUploadFile = async (path: string, file: File): Promise<{ text: string }> => {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || "Failed to upload and parse file");
+    }
+
+    return await res.json();
+  } catch (err) {
+    console.error("Error in apiUploadFile:", err);
+    throw err;
+  }
+};
+

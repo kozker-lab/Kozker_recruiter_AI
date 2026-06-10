@@ -6,7 +6,7 @@ import { apiRequest } from "../lib/api";
 import { Client, Requirement } from "../types";
 import { 
   Building2, Plus, FileText, ChevronRight, CheckCircle2, 
-  MapPin, DollarSign, BrainCircuit, Loader2, Award 
+  MapPin, DollarSign, BrainCircuit, Loader2, Award, Upload 
 } from "lucide-react";
 
 export default function ClientsView() {
@@ -29,6 +29,53 @@ export default function ClientsView() {
   const [reqSeniority, setReqSeniority] = useState<"junior" | "mid" | "senior" | "lead" | "any">("mid");
   const [reqNotes, setReqNotes] = useState("");
   const [reqPosts, setReqPosts] = useState(1);
+
+  // File upload / parsing states
+  const [isParsingFile, setIsParsingFile] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsParsingFile(true);
+    setFileError(null);
+
+    const ext = file.name.split(".").pop()?.toLowerCase();
+
+    if (ext === "txt") {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setReqDesc(event.target.result as string);
+        }
+        setIsParsingFile(false);
+      };
+      reader.onerror = () => {
+        setFileError("Failed to read text file");
+        setIsParsingFile(false);
+      };
+      reader.readAsText(file);
+    } else if (ext === "pdf" || ext === "docx" || ext === "doc") {
+      try {
+        const { apiUploadFile } = await import("../lib/api");
+        const result = await apiUploadFile("/requirements/parse-file", file);
+        if (result && result.text) {
+          setReqDesc(result.text);
+        } else {
+          setFileError("No text content could be extracted from this document.");
+        }
+      } catch (err: any) {
+        setFileError(err.message || "Failed to parse document. Is the backend running?");
+      } finally {
+        setIsParsingFile(false);
+      }
+    } else {
+      setFileError("Supported formats are PDF, DOCX, and TXT");
+      setIsParsingFile(false);
+    }
+  };
+
 
   // Queries
   const { data: clients = [], isLoading: loadingClients } = useQuery<Client[]>({
@@ -317,15 +364,35 @@ export default function ClientsView() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Description / Mandate Brief</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Description / Mandate Brief</label>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="req-file-upload" className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/95 cursor-pointer font-semibold uppercase tracking-wider">
+                      <Upload className="w-3.5 h-3.5" />
+                      {isParsingFile ? "Extracting..." : "Upload File"}
+                    </label>
+                    <input
+                      id="req-file-upload"
+                      type="file"
+                      accept=".txt,.pdf,.docx,.doc"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      disabled={isParsingFile}
+                    />
+                  </div>
+                </div>
                 <textarea
-                  placeholder="Paste client requirements outline or basic bullet list..."
+                  placeholder="Paste client requirements outline or basic bullet list, or upload a document to extract text..."
                   required
-                  rows={3}
+                  rows={4}
                   value={reqDesc}
                   onChange={(e) => setReqDesc(e.target.value)}
-                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary"
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary font-sans"
+                  disabled={isParsingFile}
                 />
+                {fileError && (
+                  <p className="text-[10px] text-error font-mono mt-0.5">{fileError}</p>
+                )}
               </div>
 
               <div className="space-y-1">
