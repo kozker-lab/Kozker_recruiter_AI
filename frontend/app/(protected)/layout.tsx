@@ -6,8 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCurrentUser, useProfile, useLogout, useUpdateProfile } from "@/lib/hooks/useAuth";
 import ChatbotPanel from "@/components/ChatbotPanel";
 
-import { 
-  LayoutDashboard, Building2, Briefcase, Users, LogOut, 
+import {
+  LayoutDashboard, Building2, Briefcase, Users, LogOut,
   Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
   X, AlertCircle
 } from "lucide-react";
@@ -17,7 +17,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const { data: profile, isLoading } = useProfile();
   const updateProfile = useUpdateProfile();
   const { mutate: logout } = useLogout();
-  
+
   const pathname = usePathname();
   const router = useRouter();
 
@@ -26,7 +26,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [onboardName, setOnboardName] = useState<string>("");
   const [onboardAgency, setOnboardAgency] = useState<string>("");
   const [onboardDomain, setOnboardDomain] = useState<string>("");
-  
+
   // Chat drawer collapse state
   const [isChatOpen, setIsChatOpen] = useState(true);
 
@@ -123,7 +123,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       const isCompleted = localStorage.getItem("kozker_tutorial_completed") === "true";
       const isSkipped = localStorage.getItem("kozker_tutorial_skipped") === "true";
       const hasSessionRedirected = sessionStorage.getItem("kozker_welcome_redirected") === "true";
-      
+
       if (!isCompleted && !isSkipped && !hasSessionRedirected && pathname !== "/welcome") {
         sessionStorage.setItem("kozker_welcome_redirected", "true");
         router.push("/welcome");
@@ -148,7 +148,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   React.useEffect(() => {
     if (!activeTutorial) return;
     const step = tourSteps[tourStep];
-    
+
     // Route transition if needed
     if (step.path && pathname !== step.path) {
       router.push(step.path);
@@ -218,7 +218,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       const nextStep = tourStep + 1;
       setTourStep(nextStep);
       localStorage.setItem("kozker_tutorial_step", nextStep.toString());
-      
+
       const step = tourSteps[nextStep];
       if (step.path && pathname !== step.path) {
         router.push(step.path);
@@ -238,7 +238,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       const prevStep = tourStep - 1;
       setTourStep(prevStep);
       localStorage.setItem("kozker_tutorial_step", prevStep.toString());
-      
+
       const step = tourSteps[prevStep];
       if (step.path && pathname !== step.path) {
         router.push(step.path);
@@ -253,7 +253,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     setActiveTutorial(true);
     localStorage.setItem("show_kozker_tutorial", "true");
     localStorage.removeItem("kozker_tutorial_skipped");
-    
+
     const step = tourSteps[savedStep];
     if (step.path && pathname !== step.path) {
       router.push(step.path);
@@ -429,11 +429,10 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                   key={item.id}
                   id={`nav-${item.id}`}
                   href={item.href}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm font-medium transition-all cursor-pointer ${
-                    isActive 
-                      ? "bg-neutral-900 border-neutral-800 text-neutral-white font-semibold" 
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm font-medium transition-all cursor-pointer ${isActive
+                      ? "bg-neutral-900 border-neutral-800 text-neutral-white font-semibold"
                       : "text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2.5">
                     <Icon className={`w-4 h-4 ${isActive ? "text-primary" : "text-neutral-400"}`} />
@@ -476,14 +475,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               Recruitment Operations Command Center
             </h1>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <button
               id="header-chatbot-toggle"
               onClick={() => setIsChatOpen(!isChatOpen)}
-              className={`p-2 border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors ${
-                isChatOpen ? "bg-neutral-50 border-primary/40 text-primary" : "text-neutral-500 bg-neutral-white"
-              }`}
+              className={`p-2 border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors ${isChatOpen ? "bg-neutral-50 border-primary/40 text-primary" : "text-neutral-500 bg-neutral-white"
+                }`}
               title="Toggle AI Copilot Drawer"
             >
               <MessageSquare className="w-4 h-4" />
@@ -496,10 +494,10 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         </div>
       </main>
 
-      <ChatbotPanel 
-        isOpen={isChatOpen} 
-        onClose={() => setIsChatOpen(false)} 
-        currentPage={pathname.substring(1) || "dashboard"} 
+      <ChatbotPanel
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        currentPage={pathname.substring(1) || "dashboard"}
       />
 
       {/* Onboarding Tour Tooltips */}
@@ -512,7 +510,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
           {/* Highlight target element (dim surrounding area without blur) */}
           {tourSteps[tourStep].targetId && (
-            <div 
+            <div
               className="fixed border-2 border-primary rounded-sm bg-transparent z-50 transition-all duration-300 pointer-events-none"
               style={{
                 boxShadow: "0 0 0 9999px rgba(12, 10, 9, 0.45), 0 0 15px rgba(255,110,48,0.5)",
@@ -532,7 +530,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           )}
 
           {/* Floating Tooltip Card */}
-          <div 
+          <div
             className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-5 space-y-4 shadow-xl z-50 transition-all duration-300 absolute pointer-events-auto"
             style={{
               top: tooltipPos.top,
@@ -587,7 +585,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider">Exit Workspace?</h3>
               <p className="text-neutral-450 text-xs">Are you sure you want to exit your active workspace? You will be signed out of your account.</p>
             </div>
-            
+
             <div className="flex justify-end gap-2.5 pt-2 text-xs">
               <button
                 type="button"
@@ -637,7 +635,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                   </p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setIsBannerDismissed(true)}
                 className="text-neutral-500 hover:text-neutral-350 cursor-pointer"
                 title="Dismiss banner"
@@ -653,8 +651,8 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                 <span>Step {savedStep + 1} of {tourSteps.length}</span>
               </div>
               <div className="w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
-                <div 
-                  className="bg-primary h-full transition-all duration-300" 
+                <div
+                  className="bg-primary h-full transition-all duration-300"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>

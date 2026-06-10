@@ -92,23 +92,20 @@ export default function ChatbotPanel({ isOpen, onClose, currentPage }: ChatbotPa
         {messages.map((m, idx) => (
           <div
             key={idx}
-            className={`flex items-start gap-2.5 max-w-[85%] ${
-              m.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"
-            }`}
+            className={`flex items-start gap-2.5 max-w-[85%] ${m.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"
+              }`}
           >
             <div
-              className={`p-1.5 rounded-sm flex items-center justify-center ${
-                m.role === "user" ? "bg-primary text-neutral-white" : "bg-neutral-100 text-neutral-600"
-              }`}
+              className={`p-1.5 rounded-sm flex items-center justify-center ${m.role === "user" ? "bg-primary text-neutral-white" : "bg-neutral-100 text-neutral-600"
+                }`}
             >
               {m.role === "user" ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5 text-primary" />}
             </div>
             <div
-              className={`p-2.5 rounded-sm border leading-relaxed ${
-                m.role === "user"
+              className={`p-2.5 rounded-sm border leading-relaxed ${m.role === "user"
                   ? "bg-neutral-900 border-neutral-800 text-neutral-white"
                   : "bg-neutral-50 border-neutral-200 text-neutral-700"
-              }`}
+                }`}
             >
               {m.content}
             </div>
