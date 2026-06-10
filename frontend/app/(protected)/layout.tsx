@@ -227,11 +227,15 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             </div>
           </div>
           <button
-            onClick={() => logout()}
+            onClick={() => {
+              if (window.confirm("Are you sure you want to exit the workspace and log out?")) {
+                logout();
+              }
+            }}
             className="w-full flex items-center justify-center gap-1.5 py-1.5 border border-neutral-200 hover:bg-neutral-150 rounded-sm text-[10px] uppercase font-mono font-bold text-neutral-500 hover:text-neutral-800 transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5 text-neutral-400" />
-            Exit Workspace
+            Exit the Workspace
           </button>
         </div>
       </aside>
