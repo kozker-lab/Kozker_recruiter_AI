@@ -2,16 +2,13 @@ export type UserRole = 'recruiter';
 
 export interface User {
   id: string;
-  supabase_auth_id: string;
   email: string;
   full_name: string | null;
+  avatar_url?: string | null;
   role: UserRole;
+  is_active?: boolean;
   is_onboarded: boolean;
   created_at: string;
-  metadata?: {
-    agencyName?: string;
-    domainName?: string;
-  };
 }
 
 export interface Client {

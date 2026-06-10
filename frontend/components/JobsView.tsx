@@ -15,6 +15,10 @@ interface JobsViewProps {
   onNavigateToReview: (applicationId: string) => void;
 }
 
+const EMPTY_JOBS: JobOpening[] = [];
+const EMPTY_SKILLS: JobOpeningSkill[] = [];
+const EMPTY_CANDIDATES: JobCandidate[] = [];
+
 export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewProps) {
   const queryClient = useQueryClient();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(initialJobId || null);
@@ -34,7 +38,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const [newQualItem, setNewQualItem] = useState("");
 
   // Queries
-  const { data: jobs = [], isLoading: loadingJobs } = useQuery<JobOpening[]>({
+  const { data: jobs = EMPTY_JOBS, isLoading: loadingJobs } = useQuery<JobOpening[]>({
     queryKey: ["jobs"],
     queryFn: () => apiRequest<JobOpening[]>("GET", "/jobs"),
     refetchInterval: 3000
@@ -42,13 +46,13 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
 
   const activeJob = jobs.find(j => j.id === selectedJobId);
 
-  const { data: skills = [], isLoading: loadingSkills } = useQuery<JobOpeningSkill[]>({
+  const { data: skills = EMPTY_SKILLS, isLoading: loadingSkills } = useQuery<JobOpeningSkill[]>({
     queryKey: ["skills", selectedJobId],
     queryFn: () => apiRequest<JobOpeningSkill[]>("GET", `/jobs/${selectedJobId}/skills`),
     enabled: !!selectedJobId
   });
 
-  const { data: matchedCandidates = [], isLoading: loadingCandidates } = useQuery<JobCandidate[]>({
+  const { data: matchedCandidates = EMPTY_CANDIDATES, isLoading: loadingCandidates } = useQuery<JobCandidate[]>({
     queryKey: ["job_candidates", selectedJobId],
     queryFn: () => apiRequest<JobCandidate[]>("GET", `/jobs/${selectedJobId}/candidates`),
     enabled: !!selectedJobId && activeJob?.processing_status === "ready"

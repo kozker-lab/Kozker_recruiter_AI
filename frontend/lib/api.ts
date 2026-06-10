@@ -13,7 +13,6 @@ class MockDatabase {
   users: User[] = [
     {
       id: "usr-1",
-      supabase_auth_id: "sb-auth-1",
       email: "recruiter@kozker.ai",
       full_name: "Alex Mercer",
       role: "recruiter",

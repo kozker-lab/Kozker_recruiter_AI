@@ -1,0 +1,552 @@
+-- ============================================================
+-- KOZKER ATS SEED DATA
+-- Populates the Supabase Database with initial development data
+-- ============================================================
+
+-- 1. Create default recruiter user in auth.users
+-- This allows testing with email: recruiter@kozker.ai / password: Password123!
+INSERT INTO auth.users (
+    id, 
+    instance_id, 
+    email, 
+    encrypted_password, 
+    email_confirmed_at, 
+    raw_app_meta_data, 
+    raw_user_meta_data, 
+    created_at, 
+    updated_at, 
+    role, 
+    aud, 
+    confirmation_token
+)
+VALUES (
+    'd3b07384-d113-495f-9e7b-eb63e0014028',
+    '00000000-0000-0000-0000-000000000000',
+    'recruiter@kozker.ai',
+    crypt('Password123!', gen_salt('bf')),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"Alex Mercer"}'::jsonb,
+    now(),
+    now(),
+    'authenticated',
+    'authenticated',
+    ''
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- 2. Ensure profile matches and is onboarded
+INSERT INTO public.profiles (
+    id, 
+    email, 
+    full_name, 
+    role, 
+    is_active, 
+    is_onboarded, 
+    created_at, 
+    updated_at
+)
+VALUES (
+    'd3b07384-d113-495f-9e7b-eb63e0014028',
+    'recruiter@kozker.ai',
+    'Alex Mercer',
+    'recruiter',
+    TRUE,
+    TRUE,
+    now(),
+    now()
+)
+ON CONFLICT (id) DO UPDATE
+SET is_onboarded = TRUE, role = 'recruiter';
+
+-- Define Recruiter UUID shortcut
+-- Recruiter ID = 'd3b07384-d113-495f-9e7b-eb63e0014028'
+
+-- 3. Seed Clients
+INSERT INTO public.clients (id, name, created_by, created_at, updated_at)
+VALUES 
+    ('c1111111-1111-1111-1111-111111111111', 'Google', 'd3b07384-d113-495f-9e7b-eb63e0014028', now(), now()),
+    ('c2222222-2222-2222-2222-222222222222', 'Stripe', 'd3b07384-d113-495f-9e7b-eb63e0014028', now(), now()),
+    ('c3333333-3333-3333-3333-333333333333', 'Vercel', 'd3b07384-d113-495f-9e7b-eb63e0014028', now(), now())
+ON CONFLICT (id) DO NOTHING;
+
+-- 4. Seed Requirements
+INSERT INTO public.requirements (
+    id, 
+    client_id, 
+    title, 
+    description, 
+    skills, 
+    experience_min, 
+    experience_max, 
+    budget_min, 
+    budget_max, 
+    seniority, 
+    notes, 
+    num_posts_requested, 
+    status, 
+    created_by, 
+    created_at, 
+    updated_at
+)
+VALUES 
+    (
+        'e1111111-1111-1111-1111-111111111111',
+        'c1111111-1111-1111-1111-111111111111',
+        'Senior Frontend Engineer (Next.js & React)',
+        'We are looking for a Senior Frontend Engineer to build high-performance user interfaces for our Next-Gen Cloud Console. Experience with React, Tailwind CSS, Next.js, and TypeScript is mandatory. You will own client-side architecture and optimize page loading speeds.',
+        ARRAY['React', 'Next.js', 'Tailwind CSS', 'TypeScript', 'Web Performance'],
+        5,
+        10,
+        15,
+        25,
+        'senior',
+        'Focus on engineers who have optimized page performance and have built enterprise SaaS dashboards.',
+        2,
+        'ready',
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now() - INTERVAL '3 days',
+        now() - INTERVAL '3 days'
+    ),
+    (
+        'e2222222-2222-2222-2222-222222222222',
+        'c2222222-2222-2222-2222-222222222222',
+        'Staff Systems Engineer (Rust)',
+        'Looking for a Staff Engineer to join our high-volume core payments ledger team. You will build distributed transactional services in Rust. Deep understanding of ACID, systems engineering, databases, and low-latency networking is required.',
+        ARRAY['Rust', 'Distributed Systems', 'SQL', 'Systems Programming'],
+        8,
+        15,
+        30,
+        45,
+        'lead',
+        'Strict ledger requirements. Candidates must have experience scaling low-latency services.',
+        1,
+        'ready',
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now() - INTERVAL '1 day',
+        now() - INTERVAL '1 day'
+    )
+ON CONFLICT (id) DO NOTHING;
+
+-- 5. Seed Job Openings
+INSERT INTO public.job_openings (
+    id, 
+    requirement_id, 
+    post_index, 
+    title, 
+    description, 
+    responsibilities, 
+    qualifications, 
+    keywords, 
+    salary_range, 
+    status, 
+    processing_status, 
+    ai_generated, 
+    approved_by, 
+    created_at, 
+    updated_at, 
+    published_at
+)
+VALUES 
+    (
+        'ab111111-1111-1111-1111-111111111111',
+        'e1111111-1111-1111-1111-111111111111',
+        1,
+        'Senior UI/Frontend Developer - Cloud Platform',
+        'Google Cloud Platform (GCP) is seeking a Senior Frontend Developer to design and implement slick, high-density dashboard controls for GCP console. You will lead UI component designs, collaborate with backend specialists, and improve client-side performance. A focus on developer tooling, responsive systems, and design tokens is essential.',
+        ARRAY[
+            'Design and build responsive UI dashboards for GCP Cloud Console using React and Next.js.',
+            'Implement complex client-side state management systems with Redux or TanStack Query.',
+            'Optimize web vital metrics focusing on LCP, FID, and CLS.',
+            'Author comprehensive unit and integration test coverage using Jest and Testing Library.',
+            'Create shared design system components complying with WCAG Accessibility guidelines.'
+        ],
+        ARRAY[
+            '5+ years of software development experience specializing in frontend architectures.',
+            'Strong proficiency in modern JavaScript, TypeScript, and functional programming.',
+            'Deep familiarity with Tailwind CSS, post-CSS frameworks, and styling optimization.',
+            'Proven experience with server-side rendering (SSR) and Incremental Static Regeneration (ISR).',
+            'Excellent collaborative skills working alongside product design and API specialists.'
+        ],
+        ARRAY['React', 'Next.js', 'TypeScript', 'Performance', 'GCP', 'Tailwind CSS'],
+        '₹18 - ₹24 LPA',
+        'published',
+        'ready',
+        TRUE,
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now() - INTERVAL '3 days',
+        now() - INTERVAL '2 days',
+        now() - INTERVAL '2 days'
+    ),
+    (
+        'ab222222-2222-2222-2222-222222222222',
+        'e1111111-1111-1111-1111-111111111111',
+        2,
+        'Staff Web Architect - Cloud Console Core',
+        'Join the GCP Core UX team as a Staff Web Architect. You will shape the micro-frontend architectures governing hundreds of microservices. This role demands exceptional knowledge of module federation, browser caching, web security, and low-level bundler optimizations.',
+        ARRAY[
+            'Own the architectural blueprints for the GCP Core Micro-Frontend shell.',
+            'Design modules using Webpack module federation and Rspack bundlers.',
+            'Develop core guidelines for authentication, analytics, and service worker caching.',
+            'Direct performance audits across junior development squads to maintain console responsiveness.'
+        ],
+        ARRAY[
+            '8+ years of web engineering experience, with 2+ years leading framework architectures.',
+            'Expertise in bundlers (Webpack, Vite, Turbopack) and performance auditing.',
+            'Solid foundations in HTTP caching, web worker threads, and browser performance diagnostics.'
+        ],
+        ARRAY['Module Federation', 'Web Performance', 'Bundling', 'Next.js', 'Architect'],
+        '₹24 - ₹32 LPA',
+        'draft',
+        'ready',
+        TRUE,
+        NULL,
+        now() - INTERVAL '3 days',
+        now() - INTERVAL '3 days',
+        NULL
+    ),
+    (
+        'ab333333-3333-3333-3333-333333333333',
+        'e2222222-2222-2222-2222-222222222222',
+        1,
+        'Staff Systems Engineer - Distributed Transaction Ledger',
+        'Stripe is building high-availability ledger databases. We are looking for an expert Systems Engineer to architect low-latency services in Rust. You will develop software directly handling financial ledger entries, ensuring strict ACID properties and fault tolerance.',
+        ARRAY[
+            'Architect and implement Ledger storage engines in safe and concurrent Rust code.',
+            'Build distributed consensus layer modules utilizing Raft protocol architectures.',
+            'Create custom database index engines optimized for disk storage layout systems.',
+            'Integrate automated fuzz testing harnesses for transactional ledger validation.'
+        ],
+        ARRAY[
+            '8+ years of systems engineering, with at least 3 years writing Rust in production.',
+            'Strong understanding of relational databases, transactions, and ACID isolation levels.',
+            'Expertise in network socket communication, TCP protocols, and RPC frameworks.'
+        ],
+        ARRAY['Rust', 'Consensus', 'Ledger', 'ACID', 'Stripe', 'Databases'],
+        '₹35 - ₹50 LPA',
+        'confirmed',
+        'idle',
+        TRUE,
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now() - INTERVAL '1 day',
+        now() - INTERVAL '1 day',
+        NULL
+    )
+ON CONFLICT (id) DO NOTHING;
+
+-- 6. Seed Job Opening Skills
+INSERT INTO public.job_opening_skills (id, job_opening_id, skill_name, weight, skill_order, approved)
+VALUES 
+    ('b1111111-1111-1111-1111-111111111111', 'ab111111-1111-1111-1111-111111111111', 'React', 30, 1, TRUE),
+    ('b2222222-2222-2222-2222-222222222222', 'ab111111-1111-1111-1111-111111111111', 'Next.js', 25, 2, TRUE),
+    ('b3333333-3333-3333-3333-333333333333', 'ab111111-1111-1111-1111-111111111111', 'Tailwind CSS', 15, 3, TRUE),
+    ('b4444444-4444-4444-4444-444444444444', 'ab111111-1111-1111-1111-111111111111', 'TypeScript', 15, 4, TRUE),
+    ('b5555555-5555-5555-5555-555555555555', 'ab111111-1111-1111-1111-111111111111', 'Web Performance', 15, 5, TRUE)
+ON CONFLICT (id) DO NOTHING;
+
+-- 7. Seed Candidates
+INSERT INTO public.candidates (
+    id, 
+    full_name, 
+    email, 
+    phone, 
+    skills, 
+    experience_years, 
+    current_company, 
+    resume_url, 
+    parsed_resume_json, 
+    source, 
+    uploaded_by, 
+    created_at, 
+    updated_at
+)
+VALUES 
+    (
+        'ca111111-1111-1111-1111-111111111111',
+        'Rohan Sharma',
+        'rohan.sharma@example.com',
+        '+91 98765 43210',
+        ARRAY['React', 'Next.js', 'TypeScript', 'Tailwind CSS', 'Redux', 'Node.js'],
+        6,
+        'Flipkart',
+        'resumes/cand-1/rohan_sharma_resume.pdf',
+        '{"summary": "Senior UI Developer with experience in Next.js transitions and UI optimization."}'::jsonb,
+        'pdf',
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now() - INTERVAL '2 days',
+        now() - INTERVAL '2 days'
+    ),
+    (
+        'ca222222-2222-2222-2222-222222222222',
+        'Priya Patel',
+        'priya.patel@example.com',
+        '+91 91234 56789',
+        ARRAY['React', 'JavaScript', 'HTML', 'CSS', 'Webpack', 'Vite', 'GraphQL'],
+        5,
+        'TCS',
+        'resumes/cand-2/priya_patel_cv.docx',
+        '{"summary": "Frontend Developer with standard CSS grids and React render loop knowledge."}'::jsonb,
+        'docx',
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now() - INTERVAL '2 days',
+        now() - INTERVAL '2 days'
+    ),
+    (
+        'ca333333-3333-3333-3333-333333333333',
+        'Siddharth Verma',
+        'sid.verma@example.com',
+        '+91 99887 76655',
+        ARRAY['Rust', 'Distributed Systems', 'PostgreSQL', 'C++', 'Docker'],
+        9,
+        'Razorpay',
+        'resumes/cand-3/sid_verma_ledger.pdf',
+        '{"summary": "Systems Developer specializing in ledger design and Rust databases."}'::jsonb,
+        'pdf',
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now() - INTERVAL '1 day',
+        now() - INTERVAL '1 day'
+    )
+ON CONFLICT (id) DO NOTHING;
+
+-- 8. Seed Applications
+INSERT INTO public.applications (
+    id, 
+    candidate_id, 
+    job_opening_id, 
+    candidate_cv, 
+    fuzzy_score, 
+    match_score, 
+    match_reason, 
+    strengths, 
+    skill_gaps, 
+    screening_status, 
+    stage, 
+    stage_status, 
+    stage_notes, 
+    priority, 
+    reviewed_by, 
+    reviewed_at, 
+    created_at, 
+    updated_at
+)
+VALUES 
+    (
+        'ad111111-1111-1111-1111-111111111111',
+        'ca111111-1111-1111-1111-111111111111',
+        'ab111111-1111-1111-1111-111111111111',
+        'resumes/cand-1/rohan_sharma_resume.pdf',
+        94.5,
+        95,
+        'Exceptional background in React, Next.js, and TypeScript. Experience migrating critical checkout systems matching top skills. High performance awareness.',
+        ARRAY['Strong Next.js expertise', 'Mentorship experience', 'Performance optimization success'],
+        ARRAY['No direct GCP console experience'],
+        'accepted',
+        'technical',
+        'in_progress',
+        'Technical interview scheduled for Thursday. Impressive resume.',
+        1,
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now(),
+        now(),
+        now()
+    ),
+    (
+        'ad222222-2222-2222-2222-222222222222',
+        'ca222222-2222-2222-2222-222222222222',
+        'ab111111-1111-1111-1111-111111111111',
+        'resumes/cand-2/priya_patel_cv.docx',
+        72.0,
+        72,
+        'Strong HTML/CSS/React roots. Missing TypeScript and Next.js experience, which are core framework dependencies for this role.',
+        ARRAY['Clean CSS skills', 'Core React rendering competency', 'Detail-oriented'],
+        ARRAY['No Next.js experience', 'No TypeScript experience'],
+        'accepted',
+        'screening',
+        'passed',
+        'Initial recruiter screen cleared. Moving to tech evaluation.',
+        0,
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now(),
+        now(),
+        now()
+    )
+ON CONFLICT (id) DO NOTHING;
+
+-- 9. Seed Job Candidates (Rankings)
+INSERT INTO public.job_candidates (
+    id, 
+    job_opening_id, 
+    candidate_id, 
+    application_id, 
+    fuzzy_score, 
+    rank_order, 
+    strengths, 
+    skill_gaps, 
+    ai_reasoning, 
+    status, 
+    created_at
+)
+VALUES 
+    (
+        'dc111111-1111-1111-1111-111111111111',
+        'ab111111-1111-1111-1111-111111111111',
+        'ca111111-1111-1111-1111-111111111111',
+        'ad111111-1111-1111-1111-111111111111',
+        94.5,
+        1,
+        ARRAY['Strong Next.js expertise', 'Performance optimization success'],
+        ARRAY['No direct GCP console experience'],
+        'Matches 95% of core requirements including Next.js and performance tuning.',
+        'accepted',
+        now()
+    ),
+    (
+        'dc222222-2222-2222-2222-222222222222',
+        'ab111111-1111-1111-1111-111111111111',
+        'ca222222-2222-2222-2222-222222222222',
+        'ad222222-2222-2222-2222-222222222222',
+        72.0,
+        2,
+        ARRAY['Core React rendering competency'],
+        ARRAY['No Next.js experience', 'No TypeScript experience'],
+        'React foundations are strong but lack of Next.js/TypeScript limits scoring.',
+        'pending',
+        now()
+    )
+ON CONFLICT (id) DO NOTHING;
+
+-- 10. Seed Screening Questions
+INSERT INTO public.screening_questions (
+    id, 
+    application_id, 
+    job_candidate_id, 
+    requirement_id, 
+    job_opening_id, 
+    question, 
+    difficulty, 
+    question_order, 
+    ai_generated, 
+    created_at
+)
+VALUES 
+    (
+        'f1111111-1111-1111-1111-111111111111',
+        'ad111111-1111-1111-1111-111111111111',
+        'dc111111-1111-1111-1111-111111111111',
+        'e1111111-1111-1111-1111-111111111111',
+        'ab111111-1111-1111-1111-111111111111',
+        'In your Flipkart experience, how did you manage the checkout state during the Next.js App Router transition? Explain your strategy for caching server component inputs.',
+        'hard',
+        1,
+        TRUE,
+        now()
+    ),
+    (
+        'f2222222-2222-2222-2222-222222222222',
+        'ad111111-1111-1111-1111-111111111111',
+        'dc111111-1111-1111-1111-111111111111',
+        'e1111111-1111-1111-1111-111111111111',
+        'ab111111-1111-1111-1111-111111111111',
+        'What performance metrics did you focus on when improving Flipkart''s page load speed, and what tools did you use to measure LCP?',
+        'medium',
+        2,
+        TRUE,
+        now()
+    ),
+    (
+        'f3333333-3333-3333-3333-333333333333',
+        'ad111111-1111-1111-1111-111111111111',
+        'dc111111-1111-1111-1111-111111111111',
+        'e1111111-1111-1111-1111-111111111111',
+        'ab111111-1111-1111-1111-111111111111',
+        'Explain the differences between Server Actions and API Route handlers in Next.js 14.',
+        'easy',
+        3,
+        TRUE,
+        now()
+    )
+ON CONFLICT (id) DO NOTHING;
+
+-- 11. Seed Interview Stages
+INSERT INTO public.interview_stages (
+    id, 
+    application_id, 
+    job_candidate_id, 
+    stage_name, 
+    stage_order, 
+    status, 
+    outcome, 
+    notes, 
+    scheduled_at, 
+    completed_at, 
+    updated_by, 
+    created_at, 
+    updated_at
+)
+VALUES 
+    (
+        'de111111-1111-1111-1111-111111111111',
+        'ad111111-1111-1111-1111-111111111111',
+        'dc111111-1111-1111-1111-111111111111',
+        'screening',
+        1,
+        'completed',
+        'passed',
+        'Polite candidate, fits salary parameters.',
+        now() - INTERVAL '48 hours',
+        now() - INTERVAL '47 hours',
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now(),
+        now()
+    ),
+    (
+        'de222222-2222-2222-2222-222222222222',
+        'ad111111-1111-1111-1111-111111111111',
+        'dc111111-1111-1111-1111-111111111111',
+        'technical',
+        2,
+        'scheduled',
+        'pending',
+        'Assigned interviewer: Senior Staff GCP console Lead.',
+        now() + INTERVAL '48 hours',
+        NULL,
+        'd3b07384-d113-495f-9e7b-eb63e0014028',
+        now(),
+        now()
+    )
+ON CONFLICT (id) DO NOTHING;
+
+-- 12. Seed Activity Logs
+INSERT INTO public.activity_log (id, actor_id, actor_name, action, entity_type, entity_id, metadata, created_at)
+VALUES 
+    (
+        'df111111-1111-1111-1111-111111111111', 
+        'd3b07384-d113-495f-9e7b-eb63e0014028', 
+        'Alex Mercer', 
+        'job_created', 
+        'job_openings', 
+        'ab111111-1111-1111-1111-111111111111', 
+        '{"job_title": "Senior UI/Frontend Developer - Cloud Platform", "requirement_title": "Senior Frontend Engineer"}'::jsonb, 
+        now() - INTERVAL '3 days'
+    ),
+    (
+        'df222222-2222-2222-2222-222222222222', 
+        'd3b07384-d113-495f-9e7b-eb63e0014028', 
+        'Alex Mercer', 
+        'candidate_uploaded', 
+        'candidates', 
+        'ca111111-1111-1111-1111-111111111111', 
+        '{"candidate_name": "Rohan Sharma", "job_title": "Senior UI/Frontend Developer - Cloud Platform"}'::jsonb, 
+        now() - INTERVAL '2 days'
+    ),
+    (
+        'df333333-3333-3333-3333-333333333333', 
+        'd3b07384-d113-495f-9e7b-eb63e0014028', 
+        'Alex Mercer', 
+        'candidate_ranked', 
+        'applications', 
+        'ad111111-1111-1111-1111-111111111111', 
+        '{"candidate_name": "Rohan Sharma", "fuzzy_score": 94.5}'::jsonb, 
+        now() - INTERVAL '2 days'
+    )
+ON CONFLICT (id) DO NOTHING;
