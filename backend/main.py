@@ -44,18 +44,39 @@ if ANTHROPIC_API_KEY and ANTHROPIC_API_KEY != "your_anthropic_api_key_here":
 else:
     logger.warning("ANTHROPIC_API_KEY not found or is placeholder. Using mock AI fallbacks for Claude.")
 
-# Helper: Get Supabase client authenticated as the user
-def get_supabase(authorization: Optional[str] = Header(None)) -> Client:
+# Helper: Safe client creator to bypass validation for new publishable keys
+def get_safe_supabase_client(url: str, key: str, jwt_token: str = None) -> Client:
+    dummy_jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy.key"
     headers = {}
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
-        headers["Authorization"] = f"Bearer {token}"
+    if jwt_token:
+        headers["Authorization"] = f"Bearer {jwt_token}"
     
-    return create_client(
-        SUPABASE_URL, 
-        SUPABASE_KEY, 
+    client = create_client(
+        url, 
+        dummy_jwt, 
         options=ClientOptions(headers=headers)
     )
+    
+    # Patch client properties with the real key
+    client.supabase_key = key
+    client.options.headers["apiKey"] = key
+    if not jwt_token:
+        client.options.headers["Authorization"] = f"Bearer {key}"
+        
+    # Patch GoTrue/Auth client headers if auth is used
+    if hasattr(client, "auth") and client.auth:
+        client.auth._headers["apiKey"] = key
+        if not jwt_token:
+            client.auth._headers["Authorization"] = f"Bearer {key}"
+            
+    return client
+
+# Helper: Get Supabase client authenticated as the user
+def get_supabase(authorization: Optional[str] = Header(None)) -> Client:
+    jwt_token = None
+    if authorization and authorization.startswith("Bearer "):
+        jwt_token = authorization.split(" ")[1]
+    return get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
 
 # Text extraction helper
 def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
@@ -173,7 +194,7 @@ async def get_clients(db: Client = Depends(get_supabase)):
     return res.data
 
 @app.post("/api/v1/clients")
-async def create_client(client: ClientModel, db: Client = Depends(get_supabase)):
+async def create_client_endpoint(client: ClientModel, db: Client = Depends(get_supabase)):
     res = db.table("clients").insert({"name": client.name}).execute()
     if not res.data:
         raise HTTPException(status_code=400, detail="Failed to create client")
@@ -198,8 +219,7 @@ async def delete_client(client_id: str, db: Client = Depends(get_supabase)):
 def generate_job_openings_background(req_id: str, client_id: str, req_title: str, req_desc: str, req_skills: List[str], req_exp_min: int, req_exp_max: int, req_seniority: str, req_budget_min: float, req_budget_max: float, num_posts: int, jwt_token: str):
     logger.info(f"Starting background job generation for requirement {req_id}")
     # Initialize a system Supabase client with the user's JWT to write on their behalf
-    headers = {"Authorization": f"Bearer {jwt_token}"}
-    db = create_client(SUPABASE_URL, SUPABASE_KEY, options=ClientOptions(headers=headers))
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
     
     db.table("requirements").update({"status": "generating"}).eq("id", req_id).execute()
     
@@ -423,8 +443,7 @@ async def save_skills(job_id: str, skills_data: SkillsApprovalModel, background_
 # Candidate matching background task
 def match_candidates_background(job_id: str, jwt_token: str):
     logger.info(f"Starting background candidate matching for job {job_id}")
-    headers = {"Authorization": f"Bearer {jwt_token}"}
-    db = create_client(SUPABASE_URL, SUPABASE_KEY, options=ClientOptions(headers=headers))
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
     
     try:
         # Fetch job and approved skills
@@ -550,8 +569,7 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
 # accept application -> triggers background personalized question generation
 def generate_questions_background(app_id: str, candidate_name: str, skills: List[str], exp_years: int, raw_text: str, jwt_token: str):
     logger.info(f"Starting background question generation for application {app_id}")
-    headers = {"Authorization": f"Bearer {jwt_token}"}
-    db = create_client(SUPABASE_URL, SUPABASE_KEY, options=ClientOptions(headers=headers))
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
     
     try:
         questions = []

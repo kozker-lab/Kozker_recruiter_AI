@@ -3,6 +3,7 @@ import {
   Candidate, Application, ScreeningQuestion, InterviewStage, 
   ActivityLog, ChatMessage, JobCandidate
 } from "../types";
+import { createClient } from "./supabase/client";
 
 // Base Configuration
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -414,6 +415,17 @@ export async function apiRequest<T>(
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
+    
+    // Retrieve Supabase token if available
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+    } catch (tokenErr) {
+      console.warn("Could not retrieve supabase token for API request", tokenErr);
+    }
     
     // Attempt real backend call
     const res = await fetch(`${API_BASE_URL}${path}`, {
@@ -1218,8 +1230,20 @@ export const apiUploadFile = async (path: string, file: File): Promise<{ text: s
     const formData = new FormData();
     formData.append("file", file);
 
+    const headers: Record<string, string> = {};
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+    } catch (tokenErr) {
+      console.warn("Could not retrieve supabase token for apiUploadFile", tokenErr);
+    }
+
     const res = await fetch(`${API_BASE_URL}${path}`, {
       method: "POST",
+      headers,
       body: formData,
     });
 
