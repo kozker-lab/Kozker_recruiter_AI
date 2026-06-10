@@ -4,9 +4,9 @@ Kozker Recruiter AI is an enterprise-grade, data-dense, AI-powered internal recr
 
 ---
 
-## 🛠️ Architecture & Tech Stack
+## Architecture and Tech Stack
 
-The platform is split into a **Next.js frontend** and a **FastAPI backend**, utilizing **Supabase** for database, authentication, and file storage.
+The platform is split into a Next.js frontend and a FastAPI backend, utilizing Supabase for database, authentication, and file storage.
 
 ### Technology Blueprint
 
@@ -19,7 +19,7 @@ graph TD
     B -->|Background Tasks| E[Celery Workers / Python thread pools]
 ```
 
-### 1. Frontend (`/frontend`)
+### 1. Frontend (/frontend)
 *   **Framework**: Next.js 14 (App Router) with React 18
 *   **Language**: TypeScript 5.x for robust, compile-time safety
 *   **Styling**: Tailwind CSS 3.x following the [DESIGN.md](file:///home/aderham/Kozkerprojs/Kozker_recruiter_AI/Kozker_recruiter_AI/DESIGN.md) specification (Brand Orange `#FF6E30`, sharp corners, data-dense layouts, minimal rounded borders)
@@ -29,7 +29,7 @@ graph TD
     1.  **Direct Backend Integration**: Dispatches authenticated HTTP requests using the user's Supabase JWT.
     2.  **Stateful Mock Fallback**: In case the FastAPI backend is offline, the client transparently routes operations to an in-memory, stateful `MockDatabase` layer to keep the UI fully interactive and testable.
 
-### 2. Backend (`/backend`)
+### 2. Backend (/backend)
 *   **Framework**: FastAPI 0.110+ (Python 3.11+) for high-performance, asynchronous endpoints
 *   **Database ORM**: SQLAlchemy 2.x (asyncpg driver) and Alembic migration control
 *   **AI Engine**: Anthropic Claude API (`claude-3-5-sonnet-20241022`) for intelligent context parsing and text generation
@@ -38,19 +38,19 @@ graph TD
 
 ---
 
-## 📖 Key Features & Implementation Details
+## Key Features and Implementation Details
 
-### 1. Requirements & AI Job Generation
-*   **Implementation**: A recruiter uploads a hiring mandate (either structured fields or raw description paragraph) via the **Clients & Mandates** view.
+### 1. Requirements and AI Job Generation
+*   **Implementation**: A recruiter uploads a hiring mandate (either structured fields or raw description paragraph) via the **Clients and Mandates** view.
 *   **AI Integration**: Saving a requirement triggers a background task calling Anthropic's Claude. Claude generates tailored job drafts (title, overview, responsibilities, qualifications, target salary, and keywords) based on the post count requested (1–3 drafts).
 *   **Notion-Style UI**: Drafts are populated in real-time in a Notion-style grouped table under [JobsView.tsx](file:///home/aderham/Kozkerprojs/Kozker_recruiter_AI/Kozker_recruiter_AI/frontend/components/JobsView.tsx), where the recruiter can manually edit, confirm, or enter custom prompts to regenerate drafts.
 
-### 2. Scan & Publish (Weighted Skill Matching)
+### 2. Scan and Publish (Weighted Skill Matching)
 *   **Implementation**: Before matching candidates, the recruiter triggers **Scan and Publish**. The AI extracts five high-priority skills from the job description.
 *   **Pop-up Review**: The recruiter reviews these skills in an editable modal, modifying their relative weight distributions.
 *   **Fuzzy-Scoring Matcher**: The backend compares candidate profiles against the finalized weighted skill set. It computes a custom **Fuzzy Match Score (0-100)** and logs detailed matching reason analyses, saving results in the `job_candidates` and `applications` tables.
 
-### 3. Sourcing Pool & Resume Parsers
+### 3. Sourcing Pool and Resume Parsers
 *   **Implementation**: Recruiters can upload candidates globally on the **Sourcing Pool** view, or link them directly to a specific opening.
 *   **Parsers**: The backend uses `pdfplumber` and `python-docx` to extract text. This text is sent to Claude to isolate structured entities: `full_name`, `email`, `phone`, `skills`, and `experience_years`.
 
@@ -65,36 +65,29 @@ graph TD
 
 ---
 
-## ⚙️ Environment Configuration
+## Environment Configuration
 
-To facilitate deployment and developer onboarding, the development environment variables are tracked in Git.
+To run the application, configure your local environment files for the backend and frontend. Do not expose actual credentials or values in public environments.
 
-### Backend Configurations (`backend/.env`)
-Create/maintain this file in the `backend/` directory:
-```env
-SUPABASE_URL=https://covhcpsyliesrgkjxhai.supabase.co
-SUPABASE_KEY=sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-```
-*   `SUPABASE_URL` & `SUPABASE_KEY`: Direct credentials to connect to the Supabase PostgreSQL database proxy.
-*   `ANTHROPIC_API_KEY`: API Key for Anthropic Claude SDK interactions.
+### Backend Configuration (backend/.env)
+Create a `.env` file in the `backend/` directory defining:
+*   `SUPABASE_URL`: URL of the Supabase instance.
+*   `SUPABASE_KEY`: API service key or publishable key for Supabase database operations.
+*   `ANTHROPIC_API_KEY`: API key for Anthropic Claude SDK.
 
-### Frontend Configurations (`frontend/.env` / `frontend/.env.local`)
-Create/maintain these files in the `frontend/` directory:
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://covhcpsyliesrgkjxhai.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b
-```
-*   `NEXT_PUBLIC_SUPABASE_URL` & `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase Client JS configurations, enabling authentication, real-time channels, and database subscriptions in browser clients.
+### Frontend Configuration (frontend/.env)
+Create a `.env` file in the `frontend/` directory defining:
+*   `NEXT_PUBLIC_SUPABASE_URL`: Public URL of the Supabase instance.
+*   `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Anonymous public key for Supabase client.
+*   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Publishable key for Supabase client.
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
-*   Node.js 18+ & npm
-*   Python 3.11+ & pip
+*   Node.js 18+ and npm
+*   Python 3.11+ and pip
 
 ### Backend Setup
 1. Navigate to the backend folder:
@@ -114,14 +107,14 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV
    ```bash
    python main.py
    ```
-   The backend will be running at `http://localhost:8000`.
+   The backend will run at `http://localhost:8000`.
 
 ### Frontend Setup
 1. Navigate to the frontend folder:
    ```bash
    cd frontend
    ```
-2. Install npm dependencies:
+2. Install dependencies:
    ```bash
    npm install
    ```
