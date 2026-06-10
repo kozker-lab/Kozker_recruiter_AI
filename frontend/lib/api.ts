@@ -405,11 +405,11 @@ class MockDatabase {
 const mockDb = new MockDatabase();
 
 // API fetch wrapper with defensive logging and mock fallbacks
-export const apiRequest = async <T>(
+export async function apiRequest<T>(
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
   data?: any
-): Promise<T> => {
+): Promise<T> {
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -435,14 +435,14 @@ export const apiRequest = async <T>(
 
   // Persisted Mock Database Handlers
   return handleMockRequest<T>(method, path, data);
-};
+}
 
 // Route matching patterns for the mock layer
-const handleMockRequest = <T>(
+function handleMockRequest<T>(
   method: string,
   path: string,
   data: any
-): Promise<T> => {
+): Promise<T> {
   return new Promise((resolve, reject) => {
     // Artificial Latency
     setTimeout(() => {
@@ -1205,9 +1205,12 @@ const handleMockRequest = <T>(
 
         // Generic 404
         return reject(new Error(`Endpoint mock not found: ${method} ${path}`));
+      } catch (err) {
+        return reject(err);
+      }
     }, 400);
   });
-};
+}
 
 // Helper function for uploading and parsing a PDF/DOCX file
 export const apiUploadFile = async (path: string, file: File): Promise<{ text: string }> => {
