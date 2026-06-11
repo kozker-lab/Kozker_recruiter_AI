@@ -150,6 +150,19 @@ class RequirementModel(BaseModel):
     notes: Optional[str] = ""
     num_posts_requested: int = 1
 
+class RequirementUpdateModel(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    skills: Optional[List[str]] = None
+    experience_min: Optional[int] = None
+    experience_max: Optional[int] = None
+    budget_min: Optional[float] = None
+    budget_max: Optional[float] = None
+    seniority: Optional[str] = None
+    notes: Optional[str] = None
+    num_posts_requested: Optional[int] = None
+    status: Optional[str] = None
+
 class JobOpeningModel(BaseModel):
     requirement_id: str
     title: str
@@ -311,6 +324,28 @@ def generate_job_openings_background(req_id: str, client_id: str, req_title: str
 async def get_requirements(db: Client = Depends(get_supabase)):
     res = db.table("requirements").select("*").eq("is_deleted", False).execute()
     return res.data
+
+@app.put("/api/v1/requirements/{req_id}")
+async def update_requirement(req_id: str, req: RequirementUpdateModel, db: Client = Depends(get_supabase)):
+    update_data = {k: v for k, v in req.dict(exclude_unset=True).items() if v is not None}
+    if not update_data:
+        res = db.table("requirements").select("*").eq("id", req_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Requirement not found")
+        return res.data[0]
+    
+    res = db.table("requirements").update(update_data).eq("id", req_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+        
+    db.table("activity_log").insert({
+        "action": "requirement_updated",
+        "entity_type": "requirements",
+        "entity_id": req_id,
+        "actor_name": "Recruiter",
+        "metadata": {"req_title": res.data[0].get("title", "")}
+    }).execute()
+    return res.data[0]
 
 @app.post("/api/v1/requirements")
 async def create_requirement(req: RequirementModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):

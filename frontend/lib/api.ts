@@ -43,7 +43,7 @@ class MockDatabase {
       seniority: "senior",
       notes: "Focus on engineers who have optimized page performance and have built enterprise SaaS dashboards.",
       num_posts_requested: 2,
-      status: "active",
+      status: "ready",
       created_by: "usr-1",
       created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
     },
@@ -61,7 +61,7 @@ class MockDatabase {
       seniority: "lead",
       notes: "Strict ledger requirements. Candidates must have experience scaling low-latency services.",
       num_posts_requested: 1,
-      status: "active",
+      status: "ready",
       created_by: "usr-1",
       created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
     }
@@ -530,7 +530,7 @@ function handleMockRequest<T>(
               seniority: data.seniority,
               notes: data.notes,
               num_posts_requested: data.num_posts_requested || 1,
-              status: "active",
+              status: "ready",
               created_by: "usr-1",
               created_at: new Date().toISOString()
             };
@@ -620,6 +620,31 @@ function handleMockRequest<T>(
           // Attach linked openings
           const openings = mockDb.jobOpenings.filter(o => o.requirement_id === id);
           return resolve({ ...req, job_openings: openings } as unknown as T);
+        }
+        if (path.startsWith("/requirements/") && method === "PUT") {
+          const id = path.split("/")[2];
+          const index = mockDb.requirements.findIndex(r => r.id === id);
+          if (index === -1) return reject(new Error("Not found"));
+          
+          mockDb.requirements[index] = {
+            ...mockDb.requirements[index],
+            ...data,
+            updated_at: new Date().toISOString()
+          };
+          
+          // log activity
+          mockDb.activityLogs.unshift({
+            id: `act-${Date.now()}`,
+            actor_id: "usr-1",
+            actor_name: "Alex Mercer",
+            action: "requirement_updated",
+            entity_type: "requirements",
+            entity_id: id,
+            metadata: { req_title: mockDb.requirements[index].title },
+            created_at: new Date().toISOString()
+          });
+          
+          return resolve(mockDb.requirements[index] as unknown as T);
         }
 
         // JOBS

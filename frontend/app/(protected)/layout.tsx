@@ -44,7 +44,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       title: "Welcome to Kozker Recruiter AI",
       content: "Let's take an interactive walkthrough of your new AI-powered recruiting workspace to learn how everything works.",
       targetId: "",
-      path: "/welcome"
+      path: "/dashboard"
     },
     {
       title: "Workspace Command Center",
@@ -72,6 +72,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       content: "Once a client is registered, click 'Add Requirement' to upload descriptions (PDF, DOCX, TXT) and let AI extract key requirement skills.",
       targetId: "add-requirement-btn",
       position: "left-bottom",
+      path: "/clients"
+    },
+    {
+      title: "Search, Filter & Edit Requirements",
+      content: "Manage mandates efficiently by searching, filtering by status, editing parameters, or updating requirement status from 'Draft' to 'Ready' or 'Archived'.",
+      targetId: "requirements-search-bar",
+      position: "bottom",
       path: "/clients"
     },
     {

@@ -22,7 +22,7 @@ export interface Client {
 }
 
 export type SeniorityType = 'junior' | 'mid' | 'senior' | 'lead' | 'any';
-export type RequirementStatus = 'active' | 'closed';
+export type RequirementStatus = 'draft' | 'generating' | 'ready' | 'archived';
 
 export interface Requirement {
   id: string;

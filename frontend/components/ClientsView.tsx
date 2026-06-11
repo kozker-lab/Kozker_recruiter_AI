@@ -6,8 +6,9 @@ import { apiRequest } from "../lib/api";
 import { Client, Requirement } from "../types";
 import { 
   Building2, Plus, FileText, ChevronRight, CheckCircle2, 
-  MapPin, DollarSign, BrainCircuit, Loader2, Award, Upload 
+  MapPin, DollarSign, BrainCircuit, Loader2, Award, Upload, Edit
 } from "lucide-react";
+import { RequirementStatus } from "../types";
 
 export default function ClientsView() {
   const queryClient = useQueryClient();
@@ -17,6 +18,12 @@ export default function ClientsView() {
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [isReqModalOpen, setIsReqModalOpen] = useState(false);
   
+  // Requirement Editing & Filtering States
+  const [editingReqId, setEditingReqId] = useState<string | null>(null);
+  const [reqStatus, setReqStatus] = useState<RequirementStatus>("ready");
+  const [reqSearchQuery, setReqSearchQuery] = useState("");
+  const [reqStatusFilter, setReqStatusFilter] = useState<string>("all");
+
   // Forms inputs
   const [clientNameInput, setClientNameInput] = useState("");
   const [reqTitle, setReqTitle] = useState("");
@@ -88,8 +95,23 @@ export default function ClientsView() {
     queryFn: () => apiRequest<Requirement[]>("GET", "/requirements")
   });
 
-  // Filter requirements for the selected client
-  const filteredReqs = requirements.filter(r => r.client_id === selectedClientId);
+  // Filter requirements for the selected client, with search and status filter
+  const searchedAndFilteredReqs = requirements.filter(r => {
+    if (r.client_id !== selectedClientId) return false;
+    
+    if (reqStatusFilter !== "all" && r.status !== reqStatusFilter) return false;
+    
+    if (reqSearchQuery.trim()) {
+      const query = reqSearchQuery.toLowerCase();
+      const titleMatch = r.title?.toLowerCase().includes(query) || false;
+      const descMatch = r.description?.toLowerCase().includes(query) || false;
+      const skillsMatch = r.skills?.some(s => s.toLowerCase().includes(query)) || false;
+      return titleMatch || descMatch || skillsMatch;
+    }
+    
+    return true;
+  });
+
   const activeClient = clients.find(c => c.id === selectedClientId);
 
   // Mutations
@@ -111,19 +133,70 @@ export default function ClientsView() {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["activity_log"] });
       setIsReqModalOpen(false);
-      // Reset requirement form
-      setReqTitle("");
-      setReqDesc("");
-      setReqSkills("");
-      setReqExpMin(2);
-      setReqExpMax(5);
-      setReqBudgetMin(8);
-      setReqBudgetMax(15);
-      setReqSeniority("mid");
-      setReqNotes("");
-      setReqPosts(1);
+      resetRequirementForm();
     }
   });
+
+  const updateReqMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => 
+      apiRequest<Requirement>("PUT", `/requirements/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["requirements"] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["activity_log"] });
+      setIsReqModalOpen(false);
+      setEditingReqId(null);
+      resetRequirementForm();
+    }
+  });
+
+  const resetRequirementForm = () => {
+    setReqTitle("");
+    setReqDesc("");
+    setReqSkills("");
+    setReqExpMin(2);
+    setReqExpMax(5);
+    setReqBudgetMin(8);
+    setReqBudgetMax(15);
+    setReqSeniority("mid");
+    setReqNotes("");
+    setReqPosts(1);
+    setReqStatus("ready");
+  };
+
+  const handleOpenCreateModal = () => {
+    setEditingReqId(null);
+    resetRequirementForm();
+    setIsReqModalOpen(true);
+  };
+
+  const handleStartEdit = (r: Requirement) => {
+    setEditingReqId(r.id);
+    setReqTitle(r.title);
+    setReqDesc(r.description || "");
+    setReqSkills(r.skills ? r.skills.join(", ") : "");
+    setReqExpMin(r.experience_min || 0);
+    setReqExpMax(r.experience_max || 30);
+    setReqBudgetMin(r.budget_min || 0);
+    setReqBudgetMax(r.budget_max || 100);
+    setReqSeniority((r.seniority as any) || "mid");
+    setReqNotes(r.notes || "");
+    setReqPosts(r.num_posts_requested || 1);
+    setReqStatus(r.status || "ready");
+    setIsReqModalOpen(true);
+  };
+
+  const handleUpdateStatus = (id: string, newStatus: string) => {
+    const req = requirements.find(r => r.id === id);
+    if (!req) return;
+    updateReqMutation.mutate({
+      id,
+      data: {
+        ...req,
+        status: newStatus
+      }
+    });
+  };
 
   const handleCreateClient = (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,18 +204,18 @@ export default function ClientsView() {
     createClientMutation.mutate(clientNameInput);
   };
 
-  const handleCreateRequirement = (e: React.FormEvent) => {
+  const handleSaveRequirement = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientId) return;
     
     // Auto-generate title from the first line/sentence of description
-    const derivedTitle = reqDesc.trim().split(/[.\n]/)[0].substring(0, 50).trim() || `Mandate for ${activeClient?.name || "Client"}`;
+    const derivedTitle = reqTitle.trim() || reqDesc.trim().split(/[.\n]/)[0].substring(0, 50).trim() || `Mandate for ${activeClient?.name || "Client"}`;
 
     const skillsList = reqSkills
       ? reqSkills.split(",").map(s => s.trim()).filter(s => s.length > 0)
       : [];
 
-    createReqMutation.mutate({
+    const payload = {
       client_id: selectedClientId,
       title: derivedTitle,
       description: reqDesc,
@@ -153,8 +226,15 @@ export default function ClientsView() {
       budget_max: reqBudgetMax,
       seniority: reqSeniority,
       notes: reqNotes,
-      num_posts_requested: reqPosts
-    });
+      num_posts_requested: reqPosts,
+      status: reqStatus
+    };
+
+    if (editingReqId) {
+      updateReqMutation.mutate({ id: editingReqId, data: payload });
+    } else {
+      createReqMutation.mutate(payload);
+    }
   };
 
   // Helper to ensure first client is selected
@@ -226,7 +306,7 @@ export default function ClientsView() {
           {activeClient && (
             <button
               id="add-requirement-btn"
-              onClick={() => setIsReqModalOpen(true)}
+              onClick={handleOpenCreateModal}
               className="px-2.5 py-1 bg-primary text-neutral-white font-medium text-[10px] tracking-wider uppercase transition-colors rounded-sm cursor-pointer flex items-center gap-1"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -235,24 +315,88 @@ export default function ClientsView() {
           )}
         </div>
 
+        {activeClient && (
+          <div id="requirements-search-bar" className="p-3 bg-neutral-50/50 border-b border-neutral-150 flex flex-col sm:flex-row gap-2 items-center justify-between text-xs select-none">
+            {/* Search Input */}
+            <div className="relative w-full sm:w-64">
+              <input
+                type="text"
+                placeholder="Search requirements (title, skills...)"
+                value={reqSearchQuery}
+                onChange={(e) => setReqSearchQuery(e.target.value)}
+                className="w-full pl-3 pr-8 py-1.5 border border-neutral-200 rounded-sm text-neutral-700 bg-neutral-white placeholder:text-neutral-400 focus:ring-1 focus:ring-primary focus:outline-hidden"
+              />
+              {reqSearchQuery && (
+                <button
+                  onClick={() => setReqSearchQuery("")}
+                  className="absolute right-2.5 top-1.5 text-neutral-400 hover:text-neutral-600 font-bold"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
+            {/* Filter Dropdown */}
+            <div className="flex gap-2 items-center w-full sm:w-auto justify-end">
+              <span className="text-[10px] text-neutral-450 uppercase font-mono">Status:</span>
+              <select
+                value={reqStatusFilter}
+                onChange={(e) => setReqStatusFilter(e.target.value)}
+                className="px-2 py-1.5 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-700 font-mono text-[10px] focus:ring-1 focus:ring-primary focus:outline-hidden"
+              >
+                <option value="all">ALL STATUSES</option>
+                <option value="draft">DRAFT</option>
+                <option value="generating">GENERATING</option>
+                <option value="ready">READY</option>
+                <option value="archived">ARCHIVED</option>
+              </select>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {loadingReqs ? (
             <div className="text-center py-12 text-xs text-neutral-400 font-mono">Loading client details...</div>
           ) : !selectedClientId ? (
             <div className="text-center py-12 text-xs text-neutral-400">Select a client from the left pane to view active mandates.</div>
-          ) : filteredReqs.length === 0 ? (
-            <div className="text-center py-12 text-xs text-neutral-400">No requirements found for this client. Create one to begin.</div>
+          ) : searchedAndFilteredReqs.length === 0 ? (
+            <div className="text-center py-12 text-xs text-neutral-400">No requirements found matching the active criteria.</div>
           ) : (
-            filteredReqs.map((r) => (
-              <div key={r.id} className="border border-neutral-200 rounded-sm p-4 hover:border-neutral-300 transition-all space-y-3">
+            searchedAndFilteredReqs.map((r) => (
+              <div key={r.id} className="border border-neutral-200 rounded-sm p-4 hover:border-neutral-300 transition-all space-y-3 bg-neutral-white shadow-xs">
                 <div className="flex items-start justify-between">
                   <div className="space-y-0.5">
                     <h4 className="font-tight font-bold text-sm text-neutral-850">{r.title}</h4>
                     <p className="text-[10px] text-neutral-400 font-mono">ID: {r.id}</p>
                   </div>
-                  <span className="text-[9px] px-2 py-0.5 bg-success/10 border border-success/20 text-success rounded-sm font-mono uppercase font-semibold">
-                    {r.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {/* Inline Status Dropdown */}
+                    <select
+                      value={r.status}
+                      onChange={(e) => handleUpdateStatus(r.id, e.target.value)}
+                      disabled={updateReqMutation.isPending}
+                      className={`text-[9px] font-mono font-semibold uppercase tracking-wider px-2 py-0.5 bg-neutral-white border rounded-sm transition-all focus:ring-1 focus:ring-primary cursor-pointer focus:outline-hidden ${
+                        r.status === 'ready' ? 'text-success border-success/35 bg-success/5 hover:bg-success/10' :
+                        r.status === 'generating' ? 'text-primary border-primary/35 bg-primary/5 hover:bg-primary/10' :
+                        r.status === 'archived' ? 'text-neutral-500 border-neutral-300 bg-neutral-100 hover:bg-neutral-200' :
+                        'text-neutral-600 border-neutral-250 bg-neutral-50 hover:bg-neutral-100'
+                      }`}
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="generating">Generating</option>
+                      <option value="ready">Ready</option>
+                      <option value="archived">Archived</option>
+                    </select>
+
+                    {/* Edit button */}
+                    <button
+                      onClick={() => handleStartEdit(r)}
+                      className="p-1 hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700 rounded-sm border border-neutral-200 transition-colors cursor-pointer"
+                      title="Edit Requirement"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 <p className="text-xs text-neutral-500 leading-relaxed">
@@ -343,19 +487,35 @@ export default function ClientsView() {
         </div>
       )}
 
-      {/* 4. Create Requirement Modal */}
+      {/* 4. Create/Edit Requirement Modal */}
       {isReqModalOpen && (
         <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-lg p-6 space-y-4 shadow-xl my-8">
             <div className="space-y-1">
               <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider flex items-center gap-1.5">
                 <BrainCircuit className="w-4 h-4 text-primary animate-pulse" />
-                Add Hiring Mandate Requirement
+                {editingReqId ? "Edit Hiring Mandate" : "Add Hiring Mandate Requirement"}
               </h3>
-              <p className="text-neutral-400 text-xs">Input requirement parameters. Machine Intelligence will auto-generate draft JDs.</p>
+              <p className="text-neutral-400 text-xs">
+                {editingReqId ? "Modify requirement parameters to refine existing job openings." : "Input requirement parameters. Machine Intelligence will auto-generate draft JDs."}
+              </p>
             </div>
             
-            <form onSubmit={handleCreateRequirement} className="space-y-4 text-xs font-sans">
+            <form onSubmit={handleSaveRequirement} className="space-y-4 text-xs font-sans">
+              {/* If editing, add Title field explicitly */}
+              {editingReqId && (
+                <div className="space-y-1">
+                  <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Requirement Title</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Senior Frontend Engineer"
+                    value={reqTitle}
+                    onChange={(e) => setReqTitle(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden font-sans"
+                  />
+                </div>
+              )}
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Description / Mandate Brief</label>
@@ -470,32 +630,53 @@ export default function ClientsView() {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Internal Recruiter Notes</label>
-                <input
-                  type="text"
-                  placeholder="Special client preferences, timeline urgency etc."
-                  value={reqNotes}
-                  onChange={(e) => setReqNotes(e.target.value)}
-                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Internal Recruiter Notes</label>
+                  <input
+                    type="text"
+                    placeholder="Special client preferences..."
+                    value={reqNotes}
+                    onChange={(e) => setReqNotes(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+                  />
+                </div>
+
+                {editingReqId && (
+                  <div className="space-y-1">
+                    <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Requirement Status</label>
+                    <select
+                      value={reqStatus}
+                      onChange={(e) => setReqStatus(e.target.value as any)}
+                      className="w-full px-3 py-2 border border-neutral-200 rounded-sm bg-neutral-white text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="generating">Generating</option>
+                      <option value="ready">Ready</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-2.5 pt-2 border-t border-neutral-100">
                 <button
                   type="button"
-                  onClick={() => setIsReqModalOpen(false)}
+                  onClick={() => {
+                    setIsReqModalOpen(false);
+                    setEditingReqId(null);
+                  }}
                   className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={createReqMutation.isPending}
+                  disabled={createReqMutation.isPending || updateReqMutation.isPending}
                   className="px-4 py-1.5 bg-primary text-neutral-white font-medium hover:bg-primary/95 rounded-sm cursor-pointer flex items-center gap-1.5"
                 >
-                  {createReqMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Generate Job Openings
+                  {(createReqMutation.isPending || updateReqMutation.isPending) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {editingReqId ? "Save Changes" : "Generate Job Openings"}
                 </button>
               </div>
             </form>
