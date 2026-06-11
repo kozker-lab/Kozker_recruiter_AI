@@ -59,9 +59,19 @@ graph TD
 
 ### 4. Sourcing Pool and Resume Parsers
 *   **Implementation**: Recruiters can upload candidates globally on the **Sourcing Pool** view, or link them directly to a specific opening.
-*   **Manual Entry**: Add individual candidates with name, email, phone, skills, experience, and raw resume text.
-*   **Bulk CSV Import**: Upload a CSV file (columns: `full_name`, `email`, `phone`, `skills`, `experience_years`) via the `/api/v1/candidates/upload/csv` endpoint. Duplicates are automatically skipped by email.
-*   **Parsers**: The backend uses `pdfplumber` and `python-docx` to extract text. This text is sent to Claude to isolate structured entities: `full_name`, `email`, `phone`, `skills`, and `experience_years`.
+*   **Manual Entry & Uploader**: Add candidates with name, email, phone, skills, experience, education, academic details, and achievements. Supports uploading PDF, DOCX, and TXT files to parse/read content directly and map file paths.
+*   **Bulk CSV Import**: Upload a CSV file (columns: `fullname`, `email`, `phone`, `skills`, `experience`, `education`, `resume_url`, etc.) via the `/api/v1/candidates/upload/csv` endpoint. Duplicates are handled automatically.
+*   **PDF Access badges**: Integrated clickable PDF link badges next to candidates with accessible resumes in both the sourcing pool and job catalogs.
+*   **Parsers**: The backend uses `pdfplumber` and `python-docx` to extract text. This text is sent to Claude to isolate structured entities.
+
+### 5. Candidate Profiles and Comparison Visualizer
+*   **Candidate Profile Dashboard**: Clicking a candidate in the pool redirects to `/pool/[id]`, displaying their academic credentials, achievements, raw resume text, and contact metrics.
+*   **Unified Application History Timeline**: Features a comprehensive history log mapping all previous job openings, clients, match scores, review comments, and statuses associated with the candidate.
+*   **Database & API Merging (Deduplication)**: Manual entries or CSV uploads containing duplicate emails trigger coalesced merges: unioning skills, taking the maximum experience, appending raw text, and updating credential records to avoid duplication.
+*   **Candidate Comparison Panel**: Selecting two or more candidates under Matched Candidates displays a visualizer modal containing:
+    -   **Interactive SVG Scatter Plot**: Maps selected candidates on Match Score (X-axis) vs. Experience Years (Y-axis) with custom neon color categories, point hover animations, and detailed tooltips.
+    -   **AI Comparative Insights**: Autogenerates executive fit recommendations comparing alignment vs. senior tenure.
+    -   **Comparison Grid**: Side-by-side property comparison grid.
 
 ### 5. Personalized Screening Questions
 *   **Implementation**: When a recruiter changes a candidate's status to **Accepted**, the AI processes the candidate's custom background, experience years, and resume highlights against the job requirements.
@@ -98,7 +108,8 @@ graph TD
 | `/dashboard` | Dashboard | Command center with pipeline stats, AI queue status, and activity feed |
 | `/clients` | Clients & Mandates | Client registration, requirement creation/editing/search/filter, and status management |
 | `/jobs` | Job Catalog | AI-generated job drafts, description editing, skill weight approval, candidate matching, and inline review workspace |
-| `/pool` | Sourcing Pool | Candidate database with manual entry, bulk CSV import, and resume parsing |
+| `/pool` | Sourcing Pool | Candidate database with manual entry, bulk CSV import, resume parsing, and PDF access |
+| `/pool/[id]` | Candidate Profile | Branded candidate profile dashboard displaying academic credentials, achievements, raw resume texts, and a unified application history timeline across all jobs |
 | `/rounds` | Interview Rounds | Horizontal pipeline board with round-by-round candidate tracking and filters |
 | `/settings` | Settings | Workspace and account configuration |
 
@@ -134,8 +145,10 @@ graph TD
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/v1/candidates` | List all candidates in sourcing pool |
-| `POST` | `/api/v1/candidates` | Add a single candidate manually |
-| `POST` | `/api/v1/candidates/upload/csv` | Bulk import candidates from CSV |
+| `GET` | `/api/v1/candidates/{id}` | Get detailed attributes and achievements of a single candidate |
+| `GET` | `/api/v1/candidates/{id}/applications` | Get a candidate's complete application history timeline across jobs |
+| `POST` | `/api/v1/candidates` | Add a single candidate manually, supporting deduplication merging and resume uploading |
+| `POST` | `/api/v1/candidates/upload/csv` | Bulk import candidates from CSV, supporting deduplication merging and PDF URLs |
 
 ### Applications & Matching
 | Method | Endpoint | Description |
