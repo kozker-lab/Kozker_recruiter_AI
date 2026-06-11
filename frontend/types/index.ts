@@ -100,6 +100,11 @@ export interface Candidate {
   experience_years: number | null;
   resume_url: string | null;
   raw_text: string | null;
+  education?: string | null;
+  current_company?: string | null;
+  working_or_not?: boolean | null;
+  academic_details?: string | null;
+  achievements?: string | null;
   source: 'csv' | 'pdf' | 'docx' | 'manual' | null;
   uploaded_by: string | null;
   created_at: string;

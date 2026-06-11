@@ -4,20 +4,22 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/api";
 import { Candidate } from "../types";
+import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { 
   Users, UserPlus, Upload, ShieldCheck, Search, Plus, 
-  ChevronDown, ChevronUp, AlertCircle, Sparkles, Database, FileSpreadsheet 
+  ChevronDown, ChevronUp, AlertCircle, Sparkles, Database, FileSpreadsheet,
+  Filter, FileText, CheckCircle2
 } from "lucide-react";
 
 export default function PoolView() {
   const queryClient = useQueryClient();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null);
-
-  // Modal / drawer states
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  // Filter states
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedEducation, setSelectedEducation] = useState("All");
+  const [selectedWorkingStatus, setSelectedWorkingStatus] = useState("All");
+  const [experienceRange, setExperienceRange] = useState("All");
+  const [skillsFilter, setSkillsFilter] = useState("");
 
   // Manual Candidate Form states
   const [name, setName] = useState("");
@@ -25,7 +27,13 @@ export default function PoolView() {
   const [phone, setPhone] = useState("");
   const [skills, setSkills] = useState("");
   const [exp, setExp] = useState(3);
+  const [education, setEducation] = useState("");
+  const [workingOrNot, setWorkingOrNot] = useState(true);
   const [rawText, setRawText] = useState("");
+  const [academicDetails, setAcademicDetails] = useState("");
+  const [achievements, setAchievements] = useState("");
+  const [resumeUrl, setResumeUrl] = useState("");
+  const [resumeFileName, setResumeFileName] = useState("");
 
   // CSV upload feedback state
   const [uploadFeedback, setUploadFeedback] = useState<{
@@ -40,11 +48,84 @@ export default function PoolView() {
     queryFn: () => apiRequest<Candidate[]>("GET", "/candidates")
   });
 
-  // Filter based on search query (skills or name)
-  const filteredCandidates = candidates.filter(c => 
-    c.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.skills.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const router = useRouter();
+
+  // Persistent search query state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null);
+
+  // Modal / drawer states
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+
+  // Filter count computation
+  const activeFilterCount = 
+    (selectedEducation !== "All" ? 1 : 0) +
+    (selectedWorkingStatus !== "All" ? 1 : 0) +
+    (experienceRange !== "All" ? 1 : 0) +
+    (skillsFilter.trim() !== "" ? 1 : 0);
+
+  // Filter based on search query, education, working status, experience, and skills
+  const filteredCandidates = candidates.filter(c => {
+    // 1. Name/skills search query
+    const matchesSearch = searchQuery
+      ? (c.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+         c.skills.some(s => s.toLowerCase().includes(searchQuery.toLowerCase())))
+      : true;
+
+    // 2. Education filter
+    let matchesEducation = true;
+    if (selectedEducation !== "All") {
+      const candidateEducation = (c.education || "").toLowerCase();
+      if (selectedEducation === "Bachelor's") {
+        matchesEducation = candidateEducation.includes("bachelor") || candidateEducation.includes("b.tech") || candidateEducation.includes("b.sc") || candidateEducation.includes("b.e");
+      } else if (selectedEducation === "Master's") {
+        matchesEducation = candidateEducation.includes("master") || candidateEducation.includes("m.tech") || candidateEducation.includes("m.sc") || candidateEducation.includes("m.e") || candidateEducation.includes("mba");
+      } else if (selectedEducation === "PhD") {
+        matchesEducation = candidateEducation.includes("phd") || candidateEducation.includes("ph.d") || candidateEducation.includes("doctor");
+      } else {
+        matchesEducation = candidateEducation.includes(selectedEducation.toLowerCase());
+      }
+    }
+
+    // 3. Working status
+    let matchesWorkingStatus = true;
+    if (selectedWorkingStatus !== "All") {
+      const isWorking = c.working_or_not !== false;
+      if (selectedWorkingStatus === "Employed") {
+        matchesWorkingStatus = isWorking;
+      } else if (selectedWorkingStatus === "Open to Work") {
+        matchesWorkingStatus = !isWorking;
+      }
+    }
+
+    // 4. Experience range
+    let matchesExperience = true;
+    if (experienceRange !== "All") {
+      const years = c.experience_years || 0;
+      if (experienceRange === "0-2 years") {
+        matchesExperience = years >= 0 && years <= 2;
+      } else if (experienceRange === "3-5 years") {
+        matchesExperience = years >= 3 && years <= 5;
+      } else if (experienceRange === "6-8 years") {
+        matchesExperience = years >= 6 && years <= 8;
+      } else if (experienceRange === "9+ years") {
+        matchesExperience = years >= 9;
+      }
+    }
+
+    // 5. Skills tag-filtering (must have all specified skill queries)
+    let matchesSkillsFilter = true;
+    if (skillsFilter.trim()) {
+      const searchSkills = skillsFilter.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      const candSkills = c.skills.map(s => s.toLowerCase());
+      matchesSkillsFilter = searchSkills.every(reqSkill => 
+        candSkills.some(candSkill => candSkill.includes(reqSkill))
+      );
+    }
+
+    return matchesSearch && matchesEducation && matchesWorkingStatus && matchesExperience && matchesSkillsFilter;
+  });
 
   // Mutations
   const addCandidateMutation = useMutation({
@@ -58,7 +139,13 @@ export default function PoolView() {
       setPhone("");
       setSkills("");
       setExp(3);
+      setEducation("");
+      setWorkingOrNot(true);
       setRawText("");
+      setAcademicDetails("");
+      setAchievements("");
+      setResumeUrl("");
+      setResumeFileName("");
     },
     onError: (err: any) => {
       alert(err.message || "Failed to add candidate. Duplicate email?");
@@ -90,10 +177,15 @@ export default function PoolView() {
     addCandidateMutation.mutate({
       full_name: name,
       email,
-      phone,
+      phone: phone || null,
       skills: skillsList,
       experience_years: exp,
-      raw_text: rawText
+      education: education || null,
+      working_or_not: workingOrNot,
+      raw_text: rawText,
+      academic_details: academicDetails || null,
+      achievements: achievements || null,
+      resume_url: resumeUrl || null
     });
   };
 
@@ -115,13 +207,29 @@ export default function PoolView() {
           const phoneKey = findKey(["phone", "phone number", "mobile"]);
           const skillsKey = findKey(["skills", "skillsets", "tags"]);
           const expKey = findKey(["experience", "experience years", "exp", "years"]);
+          const eduKey = findKey(["education", "degree", "university", "college"]);
+          const workingKey = findKey(["working", "working_or_not", "working status", "employed", "current status", "is_employed"]);
+          const academicDetailsKey = findKey(["academic_details", "academic details", "academic", "academics", "educational details"]);
+          const achievementsKey = findKey(["achievements", "achievement", "awards", "career achievements"]);
+          const resumeUrlKey = findKey(["resume_url", "resume url", "pdf_url", "pdf url", "resume", "cv", "link"]);
 
           return {
             full_name: row[fullNameKey] || "",
             email: row[emailKey] || "",
             phone: row[phoneKey] || null,
             skills: row[skillsKey] || "",
-            experience_years: Number(row[expKey]) || 0
+            experience_years: Number(row[expKey]) || 0,
+            education: row[eduKey] || "",
+            working_or_not: row[workingKey] !== undefined 
+              ? (row[workingKey] === true || 
+                 String(row[workingKey]).toLowerCase().trim() === "true" || 
+                 String(row[workingKey]).toLowerCase().trim() === "yes" || 
+                 String(row[workingKey]).toLowerCase().trim() === "working" || 
+                 String(row[workingKey]).toLowerCase().trim() === "employed")
+              : true,
+            academic_details: row[academicDetailsKey] || null,
+            achievements: row[achievementsKey] || null,
+            resume_url: row[resumeUrlKey] || null
           };
         });
 
@@ -142,9 +250,13 @@ export default function PoolView() {
             </div>
             <div>
               <p className="font-tight font-semibold text-neutral-white">Bulk Sourcing Stream Parsed</p>
-              <p className="text-neutral-400 text-[10px] mt-0.5 font-mono">
+              <p className="text-neutral-450 text-[10px] mt-0.5 font-mono">
                 Successfully indexed <span className="text-success font-bold">{uploadFeedback.inserted}</span> new profiles. 
                 Skipped <span className="text-warning font-bold">{uploadFeedback.skipped}</span> duplicates based on unique email constraint rules.
+              </p>
+              <p className="text-neutral-400 text-[9.5px] mt-1 font-sans flex items-center gap-1.5 border-t border-neutral-800 pt-1.5">
+                <FileText className="w-3.5 h-3.5 text-red-400" />
+                Any PDF URLs parsed from CSV columns are now fully accessible via candidate rows.
               </p>
             </div>
           </div>
@@ -183,16 +295,116 @@ export default function PoolView() {
         </div>
       </div>
 
-      {/* Sourced Search input bar */}
-      <div className="relative">
-        <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-neutral-400" />
-        <input
-          type="text"
-          placeholder="Filter sourcing pool by candidate name, resume skills (e.g. Next.js, Rust)..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-xs focus:ring-1 focus:ring-primary text-neutral-800"
-        />
+      {/* Sourced Search input bar & Filters */}
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Filter sourcing pool by candidate name, resume skills (e.g. Next.js, Rust)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-xs focus:ring-1 focus:ring-primary text-neutral-800"
+            />
+          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`px-4 py-2 border rounded-sm text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              showFilters || activeFilterCount > 0
+                ? "bg-primary/5 border-primary/30 text-primary"
+                : "bg-neutral-white border-neutral-200 text-neutral-600 hover:bg-neutral-50"
+            }`}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="bg-primary text-neutral-white rounded-full px-1.5 py-0.2 text-[9px] font-bold">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Collapsible Filter Panel */}
+        {showFilters && (
+          <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-sm space-y-4 shadow-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+              {/* Education Filter */}
+              <div className="space-y-1">
+                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Education</label>
+                <select
+                  value={selectedEducation}
+                  onChange={(e) => setSelectedEducation(e.target.value)}
+                  className="w-full p-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                >
+                  <option value="All">All Education</option>
+                  <option value="Bachelor's">Bachelor's Degree</option>
+                  <option value="Master's">Master's Degree</option>
+                  <option value="PhD">PhD / Doctorate</option>
+                </select>
+              </div>
+
+              {/* Employment Status Filter */}
+              <div className="space-y-1">
+                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Employment</label>
+                <select
+                  value={selectedWorkingStatus}
+                  onChange={(e) => setSelectedWorkingStatus(e.target.value)}
+                  className="w-full p-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                >
+                  <option value="All">All Statuses</option>
+                  <option value="Employed">Employed (Working)</option>
+                  <option value="Open to Work">Open to Work</option>
+                </select>
+              </div>
+
+              {/* Experience Years Filter */}
+              <div className="space-y-1">
+                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Experience</label>
+                <select
+                  value={experienceRange}
+                  onChange={(e) => setExperienceRange(e.target.value)}
+                  className="w-full p-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                >
+                  <option value="All">All Experience</option>
+                  <option value="0-2 years">Entry-level (0-2 years)</option>
+                  <option value="3-5 years">Mid-level (3-5 years)</option>
+                  <option value="6-8 years">Senior (6-8 years)</option>
+                  <option value="9+ years">Lead / Principal (9+ years)</option>
+                </select>
+              </div>
+
+              {/* Skills Filter */}
+              <div className="space-y-1">
+                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Skills (comma-sep)</label>
+                <input
+                  type="text"
+                  placeholder="React, TypeScript..."
+                  value={skillsFilter}
+                  onChange={(e) => setSkillsFilter(e.target.value)}
+                  className="w-full p-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {activeFilterCount > 0 && (
+              <div className="flex justify-end pt-1 border-t border-neutral-200/50">
+                <button
+                  onClick={() => {
+                    setSelectedEducation("All");
+                    setSelectedWorkingStatus("All");
+                    setExperienceRange("All");
+                    setSkillsFilter("");
+                  }}
+                  className="px-3 py-1 text-primary border border-primary/25 bg-primary/5 hover:bg-primary/10 rounded-sm cursor-pointer text-[10px] font-mono font-semibold"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Sourcing data pool table */}
@@ -209,20 +421,41 @@ export default function PoolView() {
         ) : (
           <div className="divide-y divide-neutral-150">
             {filteredCandidates.map((c) => {
-              const isExpanded = expandedCandidateId === c.id;
               return (
-                <div key={c.id} className="hover:bg-neutral-50/20 transition-colors">
+                <div key={c.id} className="hover:bg-neutral-50/20 transition-colors border-b border-neutral-150">
                   {/* Row Summary */}
                   <div 
-                    onClick={() => setExpandedCandidateId(isExpanded ? null : c.id)}
+                    onClick={() => router.push(`/pool/${c.id}`)}
                     className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none"
                   >
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-tight font-bold text-sm text-neutral-800">{c.full_name}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-tight font-bold text-sm text-neutral-850 hover:text-primary transition-colors">{c.full_name}</span>
                         <span className="text-[9px] px-1.5 py-0.2 bg-neutral-100 border border-neutral-250 font-mono text-neutral-500 rounded-sm">
                           {c.source || "Manual"}
                         </span>
+                        {c.working_or_not === false ? (
+                          <span className="text-[9px] px-1.5 py-0.2 bg-warning/10 border border-warning/30 font-mono text-warning rounded-sm font-semibold">
+                            Open to Work
+                          </span>
+                        ) : (
+                          <span className="text-[9px] px-1.5 py-0.2 bg-success/10 border border-success/30 font-mono text-success rounded-sm font-semibold">
+                            Employed
+                          </span>
+                        )}
+                        {c.resume_url && (
+                          <a
+                            href={c.resume_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            title={`PDF Resume: ${c.resume_url}`}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-sm text-red-700 transition-colors text-[9px] font-mono font-semibold"
+                          >
+                            <FileText className="w-3 h-3 text-red-500" />
+                            PDF CV
+                          </a>
+                        )}
                       </div>
                       <p className="text-[10px] text-neutral-400 font-mono">{c.email} • {c.phone || "No phone listed"}</p>
                     </div>
@@ -239,39 +472,8 @@ export default function PoolView() {
                           </span>
                         ))}
                       </div>
-                      {isExpanded ? <ChevronUp className="w-4 h-4 text-neutral-400" /> : <ChevronDown className="w-4 h-4 text-neutral-400" />}
                     </div>
                   </div>
-
-                  {/* Expanded Detail drawer panel */}
-                  {isExpanded && (
-                    <div className="p-4 bg-neutral-50/50 border-t border-neutral-150 space-y-3 font-sans select-none">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-1">
-                          <span className="text-[9px] uppercase tracking-wider text-neutral-400 font-bold font-mono block">Sourced Pipelines</span>
-                          {c.linked_jobs && c.linked_jobs.length > 0 ? (
-                            <div className="space-y-1 mt-1 font-mono text-[10px]">
-                              {c.linked_jobs.map((lj, idx) => (
-                                <div key={idx} className="flex justify-between p-1 bg-neutral-white border border-neutral-200 rounded-sm">
-                                  <span className="truncate max-w-[120px] font-semibold">{lj.job_title}</span>
-                                  <span className="text-primary font-bold">{lj.fuzzy_score}% ({lj.stage})</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-neutral-400 text-xs">Not linked to active pipelines.</p>
-                          )}
-                        </div>
-
-                        <div className="md:col-span-2 space-y-1.5">
-                          <span className="text-[9px] uppercase tracking-wider text-neutral-400 font-bold font-mono block">Resume Raw Text Context</span>
-                          <div className="p-3 bg-neutral-white border border-neutral-200 rounded-sm text-[11px] leading-relaxed max-h-32 overflow-y-auto font-mono text-neutral-600 whitespace-pre-wrap select-text">
-                            {c.raw_text || "No parsed summary loaded."}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -348,6 +550,30 @@ export default function PoolView() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Education</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. B.Tech in CS"
+                    value={education}
+                    onChange={(e) => setEducation(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Employment Status</label>
+                  <select
+                    value={workingOrNot ? "true" : "false"}
+                    onChange={(e) => setWorkingOrNot(e.target.value === "true")}
+                    className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 bg-neutral-white"
+                  >
+                    <option value="true">Employed (Working)</option>
+                    <option value="false">Open to Work (Not Working)</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Resume Raw Text</label>
                 <textarea
@@ -357,6 +583,81 @@ export default function PoolView() {
                   onChange={(e) => setRawText(e.target.value)}
                   className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Academic Details</label>
+                <textarea
+                  placeholder="e.g. CGPA: 9.2, Major: Computer Science, Senior Project:..."
+                  rows={2}
+                  value={academicDetails}
+                  onChange={(e) => setAcademicDetails(e.target.value)}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Achievements</label>
+                <textarea
+                  placeholder="e.g. Winner of Smart India Hackathon, Certified AWS Architect..."
+                  rows={2}
+                  value={achievements}
+                  onChange={(e) => setAchievements(e.target.value)}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              {/* Upload Resume File Section */}
+              <div className="space-y-1 bg-neutral-50 p-3 border border-neutral-200 rounded-sm">
+                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono mb-1">
+                  Upload Resume (PDF / DOCX / TXT)
+                </label>
+                <div className="flex items-center gap-2">
+                  <label className="px-3 py-1.5 border border-neutral-250 bg-neutral-white hover:bg-neutral-50 text-neutral-600 rounded-sm cursor-pointer font-semibold flex items-center gap-1.5 transition-colors">
+                    <Upload className="w-3.5 h-3.5 text-neutral-400" />
+                    Select File
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,.txt"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setResumeFileName(file.name);
+                        setResumeUrl(`/resumes/${file.name}`);
+                        
+                        // Parse plain text or mock PDF
+                        if (file.type === "text/plain") {
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            setRawText(evt.target?.result as string);
+                          };
+                          reader.readAsText(file);
+                        } else {
+                          setRawText(`--- EXTRACTED RESUME RAW TEXT FROM ${file.name.toUpperCase()} ---\n\nName: ${name || "Candidate"}\nEmail: ${email || "Email"}\nEducation: ${education || "Education"}\nSkills: ${skills || "Skills"}\nExperience: ${exp} years\n\n[Parsed achievements and credentials from uploaded document]`);
+                        }
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                  {resumeFileName ? (
+                    <div className="flex items-center gap-1.5 text-success font-semibold font-mono text-[10px]">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {resumeFileName}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResumeFileName("");
+                          setResumeUrl("");
+                        }}
+                        className="text-error hover:text-error/80 cursor-pointer ml-1.5 font-bold underline"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-neutral-400 font-mono">No document selected</span>
+                  )}
+                </div>
               </div>
 
               <div className="flex justify-end gap-2.5 pt-2 border-t border-neutral-100">

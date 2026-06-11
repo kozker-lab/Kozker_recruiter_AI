@@ -183,6 +183,10 @@ class CandidateModel(BaseModel):
     experience_years: int = 0
     resume_url: Optional[str] = ""
     raw_text: Optional[str] = ""
+    education: Optional[str] = ""
+    working_or_not: Optional[bool] = True
+    academic_details: Optional[str] = ""
+    achievements: Optional[str] = ""
     source: str = "manual"
 
 class ChatMessageModel(BaseModel):
@@ -685,6 +689,31 @@ async def get_candidates(db: Client = Depends(get_supabase)):
                 cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
     return data
 
+@app.get("/api/v1/candidates/{candidate_id}")
+async def get_candidate_details(candidate_id: str, db: Client = Depends(get_supabase)):
+    res = db.table("candidates").select("*").eq("id", candidate_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    cand = res.data[0]
+    if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
+        if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
+            cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
+    return cand
+
+@app.get("/api/v1/candidates/{candidate_id}/applications")
+async def get_candidate_applications(candidate_id: str, db: Client = Depends(get_supabase)):
+    res = db.table("applications").select("*, job_openings(*, clients(name))").eq("candidate_id", candidate_id).execute()
+    formatted = []
+    for row in res.data:
+        job = row.get("job_openings") or {}
+        cli = job.get("clients") or {}
+        formatted.append({
+            **{k: v for k, v in row.items() if k != "job_openings"},
+            "job_title": job.get("title", "Unknown Job"),
+            "client_name": cli.get("name", "Generic Client")
+        })
+    return formatted
+
 @app.get("/api/v1/applications")
 async def get_all_applications(db: Client = Depends(get_supabase)):
     res = db.table("applications").select("*, candidates(*), job_openings(*, clients(name))").execute()
@@ -703,6 +732,50 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
     if db_source not in ["csv", "pdf", "docx", "manual"]:
         db_source = "manual"
 
+    # Search if candidate already exists
+    exists = db.table("candidates").select("*").eq("email", cand.email).eq("is_deleted", False).execute()
+    if exists.data:
+        existing_cand = exists.data[0]
+        # Merge skills (take union)
+        existing_skills = existing_cand.get("skills") or []
+        merged_skills = list(set(existing_skills + cand.skills))
+        
+        # Merge experience (take max)
+        merged_exp = max(existing_cand.get("experience_years") or 0, cand.experience_years)
+        
+        # Merge other text fields
+        merged_education = cand.education if cand.education else existing_cand.get("education")
+        merged_phone = cand.phone if cand.phone else existing_cand.get("phone")
+        merged_academic = cand.academic_details if cand.academic_details else existing_cand.get("academic_details")
+        merged_achievements = cand.achievements if cand.achievements else existing_cand.get("achievements")
+        
+        # Merge raw text
+        existing_raw = ""
+        if "parsed_resume_json" in existing_cand and isinstance(existing_cand["parsed_resume_json"], dict):
+            existing_raw = existing_cand["parsed_resume_json"].get("raw_text") or ""
+        
+        merged_raw = existing_raw
+        if cand.raw_text and cand.raw_text not in existing_raw:
+            merged_raw = f"{existing_raw}\n\n[Updated Profile]:\n{cand.raw_text}" if existing_raw else cand.raw_text
+            
+        res = db.table("candidates").update({
+            "full_name": cand.full_name,
+            "phone": merged_phone,
+            "skills": merged_skills,
+            "experience_years": merged_exp,
+            "education": merged_education,
+            "working_or_not": cand.working_or_not,
+            "academic_details": merged_academic,
+            "achievements": merged_achievements,
+            "parsed_resume_json": {"raw_text": merged_raw},
+            "source": db_source
+        }).eq("id", existing_cand["id"]).execute()
+        
+        if res.data:
+            data = res.data[0]
+            data["raw_text"] = merged_raw
+            return data
+
     res = db.table("candidates").insert({
         "full_name": cand.full_name,
         "email": cand.email,
@@ -711,6 +784,10 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
         "experience_years": cand.experience_years,
         "resume_url": cand.resume_url,
         "parsed_resume_json": {"raw_text": cand.raw_text},
+        "education": cand.education,
+        "working_or_not": cand.working_or_not,
+        "academic_details": cand.academic_details,
+        "achievements": cand.achievements,
         "source": db_source
     }).execute()
     
@@ -732,7 +809,7 @@ async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(ge
             continue
             
         # Check if candidate email already exists (active)
-        exists_res = db.table("candidates").select("id").eq("email", email).eq("is_deleted", False).execute()
+        exists_res = db.table("candidates").select("*").eq("email", email).eq("is_deleted", False).execute()
         
         # Skills list parser
         skills_input = item.get("skills", "")
@@ -748,16 +825,47 @@ async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(ge
             phone_val = None
             
         exp_years = int(item.get("experience_years") or 0)
+        education_val = item.get("education")
+        working_val = item.get("working_or_not")
+        academic_val = item.get("academic_details")
+        achievements_val = item.get("achievements")
+        resume_url_val = item.get("resume_url")
+        
+        # Resolve working status boolean
+        if isinstance(working_val, str):
+            working_bool = working_val.lower().strip() in ["true", "yes", "1", "working", "employed"]
+        elif isinstance(working_val, bool):
+            working_bool = working_val
+        else:
+            working_bool = True  # default
         
         if exists_res.data:
             skipped += 1
+            existing_cand = exists_res.data[0]
+            existing_skills = existing_cand.get("skills") or []
+            merged_skills = list(set(existing_skills + skills_list))
+            merged_exp = max(existing_cand.get("experience_years") or 0, exp_years)
+            merged_education = education_val if education_val else existing_cand.get("education")
+            merged_academic = academic_val if academic_val else existing_cand.get("academic_details")
+            merged_achievements = achievements_val if achievements_val else existing_cand.get("achievements")
+            
+            existing_raw = ""
+            if "parsed_resume_json" in existing_cand and isinstance(existing_cand["parsed_resume_json"], dict):
+                existing_raw = existing_cand["parsed_resume_json"].get("raw_text") or ""
+            merged_raw = f"{existing_raw}\n\n[CSV Re-upload]: Parsed from CSV: {full_name}" if existing_raw else f"Parsed from CSV: {full_name}"
+            
             # Update existing candidate details
             db.table("candidates").update({
                 "full_name": full_name,
-                "phone": phone_val,
-                "skills": skills_list,
-                "experience_years": exp_years,
-                "parsed_resume_json": {"raw_text": f"Parsed from CSV: {full_name}"},
+                "phone": phone_val if phone_val else existing_cand.get("phone"),
+                "skills": merged_skills,
+                "experience_years": merged_exp,
+                "education": merged_education,
+                "working_or_not": working_bool,
+                "academic_details": merged_academic,
+                "achievements": merged_achievements,
+                "resume_url": resume_url_val if resume_url_val else existing_cand.get("resume_url"),
+                "parsed_resume_json": {"raw_text": merged_raw},
                 "source": "csv"
             }).eq("email", email).execute()
         else:
@@ -770,6 +878,11 @@ async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(ge
                 "skills": skills_list,
                 "experience_years": exp_years,
                 "parsed_resume_json": {"raw_text": f"Parsed from CSV: {full_name}"},
+                "resume_url": resume_url_val,
+                "education": education_val,
+                "working_or_not": working_bool,
+                "academic_details": academic_val,
+                "achievements": achievements_val,
                 "source": "csv"
             }).execute()
             

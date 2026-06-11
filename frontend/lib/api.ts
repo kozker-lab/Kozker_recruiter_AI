@@ -181,6 +181,10 @@ class MockDatabase {
       experience_years: 6,
       resume_url: "resumes/cand-1/rohan_sharma_resume.pdf",
       raw_text: "ROHAN SHARMA - Senior UI Developer\n\nExperience:\n- Senior Frontend Engineer at Flipkart (2022 - Present):\n  * Led the migraton of the desktop check-out flow to Next.js App Router, resulting in a 35% improvement in First Contentful Paint.\n  * Mentored 4 junior engineers on React hooks design patterns.\n- UI Developer at Swiggy (2020 - 2022):\n  * Created an internal React component library used across 3 distinct squads.\n\nSkills:\nReact, Next.js, TypeScript, Tailwind CSS, Jest, Webpack, Node.js.",
+      education: "Bachelor's in Computer Science",
+      working_or_not: true,
+      academic_details: "Bachelor of Technology in Computer Science and Engineering, IIT Delhi (2016-2020) - CGPA: 8.9/10. Key coursework: Data Structures, Advanced Algorithms, Web Engineering.",
+      achievements: "Winner of Smart India Hackathon (2019) for constructing an optimized logistics tracking system. Published a research paper on responsive UI rendering algorithms.",
       source: "pdf",
       uploaded_by: "usr-1",
       created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
@@ -197,6 +201,10 @@ class MockDatabase {
       experience_years: 5,
       resume_url: "resumes/cand-2/priya_patel_cv.docx",
       raw_text: "PRIYA PATEL - Frontend Developer\n\n5 Years experience building modern web pages.\nWorked at TCS and Infosys.\nDeeply interested in core React rendering loops, custom hook caching, and CSS grid layouts.\nProficient with JavaScript, React, Webpack, CSS3.",
+      education: "Bachelor's in Information Technology",
+      working_or_not: false,
+      academic_details: "Bachelor of Science in Information Technology, Mumbai University (2017-2020) - GPA: 3.8/4.0. Completed Advanced Frontend Specialization Certification.",
+      achievements: "Recognized as 'Best Performer of the Quarter' twice at TCS for UI modularization projects. Open-source contributor to React-based routing utilities.",
       source: "docx",
       uploaded_by: "usr-1",
       created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
@@ -213,6 +221,10 @@ class MockDatabase {
       experience_years: 9,
       resume_url: "resumes/cand-3/sid_verma_ledger.pdf",
       raw_text: "SIDDHARTH VERMA - Systems Engineer\n\n9 years writing robust backends.\nExpertise: Rust, C++, Linux kernel profiling, Distributed transactions, consensus loops.\nLedger team lead at Razorpay (2021 - Present). Built transaction Ledger processing 15,000 queries per second.",
+      education: "Master's in Software Engineering",
+      working_or_not: true,
+      academic_details: "Master of Science in Software Systems, BITS Pilani (2013-2015) - CGPA: 9.2/10. Thesis focused on Distributed Transaction Isolation Levels.",
+      achievements: "Designed Swiggy's high-concurrency ledger backend scaling to 15,000 QPS. Optimized transaction consensus loops, saving 20% in infrastructure cloud costs.",
       source: "pdf",
       uploaded_by: "usr-1",
       created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
@@ -236,6 +248,25 @@ class MockDatabase {
       stage_status: "in_progress",
       stage_notes: "Technical interview scheduled for Thursday. Impressive resume.",
       priority: 1,
+      reviewed_by: "usr-1",
+      reviewed_at: new Date().toISOString(),
+      created_at: new Date().toISOString()
+    },
+    {
+      id: "app-3",
+      candidate_id: "cand-1",
+      job_opening_id: "job-2",
+      candidate_cv: "resumes/cand-1/rohan_sharma_resume.pdf",
+      fuzzy_score: 88.0,
+      match_score: 88,
+      match_reason: "Very strong technical architectural alignment. Handled Flipkart check-out transition matching console microservices goals. Needs checking on module federation.",
+      strengths: ["Check-out migraton leader", "Strong framework foundations"],
+      skill_gaps: ["No explicit Module Federation experience listed"],
+      screening_status: "pending",
+      stage: "screening",
+      stage_status: "in_progress",
+      stage_notes: "Under consideration for core micro-frontend architect options.",
+      priority: 0,
       reviewed_by: "usr-1",
       reviewed_at: new Date().toISOString(),
       created_at: new Date().toISOString()
@@ -910,6 +941,21 @@ function handleMockRequest<T>(
         if (path.startsWith("/candidates/") && path.endsWith("/resume-url") && method === "GET") {
           return resolve({ url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" } as unknown as T);
         }
+        if (path.startsWith("/candidates/") && path.endsWith("/applications") && method === "GET") {
+          const parts = path.split("/");
+          const candidateId = parts[2];
+          const candidateApps = mockDb.applications
+            .filter(a => a.candidate_id === candidateId)
+            .map(a => {
+              const job = mockDb.jobOpenings.find(j => j.id === a.job_opening_id);
+              return {
+                ...a,
+                job_title: job?.title || "Unknown Job",
+                client_name: job?.client_name || "Generic Client"
+              };
+            });
+          return resolve(candidateApps as unknown as T);
+        }
         if (path.startsWith("/candidates/") && method === "GET") {
           const id = path.split("/")[2];
           const cand = mockDb.candidates.find(c => c.id === id);
@@ -917,10 +963,21 @@ function handleMockRequest<T>(
           return resolve(cand as unknown as T);
         }
         if (path === "/candidates" && method === "POST") {
-          // Check duplicate email
+          // Check duplicate email -> MERGE IF EXISTS
           const exists = mockDb.candidates.find(c => c.email.toLowerCase() === data.email.toLowerCase());
           if (exists) {
-            return reject(new Error("Email already exists"));
+            exists.full_name = data.full_name || exists.full_name;
+            exists.phone = data.phone || exists.phone;
+            exists.skills = Array.from(new Set([...(exists.skills || []), ...(data.skills || [])]));
+            exists.experience_years = Math.max(exists.experience_years || 0, Number(data.experience_years) || 0);
+            exists.education = data.education || exists.education;
+            exists.working_or_not = data.working_or_not !== undefined ? !!data.working_or_not : exists.working_or_not;
+            exists.academic_details = data.academic_details || exists.academic_details;
+            exists.achievements = data.achievements || exists.achievements;
+            if (data.raw_text && !exists.raw_text?.includes(data.raw_text)) {
+              exists.raw_text = `${exists.raw_text}\n\n[Updated Profile]:\n${data.raw_text}`;
+            }
+            return resolve(exists as unknown as T);
           }
           const newCand: Candidate = {
             id: `cand-${Date.now()}`,
@@ -931,6 +988,10 @@ function handleMockRequest<T>(
             experience_years: Number(data.experience_years) || 0,
             resume_url: null,
             raw_text: data.raw_text || `Manual candidate profile: ${data.full_name}`,
+            education: data.education || null,
+            working_or_not: data.working_or_not !== undefined ? !!data.working_or_not : true,
+            academic_details: data.academic_details || null,
+            achievements: data.achievements || null,
             source: "manual",
             uploaded_by: "usr-1",
             created_at: new Date().toISOString(),
@@ -1058,6 +1119,23 @@ function handleMockRequest<T>(
                 };
                 mockDb.applications.push(app);
               }
+              
+              // MERGE CSV DETAILS IF EXISTS
+              exists.full_name = item.full_name || exists.full_name;
+              exists.phone = item.phone || exists.phone;
+              const newSkills = item.skills ? item.skills.split(",").map((s: string) => s.trim()) : [];
+              exists.skills = Array.from(new Set([...(exists.skills || []), ...newSkills]));
+              exists.experience_years = Math.max(exists.experience_years || 0, Number(item.experience_years) || 0);
+              exists.education = item.education || exists.education;
+              exists.working_or_not = item.working_or_not !== undefined 
+                ? (item.working_or_not === true || String(item.working_or_not).toLowerCase() === "true") 
+                : exists.working_or_not;
+              exists.academic_details = item.academic_details || exists.academic_details;
+              exists.achievements = item.achievements || exists.achievements;
+              exists.resume_url = item.resume_url || exists.resume_url;
+              if (item.raw_text && !exists.raw_text?.includes(item.raw_text)) {
+                exists.raw_text = `${exists.raw_text}\n\n[CSV Re-upload]:\n${item.raw_text}`;
+              }
             } else {
               inserted++;
               const newCand: Candidate = {
@@ -1067,8 +1145,12 @@ function handleMockRequest<T>(
                 phone: item.phone || null,
                 skills: item.skills ? item.skills.split(",").map((s: string) => s.trim()) : [],
                 experience_years: Number(item.experience_years) || 0,
-                resume_url: null,
+                resume_url: item.resume_url || null,
                 raw_text: `Parsed from CSV: ${item.full_name}`,
+                education: item.education || null,
+                working_or_not: item.working_or_not !== undefined ? (item.working_or_not === true || String(item.working_or_not).toLowerCase() === "true") : true,
+                academic_details: item.academic_details || null,
+                achievements: item.achievements || null,
                 source: "csv",
                 uploaded_by: "usr-1",
                 created_at: new Date().toISOString()

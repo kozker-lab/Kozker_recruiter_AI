@@ -1,0 +1,4 @@
+fullname,email,phone,skills,experience,education,working,academic_details,achievements,resume_url
+Elena Rostova,elena@example.com,+1 202 555 0143,"React, Go, Python",7,MS in Computer Science,true,"CGPA: 3.95/4.0, Thesis on Distributed Cache Alignment","Winner of Open Source Contributor Award 2025, Certified Kubernetes Admin",https://example.com/resumes/elena_rostova.pdf
+Marcus Aurelius,marcus@example.com,+1 303 555 0199,"Rust, WebAssembly, Management",12,PhD in Software Engineering,false,"Summa Cum Laude, Research in Memory Safety","Published 5 papers on safe systems, Core developer of Tokio ecosystem",https://example.com/resumes/marcus_cv.pdf
+Rohan Sharma,rohan@example.com,+91 98765 43210,"React, TailwindCSS, TypeScript, Next.js, Node.js",6,B.Tech in CS,true,"GPA: 9.1, IIT Kharagpur Alumni","Designed 4 critical user dashboards, Spearheaded migration to React 19",https://example.com/resumes/rohan_sharma_cv.pdf

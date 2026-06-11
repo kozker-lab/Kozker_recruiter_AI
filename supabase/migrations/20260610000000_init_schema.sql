@@ -93,6 +93,10 @@ CREATE TABLE public.candidates (
     current_company TEXT,
     resume_url TEXT,
     parsed_resume_json JSONB,
+    education TEXT,
+    working_or_not BOOLEAN DEFAULT TRUE,
+    academic_details TEXT,
+    achievements TEXT,
     source TEXT CHECK (source IN ('csv', 'pdf', 'docx', 'manual')),
     uploaded_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -236,11 +240,15 @@ BEGIN
         SET 
             full_name = NEW.full_name,
             phone = COALESCE(NEW.phone, phone),
-            skills = COALESCE(NEW.skills, skills),
-            experience_years = COALESCE(NEW.experience_years, experience_years),
+            skills = ARRAY(SELECT DISTINCT unnest(array_cat(skills, NEW.skills))),
+            experience_years = GREATEST(NEW.experience_years, experience_years),
             current_company = COALESCE(NEW.current_company, current_company),
             resume_url = COALESCE(NEW.resume_url, resume_url),
             parsed_resume_json = COALESCE(NEW.parsed_resume_json, parsed_resume_json),
+            education = COALESCE(NEW.education, education),
+            working_or_not = COALESCE(NEW.working_or_not, working_or_not),
+            academic_details = COALESCE(NEW.academic_details, academic_details),
+            achievements = COALESCE(NEW.achievements, achievements),
             source = COALESCE(NEW.source, source),
             updated_at = timezone('utc'::text, now())
         WHERE email = NEW.email AND is_deleted = FALSE;
