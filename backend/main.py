@@ -926,6 +926,45 @@ async def update_application_stage(app_id: str, request: Request, db: Client = D
     return app_record
 
 # 6. Screening Questions Endpoints
+class QuestionCreateModel(BaseModel):
+    question: str
+    difficulty: str = "medium"
+
+@app.post("/api/v1/applications/{app_id}/questions")
+async def add_screening_question(app_id: str, data: QuestionCreateModel, db: Client = Depends(get_supabase)):
+    # Fetch application to get job_opening_id, etc.
+    app_res = db.table("applications").select("*").eq("id", app_id).execute()
+    if not app_res.data:
+        raise HTTPException(status_code=404, detail="Application not found")
+    app_rec = app_res.data[0]
+    
+    # Fetch job_candidate to link if it exists
+    jc_res = db.table("job_candidates").select("id").eq("application_id", app_id).execute()
+    jc_id = jc_res.data[0]["id"] if jc_res.data else None
+    
+    # Fetch job to get requirement_id
+    job_res = db.table("job_openings").select("requirement_id").eq("id", app_rec["job_opening_id"]).execute()
+    req_id = job_res.data[0]["requirement_id"] if job_res.data else None
+    
+    # Get current max question_order to append
+    q_count_res = db.table("screening_questions").select("question_order").eq("application_id", app_id).execute()
+    max_order = max([q["question_order"] for q in q_count_res.data]) if q_count_res.data else 0
+    
+    # Insert new question
+    new_q_res = db.table("screening_questions").insert({
+        "application_id": app_id,
+        "job_candidate_id": jc_id,
+        "job_opening_id": app_rec["job_opening_id"],
+        "requirement_id": req_id,
+        "question": data.question,
+        "difficulty": data.difficulty,
+        "question_order": max_order + 1,
+        "ai_generated": False,
+        "modified": False
+    }).execute()
+    
+    return new_q_res.data[0] if new_q_res.data else {}
+
 @app.get("/api/v1/applications/{app_id}/questions")
 async def get_questions(app_id: str, db: Client = Depends(get_supabase)):
     res = db.table("screening_questions").select("*").eq("application_id", app_id).order("question_order", desc=False).execute()

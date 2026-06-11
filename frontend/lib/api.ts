@@ -1219,6 +1219,26 @@ function handleMockRequest<T>(
           const qs = mockDb.screeningQuestions.filter(q => q.application_id === id);
           return resolve(qs as unknown as T);
         }
+        if (path.startsWith("/applications/") && path.endsWith("/questions") && method === "POST") {
+          const appId = path.split("/")[2];
+          const newQ = {
+            id: `q-custom-${Date.now()}`,
+            application_id: appId,
+            job_candidate_id: `jc-custom-${Date.now()}`,
+            requirement_id: `req-custom-${Date.now()}`,
+            job_opening_id: `job-custom-${Date.now()}`,
+            question: data.question,
+            difficulty: data.difficulty || "medium",
+            question_order: mockDb.screeningQuestions.filter(q => q.application_id === appId).length + 1,
+            ai_generated: false,
+            modified: false,
+            modified_by: null,
+            modified_at: null,
+            created_at: new Date().toISOString()
+          };
+          mockDb.screeningQuestions.push(newQ);
+          return resolve(newQ as unknown as T);
+        }
         if (path.startsWith("/applications/") && path.endsWith("/stages") && method === "GET") {
           const id = path.split("/")[2];
           const stages = mockDb.interviewStages.filter(s => s.application_id === id);

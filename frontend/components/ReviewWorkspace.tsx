@@ -7,7 +7,8 @@ import { Application, ScreeningQuestion, InterviewStage } from "../types";
 import { 
   FileText, BrainCircuit, MessageSquare, Landmark, Award, 
   ThumbsUp, ThumbsDown, CheckCircle2, AlertTriangle, Play,
-  RefreshCw, Edit3, Trash2, Calendar, HelpCircle, Save, Sparkles, Check
+  RefreshCw, Edit3, Trash2, Calendar, HelpCircle, Save, Sparkles, Check,
+  Plus
 } from "lucide-react";
 
 interface ReviewWorkspaceProps {
@@ -24,6 +25,11 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
   const [editQuestionText, setEditQuestionText] = useState("");
   const [aiRefineText, setAiRefineText] = useState("");
   const [isRefineOpen, setIsRefineOpen] = useState<string | null>(null);
+
+  // Local state for adding question
+  const [isAddQuestionOpen, setIsAddQuestionOpen] = useState(false);
+  const [newQuestionText, setNewQuestionText] = useState("");
+  const [newQuestionDifficulty, setNewQuestionDifficulty] = useState<"easy" | "medium" | "hard">("medium");
 
   // Local state for advance stage form
   const [nextStage, setNextStage] = useState<"screening" | "technical" | "hr" | "final" | "hired" | "rejected">("technical");
@@ -86,6 +92,17 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
       queryClient.invalidateQueries({ queryKey: ["application", applicationId] });
       queryClient.invalidateQueries({ queryKey: ["questions", applicationId] });
       queryClient.invalidateQueries({ queryKey: ["activity_log"] });
+    }
+  });
+
+  const addQuestionMutation = useMutation({
+    mutationFn: (data: { question: string; difficulty: string }) => 
+      apiRequest<any>("POST", `/applications/${applicationId}/questions`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["questions", applicationId] });
+      setIsAddQuestionOpen(false);
+      setNewQuestionText("");
+      setNewQuestionDifficulty("medium");
     }
   });
 
@@ -279,7 +296,17 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
           {activeTab === "questions" && (
             <div className="space-y-4 text-xs font-sans">
               <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
-                <span className="text-[10px] uppercase font-bold text-neutral-400 font-mono">Interview Screening Prompts</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] uppercase font-bold text-neutral-400 font-mono">Interview Screening Prompts</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddQuestionOpen(true)}
+                    className="px-2 py-0.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-[9px] font-mono font-bold text-primary flex items-center gap-0.5 cursor-pointer uppercase"
+                  >
+                    <Plus className="w-3 3 text-primary" />
+                    Add Question
+                  </button>
+                </div>
                 <span className="text-[10px] text-primary font-mono flex items-center gap-1 animate-pulse">
                   <BrainCircuit className="w-3.5 h-3.5" />
                   PERSISTENT AI VERBOSE
@@ -472,6 +499,80 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
 
         </div>
       </div>
+
+      {/* Add Question Dialog */}
+      {isAddQuestionOpen && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-6 space-y-4 shadow-xl text-neutral-700">
+            <div className="space-y-1">
+              <h3 className="font-tight font-bold text-sm text-neutral-850 uppercase tracking-wider flex items-center gap-1.5 font-sans">
+                <Plus className="w-4 h-4 text-primary" />
+                Add Screening Question
+              </h3>
+              <p className="text-neutral-400 text-xs">Create a custom screening query for this candidate's evaluation sequence.</p>
+            </div>
+            
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newQuestionText.trim()) return;
+                addQuestionMutation.mutate({
+                  question: newQuestionText,
+                  difficulty: newQuestionDifficulty
+                });
+              }}
+              className="space-y-4 text-xs font-sans"
+            >
+              <div className="space-y-1.5">
+                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Question Text</label>
+                <textarea
+                  placeholder="e.g. Explain how you resolved race conditions in your previous implementation..."
+                  required
+                  rows={3}
+                  value={newQuestionText}
+                  onChange={(e) => setNewQuestionText(e.target.value)}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-850 focus:ring-1 focus:ring-primary focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Difficulty Level</label>
+                <select
+                  value={newQuestionDifficulty}
+                  onChange={(e) => setNewQuestionDifficulty(e.target.value as any)}
+                  className="w-full px-2.5 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-neutral-855 focus:outline-none"
+                >
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-neutral-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddQuestionOpen(false);
+                    setNewQuestionText("");
+                  }}
+                  className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addQuestionMutation.isPending}
+                  className="px-4 py-1.5 bg-primary text-neutral-white font-medium hover:bg-primary/95 rounded-sm cursor-pointer flex items-center gap-1"
+                >
+                  {addQuestionMutation.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Add Question
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
