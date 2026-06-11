@@ -75,15 +75,6 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       setJdSalary(activeJob.salary_range || "");
       setJdResp(activeJob.responsibilities || []);
       setJdQual(activeJob.qualifications || []);
-      
-      // Auto toggle tabs based on processing status
-      if (activeJob.processing_status === "skill_approval") {
-        setActiveTab("skills");
-      } else if (activeJob.processing_status === "ready") {
-        setActiveTab("candidates");
-      } else {
-        setActiveTab("jd");
-      }
     }
   }, [activeJob]);
 
@@ -100,6 +91,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     mutationFn: () => apiRequest<JobOpening>("POST", `/jobs/${selectedJobId}/confirm`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      scanPublishMutation.mutate();
     }
   });
 
@@ -204,7 +196,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                     <td className="p-4 font-mono font-medium text-neutral-500 uppercase">{j.client_name}</td>
                     <td className="p-4 font-semibold text-neutral-800">
                       <button 
-                        onClick={() => setSelectedJobId(j.id)}
+                        onClick={() => { setSelectedJobId(j.id); setActiveTab("jd"); }}
                         className="hover:text-primary transition-colors cursor-pointer text-left font-tight"
                       >
                         {j.title}
@@ -242,7 +234,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                     </td>
                     <td className="p-4 text-right">
                       <button
-                        onClick={() => setSelectedJobId(j.id)}
+                        onClick={() => { setSelectedJobId(j.id); setActiveTab("jd"); }}
                         className="text-[10px] text-neutral-400 hover:text-primary font-semibold uppercase tracking-wider font-mono flex items-center gap-0.5 ml-auto cursor-pointer"
                       >
                         Open
@@ -580,8 +572,9 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                     <th className="p-4 font-semibold">Rank</th>
                     <th className="p-4 font-semibold">Candidate Name</th>
                     <th className="p-4 font-semibold">Experience</th>
-                    <th className="p-4 font-semibold">Fuzzy Match Score</th>
-                    <th className="p-4 font-semibold">Matched Skills</th>
+                    <th className="p-4 font-semibold">Accuracy Score</th>
+                    <th className="p-4 font-semibold">Key Strengths</th>
+                    <th className="p-4 font-semibold">Skill Gaps</th>
                     <th className="p-4 font-semibold">Current Pipeline Stage</th>
                     <th className="p-4"></th>
                   </tr>
@@ -590,23 +583,68 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                   {matchedCandidates.map((jc) => (
                     <tr key={jc.id} className="hover:bg-neutral-50/50 transition-colors">
                       <td className="p-4 font-mono font-bold text-neutral-400">#{jc.rank_order}</td>
-                      <td className="p-4 font-semibold text-neutral-800 flex items-center gap-2">
-                        <UserCircle className="w-5 h-5 text-neutral-400" />
-                        {jc.candidate_name}
+                      <td className="p-4 font-semibold text-neutral-800">
+                        {jc.application_id ? (
+                          <button
+                            onClick={() => onNavigateToReview(jc.application_id!)}
+                            className="hover:text-primary transition-colors cursor-pointer flex items-center gap-2 text-left font-semibold"
+                          >
+                            <UserCircle className="w-5 h-5 text-neutral-400" />
+                            {jc.candidate_name}
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-2 font-semibold">
+                            <UserCircle className="w-5 h-5 text-neutral-400" />
+                            {jc.candidate_name}
+                          </div>
+                        )}
                       </td>
                       <td className="p-4 font-mono text-neutral-500">{jc.experience_years} Years</td>
-                      <td className="p-4 font-mono font-bold text-primary text-sm">
-                        {jc.fuzzy_score}%
+                      <td className="p-4 font-mono font-bold text-sm">
+                        {jc.application_id ? (
+                          <button
+                            onClick={() => onNavigateToReview(jc.application_id!)}
+                            className={`hover:underline font-bold cursor-pointer px-2 py-0.5 rounded-sm text-[11px] ${
+                              jc.fuzzy_score >= 80 ? "bg-success/10 text-success border border-success/20" :
+                              jc.fuzzy_score >= 50 ? "bg-warning/10 text-warning border border-warning/20" :
+                              "bg-error/10 text-error border border-error/20"
+                            }`}
+                          >
+                            {jc.fuzzy_score}%
+                          </button>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-sm text-[11px] ${
+                            jc.fuzzy_score >= 80 ? "bg-success/10 text-success border border-success/20" :
+                            jc.fuzzy_score >= 50 ? "bg-warning/10 text-warning border border-warning/20" :
+                            "bg-error/10 text-error border border-error/20"
+                          }`}>
+                            {jc.fuzzy_score}%
+                          </span>
+                        )}
                       </td>
                       <td className="p-4">
-                        <div className="flex flex-wrap gap-1 max-w-xs">
-                          {jc.skills?.slice(0, 3).map((sk, i) => (
-                            <span key={i} className="text-[8px] font-mono px-1 py-0.2 bg-neutral-100 text-neutral-500 rounded-sm border border-neutral-200">
-                              {sk}
-                            </span>
-                          ))}
-                          {jc.skills && jc.skills.length > 3 && (
-                            <span className="text-[8px] text-neutral-400 font-mono">+{jc.skills.length - 3}</span>
+                        <div className="flex flex-wrap gap-1 max-w-[180px]">
+                          {jc.strengths && jc.strengths.length > 0 ? (
+                            jc.strengths.slice(0, 3).map((str, i) => (
+                              <span key={i} className="text-[8px] font-mono px-1 py-0.2 bg-success/15 text-success rounded-sm border border-success/20">
+                                {str}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[8px] font-mono text-neutral-400 italic">None</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-wrap gap-1 max-w-[180px]">
+                          {jc.skill_gaps && jc.skill_gaps.length > 0 ? (
+                            jc.skill_gaps.slice(0, 3).map((gap, i) => (
+                              <span key={i} className="text-[8px] font-mono px-1 py-0.2 bg-error/15 text-error rounded-sm border border-error/20">
+                                {gap}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[8px] font-mono text-success italic font-bold">Perfect Align</span>
                           )}
                         </div>
                       </td>

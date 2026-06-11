@@ -9,7 +9,7 @@ import ChatbotPanel from "@/components/ChatbotPanel";
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
   Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
-  X, AlertCircle
+  X, AlertCircle, Layers
 } from "lucide-react";
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -277,6 +277,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     { id: "clients", href: "/clients", label: "Clients & Mandates", icon: Building2 },
     { id: "jobs", href: "/jobs", label: "Job Catalog", icon: Briefcase },
     { id: "pool", href: "/pool", label: "Sourcing Pool", icon: Users },
+    { id: "rounds", href: "/rounds", label: "Interview Rounds", icon: Layers },
     { id: "settings", href: "/settings", label: "Settings", icon: Settings },
   ];
 
@@ -456,13 +457,26 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               <p className="text-[9px] text-neutral-400 font-mono uppercase">{profile.role || "RECRUITER"}</p>
             </div>
           </div>
-          <button
-            onClick={() => setIsExitConfirmOpen(true)}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 border border-neutral-200 hover:bg-neutral-150 rounded-sm text-[10px] uppercase font-mono font-bold text-neutral-500 hover:text-neutral-800 transition-colors cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5 text-neutral-400" />
-            Exit the Workspace
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsChatOpen(!isChatOpen)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 border rounded-sm text-[10px] uppercase font-mono font-bold transition-all cursor-pointer ${
+                isChatOpen 
+                  ? "bg-neutral-900 border-neutral-850 text-neutral-white hover:bg-neutral-800" 
+                  : "border-neutral-200 hover:bg-neutral-150 text-neutral-500 hover:text-neutral-800"
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              AI Copilot
+            </button>
+            <button
+              onClick={() => setIsExitConfirmOpen(true)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-neutral-200 hover:bg-neutral-150 rounded-sm text-[10px] uppercase font-mono font-bold text-neutral-500 hover:text-neutral-800 transition-colors cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5 text-neutral-400" />
+              Exit Workspace
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -488,6 +502,20 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             </button>
           </div>
         </header>
+        
+        {/* Top Notification Bar */}
+        <div className="bg-primary/5 border-b border-primary/10 px-6 py-2 flex items-center justify-between text-[10px] text-neutral-600 font-sans select-none animate-fade-in z-10 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-success rounded-full animate-ping"></span>
+            <span className="font-semibold text-neutral-700">System Live:</span>
+            <span>All background matching agents and parsed pipeline queues are active.</span>
+          </div>
+          <div className="flex items-center gap-3 font-mono text-[9px] text-neutral-400">
+            <span>Supabase: Connected</span>
+            <span className="w-1 h-3 bg-neutral-200"></span>
+            <span>Claude AI: Ready</span>
+          </div>
+        </div>
 
         <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
           {children}

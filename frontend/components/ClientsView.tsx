@@ -133,15 +133,18 @@ export default function ClientsView() {
 
   const handleCreateRequirement = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedClientId || !reqTitle.trim()) return;
+    if (!selectedClientId) return;
     
+    // Auto-generate title from the first line/sentence of description
+    const derivedTitle = reqDesc.trim().split(/[.\n]/)[0].substring(0, 50).trim() || `Mandate for ${activeClient?.name || "Client"}`;
+
     const skillsList = reqSkills
       ? reqSkills.split(",").map(s => s.trim()).filter(s => s.length > 0)
       : [];
 
     createReqMutation.mutate({
       client_id: selectedClientId,
-      title: reqTitle,
+      title: derivedTitle,
       description: reqDesc,
       skills: skillsList,
       experience_min: reqExpMin,
@@ -353,18 +356,6 @@ export default function ClientsView() {
             </div>
             
             <form onSubmit={handleCreateRequirement} className="space-y-4 text-xs font-sans">
-              <div className="space-y-1">
-                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Job Title</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Senior Frontend Developer"
-                  required
-                  value={reqTitle}
-                  onChange={(e) => setReqTitle(e.target.value)}
-                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Description / Mandate Brief</label>

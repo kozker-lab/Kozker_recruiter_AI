@@ -552,6 +552,11 @@ async def get_candidates(db: Client = Depends(get_supabase)):
     res = db.table("candidates").select("*").eq("is_deleted", False).execute()
     return res.data
 
+@app.get("/api/v1/applications")
+async def get_all_applications(db: Client = Depends(get_supabase)):
+    res = db.table("applications").select("*, candidates(*), job_openings(*, clients(name))").execute()
+    return res.data
+
 @app.post("/api/v1/candidates")
 async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supabase)):
     res = db.table("candidates").insert({

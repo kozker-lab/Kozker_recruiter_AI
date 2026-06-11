@@ -1149,6 +1149,22 @@ function handleMockRequest<T>(
           const stages = mockDb.interviewStages.filter(s => s.application_id === id);
           return resolve(stages as unknown as T);
         }
+        if (path === "/applications" && method === "GET") {
+          const list = mockDb.applications.map(app => {
+            const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+            const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+            const clientObj = job ? mockDb.clients.find(c => c.id === job.client_id) : null;
+            return {
+              ...app,
+              candidates: cand,
+              job_openings: job ? {
+                ...job,
+                clients: clientObj ? { name: clientObj.name } : null
+              } : null
+            };
+          });
+          return resolve(list as unknown as T);
+        }
         if (path.startsWith("/applications/") && method === "GET") {
           const id = path.split("/")[2];
           const app = mockDb.applications.find(a => a.id === id);
