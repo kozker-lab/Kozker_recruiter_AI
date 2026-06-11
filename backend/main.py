@@ -176,6 +176,9 @@ class ChatMessageModel(BaseModel):
     message: str
     context: Optional[Dict[str, Any]] = None
 
+class CSVUploadModel(BaseModel):
+    items: List[Dict[str, Any]]
+
 # ============================================================
 # API ENDPOINTS
 # ============================================================
@@ -465,7 +468,11 @@ def match_candidates_background(job_id: str, jwt_token: str):
             
         job = job_res.data[0]
         approved_skills = skills_res.data
-        candidates = candidates_res.data
+        candidates = candidates_res.data or []
+        for cand in candidates:
+            if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
+                if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
+                    cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
         
         # Clear existing job_candidates for this job
         db.table("job_candidates").delete().eq("job_opening_id", job_id).execute()
@@ -568,6 +575,9 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
         raise HTTPException(status_code=404, detail="Candidate not found")
         
     cand = cand_res.data[0]
+    if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
+        if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
+            cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
     approved_skills = skills_res.data
     
     cand_skills = [s.lower() for s in (cand.get("skills") or [])]
@@ -633,26 +643,102 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
 @app.get("/api/v1/candidates")
 async def get_candidates(db: Client = Depends(get_supabase)):
     res = db.table("candidates").select("*").eq("is_deleted", False).execute()
-    return res.data
+    data = res.data or []
+    for cand in data:
+        if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
+            if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
+                cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
+    return data
 
 @app.get("/api/v1/applications")
 async def get_all_applications(db: Client = Depends(get_supabase)):
     res = db.table("applications").select("*, candidates(*), job_openings(*, clients(name))").execute()
-    return res.data
+    data = res.data or []
+    for app_rec in data:
+        cand = app_rec.get("candidates") or {}
+        if cand and "parsed_resume_json" in cand and cand["parsed_resume_json"]:
+            if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
+                cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
+    return data
 
 @app.post("/api/v1/candidates")
 async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supabase)):
+    # Limit source value to allowed constraints: 'csv', 'pdf', 'docx', 'manual'
+    db_source = cand.source
+    if db_source not in ["csv", "pdf", "docx", "manual"]:
+        db_source = "manual"
+
     res = db.table("candidates").insert({
         "full_name": cand.full_name,
         "email": cand.email,
-        "phone": cand.phone,
+        "phone": cand.phone if cand.phone else None,
         "skills": cand.skills,
         "experience_years": cand.experience_years,
         "resume_url": cand.resume_url,
-        "raw_text": cand.raw_text,
-        "source": cand.source
+        "parsed_resume_json": {"raw_text": cand.raw_text},
+        "source": db_source
     }).execute()
-    return res.data[0] if res.data else {}
+    
+    if res.data:
+        data = res.data[0]
+        data["raw_text"] = cand.raw_text
+        return data
+    return {}
+
+@app.post("/api/v1/candidates/upload/csv")
+async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(get_supabase)):
+    inserted = 0
+    skipped = 0
+    
+    for item in payload.items:
+        email = item.get("email")
+        full_name = item.get("full_name")
+        if not email or not full_name:
+            continue
+            
+        # Check if candidate email already exists (active)
+        exists_res = db.table("candidates").select("id").eq("email", email).eq("is_deleted", False).execute()
+        
+        # Skills list parser
+        skills_input = item.get("skills", "")
+        skills_list = []
+        if isinstance(skills_input, str):
+            skills_list = [s.strip() for s in skills_input.split(",") if s.strip()]
+        elif isinstance(skills_input, list):
+            skills_list = [str(s).strip() for s in skills_input if str(s).strip()]
+            
+        phone_input = item.get("phone")
+        phone_val = str(phone_input).strip() if phone_input else None
+        if phone_val == "" or phone_val == "null":
+            phone_val = None
+            
+        exp_years = int(item.get("experience_years") or 0)
+        
+        if exists_res.data:
+            skipped += 1
+            # Update existing candidate details
+            db.table("candidates").update({
+                "full_name": full_name,
+                "phone": phone_val,
+                "skills": skills_list,
+                "experience_years": exp_years,
+                "parsed_resume_json": {"raw_text": f"Parsed from CSV: {full_name}"},
+                "source": "csv"
+            }).eq("email", email).execute()
+        else:
+            inserted += 1
+            # Insert new candidate
+            db.table("candidates").insert({
+                "full_name": full_name,
+                "email": email,
+                "phone": phone_val,
+                "skills": skills_list,
+                "experience_years": exp_years,
+                "parsed_resume_json": {"raw_text": f"Parsed from CSV: {full_name}"},
+                "source": "csv"
+            }).execute()
+            
+    return {"inserted": inserted, "skipped": skipped}
 
 # accept application -> triggers background personalized question generation
 def generate_questions_background(app_id: str, candidate_name: str, skills: List[str], exp_years: int, raw_text: str, jwt_token: str):
@@ -716,6 +802,9 @@ async def get_application(app_id: str, db: Client = Depends(get_supabase)):
     
     app_record = res.data[0]
     cand = app_record.get("candidates") or {}
+    if cand and "parsed_resume_json" in cand and cand["parsed_resume_json"]:
+        if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
+            cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
     
     return {
         "id": app_record["id"],
@@ -751,6 +840,9 @@ async def accept_application(app_id: str, background_tasks: BackgroundTasks, req
     cand_res = db.table("candidates").select("*").eq("id", app_record["candidate_id"]).execute()
     if cand_res.data:
         cand = cand_res.data[0]
+        if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
+            if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
+                cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
         auth_header = request.headers.get("Authorization", "")
         jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
         
