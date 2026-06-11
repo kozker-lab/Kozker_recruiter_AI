@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/api";
-import { JobOpening, JobOpeningSkill, JobCandidate } from "../types";
+import { JobOpening, JobOpeningSkill, JobCandidate, Candidate } from "../types";
 import { 
   Table, Briefcase, FileSignature, Sparkles, CheckSquare, 
   Play, Check, Edit3, ArrowLeft, RefreshCcw, Save, Trash2, 
@@ -27,6 +27,10 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   // State for AI JD Regeneration instruction
   const [regenInstruction, setRegenInstruction] = useState("");
   const [isRegenOpen, setIsRegenOpen] = useState(false);
+
+  // Link Candidate States
+  const [isAddCandOpen, setIsAddCandOpen] = useState(false);
+  const [selectedCandId, setSelectedCandId] = useState("");
 
   // Editor states
   const [jdTitle, setJdTitle] = useState("");
@@ -56,6 +60,12 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     queryKey: ["job_candidates", selectedJobId],
     queryFn: () => apiRequest<JobCandidate[]>("GET", `/jobs/${selectedJobId}/candidates`),
     enabled: !!selectedJobId && activeJob?.processing_status === "ready"
+  });
+
+  const { data: candidates = [] } = useQuery<Candidate[]>({
+    queryKey: ["candidates"],
+    queryFn: () => apiRequest<Candidate[]>("GET", "/candidates"),
+    enabled: activeTab === "candidates" && !!selectedJobId
   });
 
   // Local skills weights state for drag-and-drop / adjustment
@@ -123,6 +133,22 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       setIsRegenOpen(false);
       setRegenInstruction("");
+    }
+  });
+
+  const linkCandidateMutation = useMutation({
+    mutationFn: (candId: string) => 
+      apiRequest<{ success: boolean }>("POST", `/jobs/${selectedJobId}/candidates/${candId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["job_candidates", selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["activity_log"] });
+      setIsAddCandOpen(false);
+      setSelectedCandId("");
+      alert("Candidate linked and ranked successfully.");
+    },
+    onError: (err: any) => {
+      alert(err.message || "Failed to link candidate.");
     }
   });
 
@@ -250,6 +276,11 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       </div>
     );
   }
+
+  // Filter candidates that are not already matched to this job opening
+  const eligibleCandidates = candidates.filter(
+    c => !matchedCandidates.some(jc => jc.candidate_id === c.id)
+  );
 
   // 2. Active Job Workspace View
   return (
@@ -554,10 +585,20 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
         <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm text-xs font-sans">
           <div className="p-4 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
             <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Matched Candidate Index</h3>
-            <span className="text-[10px] text-success font-semibold flex items-center gap-1 font-mono">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              FUZZY ALIGNED DATA
-            </span>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsAddCandOpen(true)}
+                className="px-2.5 py-1 border border-neutral-200 bg-neutral-white hover:bg-neutral-100 rounded-sm text-neutral-600 font-semibold flex items-center gap-1 cursor-pointer font-sans"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Candidate
+              </button>
+              <span className="text-[10px] text-success font-semibold flex items-center gap-1 font-mono">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                FUZZY ALIGNED DATA
+              </span>
+            </div>
           </div>
 
           {loadingCandidates ? (
@@ -727,6 +768,83 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Link Candidate Dialog */}
+      {isAddCandOpen && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-6 space-y-4 shadow-xl">
+            <div className="space-y-1">
+              <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider flex items-center gap-1.5 font-sans">
+                <UserCheck className="w-4 h-4 text-primary" />
+                Link Candidate from Pool
+              </h3>
+              <p className="text-neutral-400 text-xs">Link an existing candidate from the sourcing pool to this job opening. AI will calculate a match score based on approved skills.</p>
+            </div>
+            
+            {eligibleCandidates.length === 0 ? (
+              <div className="space-y-4">
+                <p className="text-neutral-500 text-xs italic">No eligible candidates available to link. All candidates are already matched or pipeline is empty.</p>
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddCandOpen(false)}
+                    className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 cursor-pointer text-xs uppercase font-mono font-semibold"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!selectedCandId) return;
+                  linkCandidateMutation.mutate(selectedCandId);
+                }}
+                className="space-y-4 text-xs font-sans"
+              >
+                <div className="space-y-1.5">
+                  <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Select Candidate</label>
+                  <select
+                    value={selectedCandId}
+                    onChange={(e) => setSelectedCandId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-850 focus:outline-none"
+                  >
+                    <option value="">-- Choose Candidate --</option>
+                    {eligibleCandidates.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.full_name} ({c.experience_years} Yrs Exp - {c.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddCandOpen(false);
+                      setSelectedCandId("");
+                    }}
+                    className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={linkCandidateMutation.isPending || !selectedCandId}
+                    className="px-4 py-1.5 bg-primary text-neutral-white font-medium hover:bg-primary/95 rounded-sm cursor-pointer flex items-center gap-1.5"
+                  >
+                    {linkCandidateMutation.isPending ? <RefreshCcw className="w-3.5 h-3.5 animate-spin" /> : null}
+                    Link Candidate
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

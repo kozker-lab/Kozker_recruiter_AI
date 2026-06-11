@@ -922,6 +922,78 @@ function handleMockRequest<T>(
           });
           return resolve(newCand as unknown as T);
         }
+        if (path.startsWith("/jobs/") && path.includes("/candidates/") && method === "POST") {
+          const parts = path.split("/");
+          const jobId = parts[2];
+          const candId = parts[4];
+          
+          const cand = mockDb.candidates.find(c => c.id === candId);
+          if (!cand) return reject(new Error("Candidate not found"));
+          
+          const job = mockDb.jobOpenings.find(j => j.id === jobId);
+          if (!job) return reject(new Error("Job not found"));
+          
+          // Check if already exists
+          const exists = mockDb.applications.some(a => a.candidate_id === candId && a.job_opening_id === jobId);
+          if (exists) return reject(new Error("Candidate is already linked to this job opening"));
+          
+          const strengths = ["Manual profile match", "Aligned experience"];
+          const skill_gaps: string[] = [];
+          
+          const appId = `app-link-${Date.now()}`;
+          const app = {
+            id: appId,
+            candidate_id: candId,
+            job_opening_id: jobId,
+            candidate_cv: cand.resume_url,
+            fuzzy_score: 75.0,
+            match_score: 75,
+            match_reason: "Manually linked candidate. Match score: 75%. Ready for review.",
+            strengths,
+            skill_gaps,
+            screening_status: "pending" as const,
+            stage: "screening" as const,
+            stage_status: "pending" as const,
+            stage_notes: null,
+            priority: 0,
+            reviewed_by: null,
+            reviewed_at: null,
+            created_at: new Date().toISOString()
+          };
+          mockDb.applications.push(app);
+          
+          const rank = mockDb.jobCandidates.filter(jc => jc.job_opening_id === jobId).length + 1;
+          mockDb.jobCandidates.push({
+            id: `jc-link-${Date.now()}`,
+            job_opening_id: jobId,
+            application_id: appId,
+            fuzzy_score: 75.0,
+            rank_order: rank,
+            created_at: new Date().toISOString(),
+            candidate_id: candId,
+            candidate_name: cand.full_name,
+            experience_years: cand.experience_years || 0,
+            skills: cand.skills || [],
+            strengths,
+            skill_gaps,
+            priority: 0,
+            stage: "screening",
+            stage_status: "pending"
+          });
+          
+          mockDb.activityLogs.unshift({
+            id: `act-${Date.now()}`,
+            actor_id: "usr-1",
+            actor_name: "Alex Mercer",
+            action: "candidate_linked",
+            entity_type: "applications",
+            entity_id: appId,
+            metadata: { candidate_name: cand.full_name },
+            created_at: new Date().toISOString()
+          });
+          
+          return resolve({ success: true, application: app } as unknown as T);
+        }
         if ((path === "/candidates/upload/csv" || path.startsWith("/jobs/")) && method === "POST") {
           // Bulk uploader CSV parser mockup
           // Returns summary
@@ -1177,7 +1249,8 @@ function handleMockRequest<T>(
             candidate_name: cand?.full_name,
             candidate_email: cand?.email,
             candidate_experience: cand?.experience_years,
-            candidate_skills: cand?.skills
+            candidate_skills: cand?.skills,
+            candidate_cv: cand?.raw_text || app.candidate_cv
           } as unknown as T);
         }
 

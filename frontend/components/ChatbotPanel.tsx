@@ -8,10 +8,11 @@ import { Sparkles, Send, X, ChevronRight, MessageSquare, Bot, User } from "lucid
 interface ChatbotPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpen: () => void;
   currentPage: string;
 }
 
-export default function ChatbotPanel({ isOpen, onClose, currentPage }: ChatbotPanelProps) {
+export default function ChatbotPanel({ isOpen, onClose, onOpen, currentPage }: ChatbotPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
@@ -61,7 +62,7 @@ export default function ChatbotPanel({ isOpen, onClose, currentPage }: ChatbotPa
   if (!isOpen) {
     return (
       <button
-        onClick={onClose}
+        onClick={onOpen}
         className="fixed right-6 bottom-6 p-4 bg-primary text-neutral-white shadow-lg border border-primary/20 hover:bg-primary/95 transition-all rounded-sm cursor-pointer z-50 flex items-center gap-2"
         title="Open AI Assistant"
       >

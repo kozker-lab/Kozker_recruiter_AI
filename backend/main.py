@@ -524,11 +524,12 @@ def match_candidates_background(job_id: str, jwt_token: str):
 
 @app.get("/api/v1/jobs/{job_id}/candidates")
 async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase)):
-    res = db.table("job_candidates").select("*, candidates(*)").eq("job_opening_id", job_id).order("fuzzy_score", desc=True).execute()
+    res = db.table("job_candidates").select("*, candidates(*), applications(*)").eq("job_opening_id", job_id).order("fuzzy_score", desc=True).execute()
     # Format to match frontend expected JobCandidate layout
     formatted = []
     for row in res.data:
         cand = row.get("candidates") or {}
+        app_rec = row.get("applications") or {}
         formatted.append({
             "id": row["id"],
             "job_opening_id": row["job_opening_id"],
@@ -541,10 +542,84 @@ async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase))
             "skills": cand.get("skills") or [],
             "strengths": row.get("strengths") or [],
             "skill_gaps": row.get("skill_gaps") or [],
-            "stage": "screening",
-            "stage_status": "pending"
+            "stage": app_rec.get("stage") or "screening",
+            "stage_status": app_rec.get("stage_status") or "pending"
         })
     return formatted
+
+@app.post("/api/v1/jobs/{job_id}/candidates/{cand_id}")
+async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(get_supabase)):
+    exists = db.table("applications").select("*").eq("candidate_id", cand_id).eq("job_opening_id", job_id).execute()
+    if exists.data:
+        raise HTTPException(status_code=400, detail="Candidate is already linked to this job opening")
+        
+    cand_res = db.table("candidates").select("*").eq("id", cand_id).execute()
+    skills_res = db.table("job_opening_skills").select("*").eq("job_opening_id", job_id).execute()
+    
+    if not cand_res.data:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    cand = cand_res.data[0]
+    approved_skills = skills_res.data
+    
+    cand_skills = [s.lower() for s in (cand.get("skills") or [])]
+    cand_raw_text = cand.get("raw_text") or ""
+    
+    matched_score = 45.0
+    strengths = []
+    skill_gaps = []
+    
+    for sk in approved_skills:
+        sk_name = sk["skill_name"].lower()
+        sk_weight = float(sk["weight"])
+        if sk_name in cand_skills or sk_name in cand_raw_text.lower():
+            matched_score += (sk_weight * 0.5)
+            strengths.append(sk["skill_name"])
+        else:
+            skill_gaps.append(sk["skill_name"])
+            
+    matched_score = min(matched_score, 100.0)
+    
+    app_res = db.table("applications").insert({
+        "candidate_id": cand_id,
+        "job_opening_id": job_id,
+        "fuzzy_score": matched_score,
+        "match_score": int(matched_score),
+        "match_reason": f"Manually linked candidate. Matched skills: {', '.join(strengths)}. Missing: {', '.join(skill_gaps)}.",
+        "strengths": strengths[:3],
+        "skill_gaps": skill_gaps[:3],
+        "screening_status": "pending",
+        "stage": "screening",
+        "stage_status": "pending"
+    }).execute()
+    
+    if not app_res.data:
+        raise HTTPException(status_code=400, detail="Failed to link candidate")
+        
+    new_app = app_res.data[0]
+    
+    existing_jc = db.table("job_candidates").select("*").eq("job_opening_id", job_id).execute()
+    rank = len(existing_jc.data) + 1
+    
+    db.table("job_candidates").insert({
+        "job_opening_id": job_id,
+        "candidate_id": cand_id,
+        "application_id": new_app["id"],
+        "fuzzy_score": matched_score,
+        "rank_order": rank,
+        "strengths": strengths[:3],
+        "skill_gaps": skill_gaps[:3]
+    }).execute()
+    
+    db.table("activity_log").insert({
+        "action": "candidate_linked",
+        "entity_type": "applications",
+        "entity_id": new_app["id"],
+        "actor_name": "Recruiter",
+        "metadata": {"candidate_name": cand.get("full_name")}
+    }).execute()
+    
+    return {"success": True, "application": new_app}
 
 # 5. Candidates & Applications
 @app.get("/api/v1/candidates")
@@ -625,6 +700,37 @@ def generate_questions_background(app_id: str, candidate_name: str, skills: List
     except Exception as e:
         logger.error(f"Error generating screening questions: {e}")
 
+@app.get("/api/v1/applications/{app_id}")
+async def get_application(app_id: str, db: Client = Depends(get_supabase)):
+    res = db.table("applications").select("*, candidates(*)").eq("id", app_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Application not found")
+    
+    app_record = res.data[0]
+    cand = app_record.get("candidates") or {}
+    
+    return {
+        "id": app_record["id"],
+        "candidate_id": app_record["candidate_id"],
+        "job_opening_id": app_record["job_opening_id"],
+        "candidate_name": cand.get("full_name", "Unknown"),
+        "candidate_email": cand.get("email", ""),
+        "candidate_experience": cand.get("experience_years", 0),
+        "candidate_skills": cand.get("skills") or [],
+        "candidate_cv": cand.get("raw_text") or "",
+        "fuzzy_score": app_record.get("fuzzy_score") or 0,
+        "match_score": app_record.get("match_score") or 0,
+        "match_reason": app_record.get("match_reason") or "",
+        "strengths": app_record.get("strengths") or [],
+        "skill_gaps": app_record.get("skill_gaps") or [],
+        "screening_status": app_record.get("screening_status") or "pending",
+        "stage": app_record.get("stage") or "screening",
+        "stage_status": app_record.get("stage_status") or "pending",
+        "stage_notes": app_record.get("stage_notes") or "",
+        "priority": app_record.get("priority") or 0,
+        "created_at": app_record.get("created_at")
+    }
+
 @app.patch("/api/v1/applications/{app_id}/accept")
 async def accept_application(app_id: str, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
     res = db.table("applications").update({"screening_status": "accepted"}).eq("id", app_id).execute()
@@ -656,6 +762,68 @@ async def accept_application(app_id: str, background_tasks: BackgroundTasks, req
 async def reject_application(app_id: str, db: Client = Depends(get_supabase)):
     res = db.table("applications").update({"screening_status": "rejected"}).eq("id", app_id).execute()
     return res.data[0] if res.data else {}
+
+@app.get("/api/v1/applications/{app_id}/stages")
+async def get_application_stages(app_id: str, db: Client = Depends(get_supabase)):
+    res = db.table("interview_stages").select("*").eq("application_id", app_id).order("created_at", desc=False).execute()
+    return res.data or []
+
+@app.patch("/api/v1/applications/{app_id}/stage")
+async def update_application_stage(app_id: str, request: Request, db: Client = Depends(get_supabase)):
+    data = await request.json()
+    stage = data.get("stage")
+    stage_status = data.get("stage_status")
+    notes = data.get("notes") or ""
+    
+    # 1. Update applications table
+    res = db.table("applications").update({
+        "stage": stage,
+        "stage_status": stage_status,
+        "stage_notes": notes
+    }).eq("id", app_id).execute()
+    
+    if not res.data:
+        raise HTTPException(status_code=400, detail="Failed to update application stage")
+        
+    app_record = res.data[0]
+    
+    # 2. Insert into interview_stages table if it's one of the valid stage_names
+    valid_stages = ['screening', 'technical', 'hr', 'final']
+    if stage in valid_stages:
+        existing = db.table("interview_stages").select("id").eq("application_id", app_id).execute()
+        order = len(existing.data) + 1
+        
+        outcome = "pending"
+        if stage_status == "passed":
+            outcome = "passed"
+        elif stage_status == "failed":
+            outcome = "failed"
+        elif stage_status == "on_hold":
+            outcome = "on_hold"
+            
+        # If outcome is failed, note check constraint requires notes
+        if outcome == "failed" and not notes.strip():
+            notes = "Stage failed."
+            
+        db.table("interview_stages").insert({
+            "application_id": app_id,
+            "stage_name": stage,
+            "stage_order": order,
+            "status": "completed",
+            "outcome": outcome,
+            "notes": notes
+        }).execute()
+        
+    # 3. Log activity
+    db.table("activity_log").insert({
+        "action": "stage_updated",
+        "entity_type": "applications",
+        "entity_id": app_id,
+        "actor_name": "Recruiter",
+        "metadata": {"stage": stage, "status": stage_status}
+    }).execute()
+    
+    return app_record
 
 # 6. Screening Questions Endpoints
 @app.get("/api/v1/applications/{app_id}/questions")

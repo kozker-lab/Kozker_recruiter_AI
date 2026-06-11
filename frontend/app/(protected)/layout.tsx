@@ -525,6 +525,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       <ChatbotPanel
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
+        onOpen={() => setIsChatOpen(true)}
         currentPage={pathname.substring(1) || "dashboard"}
       />
 
@@ -648,7 +649,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         const progressPercent = Math.round((savedStep / (tourSteps.length - 1)) * 100);
 
         return (
-          <div className="fixed bottom-6 right-6 bg-neutral-900 border border-neutral-800 text-neutral-100 p-4 rounded-sm shadow-2xl max-w-sm w-full z-45 flex flex-col gap-3.5 select-none font-sans text-xs">
+          <div className="fixed bottom-24 right-6 bg-neutral-900 border border-neutral-800 text-neutral-100 p-4 rounded-sm shadow-2xl max-w-sm w-full z-45 flex flex-col gap-3.5 select-none font-sans text-xs">
             <div className="flex justify-between items-start gap-2">
               <div className="flex gap-2.5 items-start">
                 <div className="p-1.5 bg-primary/10 rounded-sm text-primary">
