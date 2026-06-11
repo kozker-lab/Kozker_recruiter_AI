@@ -9,7 +9,7 @@ import ChatbotPanel from "@/components/ChatbotPanel";
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
   Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
-  X, AlertCircle, Layers
+  X, AlertCircle, Layers, Bell
 } from "lucide-react";
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -491,6 +491,15 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              id="header-notifications-toggle"
+              className="p-2 border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors text-neutral-550 bg-neutral-white relative"
+              title="System Notifications"
+              onClick={() => alert("System Status: All pipeline agents are active. No unread notifications.")}
+            >
+              <Bell className="w-4 h-4" />
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-success rounded-full"></span>
+            </button>
             <button
               id="header-chatbot-toggle"
               onClick={() => setIsChatOpen(!isChatOpen)}

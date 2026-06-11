@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/api";
+import ReviewWorkspace from "./ReviewWorkspace";
 import { JobOpening, JobOpeningSkill, JobCandidate, Candidate } from "../types";
 import { 
   Table, Briefcase, FileSignature, Sparkles, CheckSquare, 
@@ -31,6 +32,9 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   // Link Candidate States
   const [isAddCandOpen, setIsAddCandOpen] = useState(false);
   const [selectedCandId, setSelectedCandId] = useState("");
+
+  // Review Workspace inline state
+  const [reviewApplicationId, setReviewApplicationId] = useState<string | null>(null);
 
   // Editor states
   const [jdTitle, setJdTitle] = useState("");
@@ -219,7 +223,10 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               <tbody className="divide-y divide-neutral-150">
                 {jobs.map((j) => (
                   <tr key={j.id} className="hover:bg-neutral-50/55 transition-colors group">
-                    <td className="p-4 font-mono font-medium text-neutral-500 uppercase">{j.client_name}</td>
+                    <td className="p-4 font-mono font-medium text-neutral-500 uppercase">
+                      <div>{j.client_name || "Generic Client"}</div>
+                      <div className="text-[9px] text-neutral-400 lowercase font-normal">Req ID: {j.requirement_id ? j.requirement_id.substring(0, 8) + '...' : '-'}</div>
+                    </td>
                     <td className="p-4 font-semibold text-neutral-800">
                       <button 
                         onClick={() => { setSelectedJobId(j.id); setActiveTab("jd"); }}
@@ -302,7 +309,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               </span>
               <h2 className="text-lg font-tight font-bold text-neutral-850">{activeJob?.title}</h2>
             </div>
-            <p className="text-[10px] text-neutral-400 font-mono mt-0.5">Job opening ID: {activeJob?.id}</p>
+            <p className="text-[10px] text-neutral-400 font-mono mt-0.5">Job Opening ID: {activeJob?.id} • Requirement ID: {activeJob?.requirement_id}</p>
           </div>
         </div>
 
@@ -582,140 +589,147 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       )}
 
       {activeTab === "candidates" && (
-        <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm text-xs font-sans">
-          <div className="p-4 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
-            <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Matched Candidate Index</h3>
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => setIsAddCandOpen(true)}
-                className="px-2.5 py-1 border border-neutral-200 bg-neutral-white hover:bg-neutral-100 rounded-sm text-neutral-600 font-semibold flex items-center gap-1 cursor-pointer font-sans"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add Candidate
-              </button>
-              <span className="text-[10px] text-success font-semibold flex items-center gap-1 font-mono">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                FUZZY ALIGNED DATA
-              </span>
+        reviewApplicationId ? (
+          <ReviewWorkspace 
+            applicationId={reviewApplicationId} 
+            onBack={() => setReviewApplicationId(null)} 
+          />
+        ) : (
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm text-xs font-sans">
+            <div className="p-4 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
+              <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Matched Candidate Index</h3>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsAddCandOpen(true)}
+                  className="px-2.5 py-1 border border-neutral-200 bg-neutral-white hover:bg-neutral-100 rounded-sm text-neutral-600 font-semibold flex items-center gap-1 cursor-pointer font-sans"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Candidate
+                </button>
+                <span className="text-[10px] text-success font-semibold flex items-center gap-1 font-mono">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  FUZZY ALIGNED DATA
+                </span>
+              </div>
             </div>
-          </div>
 
-          {loadingCandidates ? (
-            <div className="text-center py-12 text-xs text-neutral-400 font-mono">Scanning index and compiling ranks...</div>
-          ) : matchedCandidates.length === 0 ? (
-            <div className="text-center py-12 text-xs text-neutral-400">No candidates matched. Go to Skills weights to trigger matching scan.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-neutral-50/50 border-b border-neutral-200 text-neutral-400 font-mono uppercase text-[9px] tracking-wider">
-                    <th className="p-4 font-semibold">Rank</th>
-                    <th className="p-4 font-semibold">Candidate Name</th>
-                    <th className="p-4 font-semibold">Experience</th>
-                    <th className="p-4 font-semibold">Accuracy Score</th>
-                    <th className="p-4 font-semibold">Key Strengths</th>
-                    <th className="p-4 font-semibold">Skill Gaps</th>
-                    <th className="p-4 font-semibold">Current Pipeline Stage</th>
-                    <th className="p-4"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-150">
-                  {matchedCandidates.map((jc) => (
-                    <tr key={jc.id} className="hover:bg-neutral-50/50 transition-colors">
-                      <td className="p-4 font-mono font-bold text-neutral-400">#{jc.rank_order}</td>
-                      <td className="p-4 font-semibold text-neutral-800">
-                        {jc.application_id ? (
-                          <button
-                            onClick={() => onNavigateToReview(jc.application_id!)}
-                            className="hover:text-primary transition-colors cursor-pointer flex items-center gap-2 text-left font-semibold"
-                          >
-                            <UserCircle className="w-5 h-5 text-neutral-400" />
-                            {jc.candidate_name}
-                          </button>
-                        ) : (
-                          <div className="flex items-center gap-2 font-semibold">
-                            <UserCircle className="w-5 h-5 text-neutral-400" />
-                            {jc.candidate_name}
-                          </div>
-                        )}
-                      </td>
-                      <td className="p-4 font-mono text-neutral-500">{jc.experience_years} Years</td>
-                      <td className="p-4 font-mono font-bold text-sm">
-                        {jc.application_id ? (
-                          <button
-                            onClick={() => onNavigateToReview(jc.application_id!)}
-                            className={`hover:underline font-bold cursor-pointer px-2 py-0.5 rounded-sm text-[11px] ${
+            {loadingCandidates ? (
+              <div className="text-center py-12 text-xs text-neutral-400 font-mono">Scanning index and compiling ranks...</div>
+            ) : matchedCandidates.length === 0 ? (
+              <div className="text-center py-12 text-xs text-neutral-400">No candidates matched. Go to Skills weights to trigger matching scan.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-neutral-50/50 border-b border-neutral-200 text-neutral-400 font-mono uppercase text-[9px] tracking-wider">
+                      <th className="p-4 font-semibold">Rank</th>
+                      <th className="p-4 font-semibold">Candidate Name</th>
+                      <th className="p-4 font-semibold">Experience</th>
+                      <th className="p-4 font-semibold">Accuracy Score</th>
+                      <th className="p-4 font-semibold">Key Strengths</th>
+                      <th className="p-4 font-semibold">Skill Gaps</th>
+                      <th className="p-4 font-semibold">Current Pipeline Stage</th>
+                      <th className="p-4"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-150">
+                    {matchedCandidates.map((jc) => (
+                      <tr key={jc.id} className="hover:bg-neutral-50/50 transition-colors">
+                        <td className="p-4 font-mono font-bold text-neutral-400">#{jc.rank_order}</td>
+                        <td className="p-4 font-semibold text-neutral-800">
+                          {jc.application_id ? (
+                            <button
+                              onClick={() => setReviewApplicationId(jc.application_id!)}
+                              className="hover:text-primary transition-colors cursor-pointer flex items-center gap-2 text-left font-semibold"
+                            >
+                              <UserCircle className="w-5 h-5 text-neutral-400" />
+                              {jc.candidate_name}
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-2 font-semibold">
+                              <UserCircle className="w-5 h-5 text-neutral-400" />
+                              {jc.candidate_name}
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-4 font-mono text-neutral-500">{jc.experience_years} Years</td>
+                        <td className="p-4 font-mono font-bold text-sm">
+                          {jc.application_id ? (
+                            <button
+                              onClick={() => setReviewApplicationId(jc.application_id!)}
+                              className={`hover:underline font-bold cursor-pointer px-2 py-0.5 rounded-sm text-[11px] ${
+                                jc.fuzzy_score >= 80 ? "bg-success/10 text-success border border-success/20" :
+                                jc.fuzzy_score >= 50 ? "bg-warning/10 text-warning border border-warning/20" :
+                                "bg-error/10 text-error border border-error/20"
+                              }`}
+                            >
+                              {jc.fuzzy_score}%
+                            </button>
+                          ) : (
+                            <span className={`px-2 py-0.5 rounded-sm text-[11px] ${
                               jc.fuzzy_score >= 80 ? "bg-success/10 text-success border border-success/20" :
                               jc.fuzzy_score >= 50 ? "bg-warning/10 text-warning border border-warning/20" :
                               "bg-error/10 text-error border border-error/20"
-                            }`}
-                          >
-                            {jc.fuzzy_score}%
-                          </button>
-                        ) : (
-                          <span className={`px-2 py-0.5 rounded-sm text-[11px] ${
-                            jc.fuzzy_score >= 80 ? "bg-success/10 text-success border border-success/20" :
-                            jc.fuzzy_score >= 50 ? "bg-warning/10 text-warning border border-warning/20" :
-                            "bg-error/10 text-error border border-error/20"
+                            }`}>
+                              {jc.fuzzy_score}%
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex flex-wrap gap-1 max-w-[180px]">
+                            {jc.strengths && jc.strengths.length > 0 ? (
+                              jc.strengths.slice(0, 3).map((str, i) => (
+                                <span key={i} className="text-[8px] font-mono px-1 py-0.2 bg-success/15 text-success rounded-sm border border-success/20">
+                                  {str}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[8px] font-mono text-neutral-400 italic">None</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex flex-wrap gap-1 max-w-[180px]">
+                            {jc.skill_gaps && jc.skill_gaps.length > 0 ? (
+                              jc.skill_gaps.slice(0, 3).map((gap, i) => (
+                                <span key={i} className="text-[8px] font-mono px-1 py-0.2 bg-error/15 text-error rounded-sm border border-error/20">
+                                  {gap}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[8px] font-mono text-success italic font-bold">Perfect Align</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4 uppercase font-mono text-[9px]">
+                          <span className={`px-1.5 py-0.5 rounded-sm border ${
+                            jc.stage === "rejected" ? "bg-error/10 border-error/20 text-error" :
+                            jc.stage === "hired" ? "bg-success/10 border-success/20 text-success" :
+                            "bg-neutral-150 border-neutral-250 text-neutral-500"
                           }`}>
-                            {jc.fuzzy_score}%
+                            {jc.stage || "screening"}
                           </span>
-                        )}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex flex-wrap gap-1 max-w-[180px]">
-                          {jc.strengths && jc.strengths.length > 0 ? (
-                            jc.strengths.slice(0, 3).map((str, i) => (
-                              <span key={i} className="text-[8px] font-mono px-1 py-0.2 bg-success/15 text-success rounded-sm border border-success/20">
-                                {str}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-[8px] font-mono text-neutral-400 italic">None</span>
+                        </td>
+                        <td className="p-4 text-right">
+                          {jc.application_id && (
+                            <button
+                              onClick={() => setReviewApplicationId(jc.application_id!)}
+                              className="text-[10px] text-primary hover:underline font-semibold uppercase font-mono cursor-pointer flex items-center gap-0.5 ml-auto"
+                            >
+                              Review Workspace
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
                           )}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex flex-wrap gap-1 max-w-[180px]">
-                          {jc.skill_gaps && jc.skill_gaps.length > 0 ? (
-                            jc.skill_gaps.slice(0, 3).map((gap, i) => (
-                              <span key={i} className="text-[8px] font-mono px-1 py-0.2 bg-error/15 text-error rounded-sm border border-error/20">
-                                {gap}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-[8px] font-mono text-success italic font-bold">Perfect Align</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-4 uppercase font-mono text-[9px]">
-                        <span className={`px-1.5 py-0.5 rounded-sm border ${
-                          jc.stage === "rejected" ? "bg-error/10 border-error/20 text-error" :
-                          jc.stage === "hired" ? "bg-success/10 border-success/20 text-success" :
-                          "bg-neutral-150 border-neutral-250 text-neutral-500"
-                        }`}>
-                          {jc.stage || "screening"}
-                        </span>
-                      </td>
-                      <td className="p-4 text-right">
-                        {jc.application_id && (
-                          <button
-                            onClick={() => onNavigateToReview(jc.application_id!)}
-                            className="text-[10px] text-primary hover:underline font-semibold uppercase font-mono cursor-pointer flex items-center gap-0.5 ml-auto"
-                          >
-                            Review Workspace
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )
       )}
 
       {/* AI Edit JD Dialog */}

@@ -629,8 +629,11 @@ function handleMockRequest<T>(
             const list = mockDb.jobOpenings.map(j => {
               const appList = mockDb.applications.filter(a => a.job_opening_id === j.id);
               const top = appList.reduce((max, a) => (a.fuzzy_score || 0) > max ? (a.fuzzy_score || 0) : max, 0);
+              const req = mockDb.requirements.find(r => r.id === j.requirement_id);
+              const cli = req ? mockDb.clients.find(c => c.id === req.client_id) : null;
               return {
                 ...j,
+                client_name: j.client_name || cli?.name || "Generic Client",
                 candidate_count: appList.length,
                 top_score: top,
                 last_activity: new Date(j.created_at).toLocaleDateString()

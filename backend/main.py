@@ -366,8 +366,16 @@ async def create_requirement(req: RequirementModel, background_tasks: Background
 # 4. Job Openings endpoints
 @app.get("/api/v1/jobs")
 async def get_jobs(db: Client = Depends(get_supabase)):
-    res = db.table("job_openings").select("*").eq("is_deleted", False).execute()
-    return res.data
+    res = db.table("job_openings").select("*, requirements(id, title, clients(name))").eq("is_deleted", False).execute()
+    formatted = []
+    for row in res.data:
+        req = row.get("requirements") or {}
+        cli = req.get("clients") or {}
+        formatted.append({
+            **{k: v for k, v in row.items() if k != "requirements"},
+            "client_name": cli.get("name") or "Generic Client"
+        })
+    return formatted
 
 @app.post("/api/v1/jobs/{job_id}/confirm")
 async def confirm_job(job_id: str, db: Client = Depends(get_supabase)):
