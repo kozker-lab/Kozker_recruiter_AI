@@ -9,7 +9,7 @@ import Papa from "papaparse";
 import { 
   Users, UserPlus, Upload, ShieldCheck, Search, Plus, 
   ChevronDown, ChevronUp, AlertCircle, Sparkles, Database, FileSpreadsheet,
-  Filter, FileText, CheckCircle2
+  Filter, FileText, CheckCircle2, Mail, Layers
 } from "lucide-react";
 
 function mergeDuplicateCandidates(list: Candidate[]): Candidate[] {
@@ -67,6 +67,63 @@ function mergeDuplicateCandidates(list: Candidate[]): Candidate[] {
   return Array.from(map.values());
 }
 
+function CandidateRow({ c, router }: { c: Candidate; router: ReturnType<typeof useRouter> }) {
+  return (
+    <div className="hover:bg-neutral-50/20 transition-colors border-b border-neutral-150">
+      <div 
+        onClick={() => router.push(`/pool/${c.id}`)}
+        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none"
+      >
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-tight font-bold text-sm text-neutral-850 hover:text-primary transition-colors">{c.full_name}</span>
+            <span className="text-[9px] px-1.5 py-0.2 bg-neutral-100 border border-neutral-250 font-mono text-neutral-500 rounded-sm">
+              {c.source || "Manual"}
+            </span>
+            {c.working_or_not === false ? (
+              <span className="text-[9px] px-1.5 py-0.2 bg-warning/10 border border-warning/30 font-mono text-warning rounded-sm font-semibold">
+                Open to Work
+              </span>
+            ) : (
+              <span className="text-[9px] px-1.5 py-0.2 bg-success/10 border border-success/30 font-mono text-success rounded-sm font-semibold">
+                Employed
+              </span>
+            )}
+            {c.resume_url && (
+              <a
+                href={c.resume_url}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                title={`PDF Resume: ${c.resume_url}`}
+                className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-sm text-red-700 transition-colors text-[9px] font-mono font-semibold"
+              >
+                <FileText className="w-3 h-3 text-red-500" />
+                PDF CV
+              </a>
+            )}
+          </div>
+          <p className="text-[10px] text-neutral-400 font-mono">{c.email} • {c.phone || "No phone listed"}</p>
+        </div>
+
+        <div className="flex items-center gap-6 font-mono text-[10px] text-neutral-500">
+          <div>
+            <span className="text-neutral-400 mr-1.5">EXP:</span>
+            <span className="font-bold text-neutral-700">{c.experience_years} Years</span>
+          </div>
+          <div className="flex flex-wrap gap-1 max-w-xs justify-end">
+            {c.skills.slice(0, 4).map((sk, idx) => (
+              <span key={idx} className="text-[8px] bg-neutral-100 text-neutral-600 px-1 py-0.2 border border-neutral-200 rounded-sm">
+                {sk}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PoolView() {
   const queryClient = useQueryClient();
   // Filter states
@@ -75,6 +132,8 @@ export default function PoolView() {
   const [selectedWorkingStatus, setSelectedWorkingStatus] = useState("All");
   const [experienceRange, setExperienceRange] = useState("All");
   const [skillsFilter, setSkillsFilter] = useState("");
+  const [emailFilter, setEmailFilter] = useState("");
+  const [groupByEmailDomain, setGroupByEmailDomain] = useState(false);
 
   // Manual Candidate Form states
   const [name, setName] = useState("");
@@ -122,7 +181,9 @@ export default function PoolView() {
     (selectedEducation !== "All" ? 1 : 0) +
     (selectedWorkingStatus !== "All" ? 1 : 0) +
     (experienceRange !== "All" ? 1 : 0) +
-    (skillsFilter.trim() !== "" ? 1 : 0);
+    (skillsFilter.trim() !== "" ? 1 : 0) +
+    (emailFilter.trim() !== "" ? 1 : 0) +
+    (groupByEmailDomain ? 1 : 0);
 
   // Filter based on search query, education, working status, experience, and skills
   const filteredCandidates = candidates.filter(c => {
@@ -183,7 +244,13 @@ export default function PoolView() {
       );
     }
 
-    return matchesSearch && matchesEducation && matchesWorkingStatus && matchesExperience && matchesSkillsFilter;
+    // 6. Email filter
+    let matchesEmail = true;
+    if (emailFilter.trim()) {
+      matchesEmail = (c.email || "").toLowerCase().includes(emailFilter.trim().toLowerCase());
+    }
+
+    return matchesSearch && matchesEducation && matchesWorkingStatus && matchesExperience && matchesSkillsFilter && matchesEmail;
   });
 
   // Mutations
@@ -447,6 +514,41 @@ export default function PoolView() {
               </div>
             </div>
 
+            {/* Email filter row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              {/* Email Search */}
+              <div className="space-y-1">
+                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-neutral-400" />
+                  <input
+                    type="text"
+                    placeholder="Filter by email or domain (e.g. @gmail.com)..."
+                    value={emailFilter}
+                    onChange={(e) => setEmailFilter(e.target.value)}
+                    className="w-full pl-8 pr-3 p-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Group by Email Domain toggle */}
+              <div className="space-y-1">
+                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Group by Domain</label>
+                <button
+                  type="button"
+                  onClick={() => setGroupByEmailDomain(!groupByEmailDomain)}
+                  className={`w-full p-2 border rounded-sm text-xs font-mono font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                    groupByEmailDomain
+                      ? "bg-primary/10 border-primary/30 text-primary"
+                      : "bg-neutral-white border-neutral-200 text-neutral-500 hover:bg-neutral-50"
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  {groupByEmailDomain ? "Grouped by Email Domain" : "Group by Email Domain"}
+                </button>
+              </div>
+            </div>
+
             {activeFilterCount > 0 && (
               <div className="flex justify-end pt-1 border-t border-neutral-200/50">
                 <button
@@ -455,6 +557,8 @@ export default function PoolView() {
                     setSelectedWorkingStatus("All");
                     setExperienceRange("All");
                     setSkillsFilter("");
+                    setEmailFilter("");
+                    setGroupByEmailDomain(false);
                   }}
                   className="px-3 py-1 text-primary border border-primary/25 bg-primary/5 hover:bg-primary/10 rounded-sm cursor-pointer text-[10px] font-mono font-semibold"
                 >
@@ -477,65 +581,43 @@ export default function PoolView() {
           <div className="text-center py-12 text-xs text-neutral-400 font-mono">Quering deduplicated talent database...</div>
         ) : filteredCandidates.length === 0 ? (
           <div className="text-center py-12 text-xs text-neutral-400">No candidates found in sourcing query filters.</div>
-        ) : (
-          <div className="divide-y divide-neutral-150">
-            {filteredCandidates.map((c) => {
-              return (
-                <div key={c.id} className="hover:bg-neutral-50/20 transition-colors border-b border-neutral-150">
-                  {/* Row Summary */}
-                  <div 
-                    onClick={() => router.push(`/pool/${c.id}`)}
-                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-tight font-bold text-sm text-neutral-850 hover:text-primary transition-colors">{c.full_name}</span>
-                        <span className="text-[9px] px-1.5 py-0.2 bg-neutral-100 border border-neutral-250 font-mono text-neutral-500 rounded-sm">
-                          {c.source || "Manual"}
-                        </span>
-                        {c.working_or_not === false ? (
-                          <span className="text-[9px] px-1.5 py-0.2 bg-warning/10 border border-warning/30 font-mono text-warning rounded-sm font-semibold">
-                            Open to Work
-                          </span>
-                        ) : (
-                          <span className="text-[9px] px-1.5 py-0.2 bg-success/10 border border-success/30 font-mono text-success rounded-sm font-semibold">
-                            Employed
-                          </span>
-                        )}
-                        {c.resume_url && (
-                          <a
-                            href={c.resume_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            title={`PDF Resume: ${c.resume_url}`}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-sm text-red-700 transition-colors text-[9px] font-mono font-semibold"
-                          >
-                            <FileText className="w-3 h-3 text-red-500" />
-                            PDF CV
-                          </a>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-neutral-400 font-mono">{c.email} • {c.phone || "No phone listed"}</p>
+        ) : groupByEmailDomain ? (
+          /* Grouped-by-email-domain view */
+          (() => {
+            const domainGroups: Record<string, Candidate[]> = {};
+            for (const c of filteredCandidates) {
+              const domain = (c.email || "").split("@")[1]?.toLowerCase() || "unknown";
+              if (!domainGroups[domain]) domainGroups[domain] = [];
+              domainGroups[domain].push(c);
+            }
+            const sortedDomains = Object.keys(domainGroups).sort((a, b) => domainGroups[b].length - domainGroups[a].length);
+            return (
+              <div>
+                {sortedDomains.map(domain => (
+                  <div key={domain}>
+                    {/* Domain group header */}
+                    <div className="px-4 py-2.5 bg-neutral-50 border-b border-neutral-200 flex items-center gap-2 sticky top-0 z-10">
+                      <Mail className="w-3.5 h-3.5 text-primary" />
+                      <span className="font-mono font-bold text-[11px] text-primary">@{domain}</span>
+                      <span className="text-[9px] bg-primary/10 text-primary font-mono font-semibold px-1.5 py-0.5 rounded-full border border-primary/20">
+                        {domainGroups[domain].length} candidate{domainGroups[domain].length !== 1 ? "s" : ""}
+                      </span>
                     </div>
-
-                    <div className="flex items-center gap-6 font-mono text-[10px] text-neutral-500">
-                      <div>
-                        <span className="text-neutral-400 mr-1.5">EXP:</span>
-                        <span className="font-bold text-neutral-700">{c.experience_years} Years</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1 max-w-xs justify-end">
-                        {c.skills.slice(0, 4).map((sk, idx) => (
-                          <span key={idx} className="text-[8px] bg-neutral-100 text-neutral-600 px-1 py-0.2 border border-neutral-200 rounded-sm">
-                            {sk}
-                          </span>
-                        ))}
-                      </div>
+                    <div className="divide-y divide-neutral-150">
+                      {domainGroups[domain].map((c) => (
+                        <CandidateRow key={c.id} c={c} router={router} />
+                      ))}
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            );
+          })()
+        ) : (
+          <div className="divide-y divide-neutral-150">
+            {filteredCandidates.map((c) => (
+              <CandidateRow key={c.id} c={c} router={router} />
+            ))}
           </div>
         )}
       </div>

@@ -274,6 +274,23 @@ async def create_client_endpoint(client: ClientModel, db: Client = Depends(get_s
     
     return res.data[0]
 
+@app.put("/api/v1/clients/{client_id}")
+async def update_client(client_id: str, client: ClientModel, db: Client = Depends(get_supabase)):
+    res = db.table("clients").update({"name": client.name}).eq("id", client_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    # Log activity
+    db.table("activity_log").insert({
+        "action": "client_updated",
+        "entity_type": "clients",
+        "entity_id": client_id,
+        "actor_name": "Recruiter",
+        "metadata": {"client_name": client.name}
+    }).execute()
+    
+    return res.data[0]
+
 @app.delete("/api/v1/clients/{client_id}")
 async def delete_client(client_id: str, db: Client = Depends(get_supabase)):
     res = db.table("clients").update({"is_deleted": True}).eq("id", client_id).execute()

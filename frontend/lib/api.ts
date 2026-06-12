@@ -793,6 +793,23 @@ async function handleMockRequest<T>(
             return resolve(newClient as unknown as T);
           }
         }
+        if (path.startsWith("/clients/") && method === "PUT") {
+          const id = path.split("/")[2];
+          const idx = mockDb.clients.findIndex(c => c.id === id && c.created_by === currentUserId);
+          if (idx === -1) return reject(new Error("Client not found"));
+          mockDb.clients[idx] = { ...mockDb.clients[idx], name: data.name };
+          mockDb.activityLogs.unshift({
+            id: `act-${Date.now()}`,
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
+            action: "client_updated",
+            entity_type: "clients",
+            entity_id: id,
+            metadata: { client_name: data.name },
+            created_at: new Date().toISOString()
+          });
+          return resolve(mockDb.clients[idx] as unknown as T);
+        }
         if (path.startsWith("/clients/") && method === "DELETE") {
           const id = path.split("/")[2];
           mockDb.clients = mockDb.clients.filter(c => c.id !== id || c.created_by === currentUserId);
