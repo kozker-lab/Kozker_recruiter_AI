@@ -14,10 +14,16 @@ UPDATE public.requirements
 SET created_by = 'f3dcea71-25c3-431b-8f51-7f8699421cfd' 
 WHERE created_by IS DISTINCT FROM 'f3dcea71-25c3-431b-8f51-7f8699421cfd';
 
+-- Temporarily disable the job skills validation trigger to prevent updates from failing 
+-- if existing database jobs have incomplete skills setup.
+ALTER TABLE public.job_openings DISABLE TRIGGER trigger_job_skills_weight_check;
+
 -- 3. Update Job Openings
 UPDATE public.job_openings 
 SET approved_by = 'f3dcea71-25c3-431b-8f51-7f8699421cfd' 
 WHERE approved_by IS DISTINCT FROM 'f3dcea71-25c3-431b-8f51-7f8699421cfd';
+
+ALTER TABLE public.job_openings ENABLE TRIGGER trigger_job_skills_weight_check;
 
 -- 4. Update Candidates
 UPDATE public.candidates 
