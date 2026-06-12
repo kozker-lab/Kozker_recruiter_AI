@@ -552,26 +552,48 @@ export async function apiRequest<T>(
 }
 
 // Route matching patterns for the mock layer
-function handleMockRequest<T>(
+// Route matching patterns for the mock layer
+async function handleMockRequest<T>(
   method: string,
   path: string,
   data: any
 ): Promise<T> {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  const currentUserId = session?.user?.id || "usr-1";
+  const currentUserEmail = session?.user?.email || "recruiter@kozker.ai";
+  const currentUserFullName = session?.user?.user_metadata?.full_name || "Alex Mercer";
+
+  // Dynamically register active user in mock users if not present
+  if (session?.user && !mockDb.users.some(u => u.id === session.user.id)) {
+    mockDb.users.push({
+      id: session.user.id,
+      email: session.user.email || "",
+      full_name: session.user.user_metadata?.full_name || "Recruiter",
+      role: "recruiter",
+      is_onboarded: false,
+      created_at: new Date().toISOString()
+    });
+  }
+
   return new Promise((resolve, reject) => {
     // Artificial Latency
     setTimeout(() => {
       try {
         // AUTH
         if (path === "/auth/me") {
-          return resolve(mockDb.users[0] as unknown as T);
+          const userObj = mockDb.users.find(u => u.id === currentUserId) || mockDb.users[0];
+          return resolve(userObj as unknown as T);
         }
         if (path === "/auth/onboarded" && method === "PATCH") {
-          mockDb.users[0].is_onboarded = true;
-          return resolve(mockDb.users[0] as unknown as T);
+          const userObj = mockDb.users.find(u => u.id === currentUserId);
+          if (userObj) userObj.is_onboarded = true;
+          return resolve((userObj || mockDb.users[0]) as unknown as T);
         }
         if (path === "/auth/login" || path === "/auth/signup") {
+          const userObj = mockDb.users.find(u => u.id === currentUserId) || mockDb.users[0];
           return resolve({
-            user: mockDb.users[0],
+            user: userObj,
             session: { access_token: "mock-jwt-token", refresh_token: "mock-refresh-token" }
           } as unknown as T);
         }
@@ -579,13 +601,14 @@ function handleMockRequest<T>(
         // CLIENTS
         if (path === "/clients") {
           if (method === "GET") {
-            return resolve(mockDb.clients as unknown as T);
+            const list = mockDb.clients.filter(c => c.created_by === currentUserId);
+            return resolve(list as unknown as T);
           }
           if (method === "POST") {
             const newClient: Client = {
               id: `cli-${Date.now()}`,
               name: data.name,
-              created_by: "usr-1",
+              created_by: currentUserId,
               created_at: new Date().toISOString(),
               requirements_count: 0,
               active_jobs_count: 0
@@ -594,8 +617,8 @@ function handleMockRequest<T>(
             // log activity
             mockDb.activityLogs.unshift({
               id: `act-${Date.now()}`,
-              actor_id: "usr-1",
-              actor_name: "Alex Mercer",
+              actor_id: currentUserId,
+              actor_name: currentUserFullName,
               action: "client_created",
               entity_type: "clients",
               entity_id: newClient.id,
@@ -607,17 +630,18 @@ function handleMockRequest<T>(
         }
         if (path.startsWith("/clients/") && method === "DELETE") {
           const id = path.split("/")[2];
-          mockDb.clients = mockDb.clients.filter(c => c.id !== id);
+          mockDb.clients = mockDb.clients.filter(c => c.id !== id || c.created_by === currentUserId);
           return resolve({ success: true } as unknown as T);
         }
 
         // REQUIREMENTS
         if (path === "/requirements") {
           if (method === "GET") {
-            return resolve(mockDb.requirements as unknown as T);
+            const list = mockDb.requirements.filter(r => r.created_by === currentUserId);
+            return resolve(list as unknown as T);
           }
           if (method === "POST") {
-            const client = mockDb.clients.find(c => c.id === data.client_id) || { name: data.client_id };
+            const client = mockDb.clients.find(c => c.id === data.client_id && c.created_by === currentUserId) || { name: data.client_id };
             const newReq: Requirement = {
               id: `req-${Date.now()}`,
               client_id: data.client_id,
@@ -633,7 +657,7 @@ function handleMockRequest<T>(
               notes: data.notes,
               num_posts_requested: data.num_posts_requested || 1,
               status: "ready",
-              created_by: "usr-1",
+              created_by: currentUserId,
               created_at: new Date().toISOString()
             };
             mockDb.requirements.push(newReq);
@@ -664,7 +688,7 @@ function handleMockRequest<T>(
                 status: "draft",
                 processing_status: "generating",
                 error_message: null,
-                created_by: "usr-1",
+                created_by: currentUserId,
                 created_at: new Date().toISOString(),
                 published_at: null
               };
@@ -679,8 +703,8 @@ function handleMockRequest<T>(
                   // Log to activity log
                   mockDb.activityLogs.unshift({
                     id: `act-${Date.now()}`,
-                    actor_id: "usr-1",
-                    actor_name: "Alex Mercer",
+                    actor_id: currentUserId,
+                    actor_name: currentUserFullName,
                     action: "job_draft_ready",
                     entity_type: "job_openings",
                     entity_id: liveJob.id,
@@ -693,7 +717,7 @@ function handleMockRequest<T>(
             
             // Update client counters
             if (newReq.client_id) {
-              const cIndex = mockDb.clients.findIndex(c => c.id === newReq.client_id);
+              const cIndex = mockDb.clients.findIndex(c => c.id === newReq.client_id && c.created_by === currentUserId);
               if (cIndex !== -1) {
                 mockDb.clients[cIndex].requirements_count = (mockDb.clients[cIndex].requirements_count || 0) + 1;
                 mockDb.clients[cIndex].active_jobs_count = (mockDb.clients[cIndex].active_jobs_count || 0) + newReq.num_posts_requested;
@@ -703,8 +727,8 @@ function handleMockRequest<T>(
             // log activity
             mockDb.activityLogs.unshift({
               id: `act-${Date.now()}`,
-              actor_id: "usr-1",
-              actor_name: "Alex Mercer",
+              actor_id: currentUserId,
+              actor_name: currentUserFullName,
               action: "requirement_created",
               entity_type: "requirements",
               entity_id: newReq.id,
@@ -717,7 +741,7 @@ function handleMockRequest<T>(
         }
         if (path.startsWith("/requirements/") && method === "GET") {
           const id = path.split("/")[2];
-          const req = mockDb.requirements.find(r => r.id === id);
+          const req = mockDb.requirements.find(r => r.id === id && r.created_by === currentUserId);
           if (!req) return reject(new Error("Not found"));
           // Attach linked openings
           const openings = mockDb.jobOpenings.filter(o => o.requirement_id === id);
@@ -725,7 +749,7 @@ function handleMockRequest<T>(
         }
         if (path.startsWith("/requirements/") && method === "PUT") {
           const id = path.split("/")[2];
-          const index = mockDb.requirements.findIndex(r => r.id === id);
+          const index = mockDb.requirements.findIndex(r => r.id === id && r.created_by === currentUserId);
           if (index === -1) return reject(new Error("Not found"));
           
           mockDb.requirements[index] = {
@@ -737,8 +761,8 @@ function handleMockRequest<T>(
           // log activity
           mockDb.activityLogs.unshift({
             id: `act-${Date.now()}`,
-            actor_id: "usr-1",
-            actor_name: "Alex Mercer",
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
             action: "requirement_updated",
             entity_type: "requirements",
             entity_id: id,
@@ -752,20 +776,22 @@ function handleMockRequest<T>(
         // JOBS
         if (path === "/jobs") {
           if (method === "GET") {
-            // Attach computed fields
-            const list = mockDb.jobOpenings.map(j => {
-              const appList = mockDb.applications.filter(a => a.job_opening_id === j.id);
-              const top = appList.reduce((max, a) => (a.fuzzy_score || 0) > max ? (a.fuzzy_score || 0) : max, 0);
-              const req = mockDb.requirements.find(r => r.id === j.requirement_id);
-              const cli = req ? mockDb.clients.find(c => c.id === req.client_id) : null;
-              return {
-                ...j,
-                client_name: j.client_name || cli?.name || "Generic Client",
-                candidate_count: appList.length,
-                top_score: top,
-                last_activity: new Date(j.created_at).toLocaleDateString()
-              };
-            });
+            // Attach computed fields, filtering by user requirements/created jobs
+            const list = mockDb.jobOpenings
+              .filter(j => j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId))
+              .map(j => {
+                const appList = mockDb.applications.filter(a => a.job_opening_id === j.id);
+                const top = appList.reduce((max, a) => (a.fuzzy_score || 0) > max ? (a.fuzzy_score || 0) : max, 0);
+                const req = mockDb.requirements.find(r => r.id === j.requirement_id);
+                const cli = req ? mockDb.clients.find(c => c.id === req.client_id) : null;
+                return {
+                  ...j,
+                  client_name: j.client_name || cli?.name || "Generic Client",
+                  candidate_count: appList.length,
+                  top_score: top,
+                  last_activity: new Date(j.created_at).toLocaleDateString()
+                };
+              });
             return resolve(list as unknown as T);
           }
           if (method === "POST") {
@@ -786,7 +812,7 @@ function handleMockRequest<T>(
               status: "draft",
               processing_status: "ready",
               error_message: null,
-              created_by: "usr-1",
+              created_by: currentUserId,
               created_at: new Date().toISOString(),
               published_at: null
             };
@@ -794,8 +820,8 @@ function handleMockRequest<T>(
             // activity
             mockDb.activityLogs.unshift({
               id: `act-${Date.now()}`,
-              actor_id: "usr-1",
-              actor_name: "Alex Mercer",
+              actor_id: currentUserId,
+              actor_name: currentUserFullName,
               action: "job_created_manual",
               entity_type: "job_openings",
               entity_id: newJob.id,
@@ -807,14 +833,14 @@ function handleMockRequest<T>(
         }
         if (path.startsWith("/jobs/") && path.endsWith("/confirm") && method === "POST") {
           const id = path.split("/")[2];
-          const job = mockDb.jobOpenings.find(j => j.id === id);
+          const job = mockDb.jobOpenings.find(j => j.id === id && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
           if (!job) return reject(new Error("Job not found"));
           job.status = "confirmed";
           
           mockDb.activityLogs.unshift({
             id: `act-${Date.now()}`,
-            actor_id: "usr-1",
-            actor_name: "Alex Mercer",
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
             action: "job_confirmed",
             entity_type: "job_openings",
             entity_id: job.id,
@@ -825,7 +851,7 @@ function handleMockRequest<T>(
         }
         if (path.startsWith("/jobs/") && path.endsWith("/scan-and-publish") && method === "POST") {
           const id = path.split("/")[2];
-          const job = mockDb.jobOpenings.find(j => j.id === id);
+          const job = mockDb.jobOpenings.find(j => j.id === id && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
           if (!job) return reject(new Error("Job not found"));
           
           job.processing_status = "skill_approval";
@@ -856,11 +882,15 @@ function handleMockRequest<T>(
         }
         if (path.startsWith("/jobs/") && path.endsWith("/skills") && method === "GET") {
           const id = path.split("/")[2];
+          const job = mockDb.jobOpenings.find(j => j.id === id && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
+          if (!job) return reject(new Error("Job not found"));
           const skills = mockDb.jobOpeningSkills.filter(s => s.job_opening_id === id);
           return resolve(skills as unknown as T);
         }
         if (path.startsWith("/jobs/") && path.endsWith("/skills") && method === "PUT") {
           const id = path.split("/")[2];
+          const job = mockDb.jobOpenings.find(j => j.id === id && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
+          if (!job) return reject(new Error("Job not found"));
           const incomingSkills = data.skills as JobOpeningSkill[];
           
           // Save and mark approved
@@ -873,108 +903,108 @@ function handleMockRequest<T>(
           });
 
           // Trigger async candidate scanning
-          const job = mockDb.jobOpenings.find(j => j.id === id);
-          if (job) {
-            job.processing_status = "matching";
+          job.processing_status = "matching";
+          
+          setTimeout(() => {
+            // Populate Job Candidates by mapping and matching each candidate
+            mockDb.jobCandidates = mockDb.jobCandidates.filter(jc => jc.job_opening_id !== id);
             
-            setTimeout(() => {
-              // Populate Job Candidates by mapping and matching each candidate
-              mockDb.jobCandidates = mockDb.jobCandidates.filter(jc => jc.job_opening_id !== id);
-              
-              // Score all candidates in the candidate list
-              mockDb.candidates.forEach((cand, cIdx) => {
-                const matchResult = calculateMockFuzzyMatchScore(cand, id);
+            // Score all candidates in the candidate list
+            mockDb.candidates.filter(c => c.uploaded_by === currentUserId).forEach((cand, cIdx) => {
+              const matchResult = calculateMockFuzzyMatchScore(cand, id);
 
-                // Check if application exists, else create
-                let app = mockDb.applications.find(a => a.candidate_id === cand.id && a.job_opening_id === id);
-                if (!app) {
-                  app = {
-                    id: `app-gen-${Date.now()}-${cIdx}`,
-                    candidate_id: cand.id,
-                    job_opening_id: id,
-                    candidate_cv: cand.resume_url,
-                    fuzzy_score: matchResult.fuzzy_score,
-                    match_score: matchResult.match_score,
-                    match_reason: matchResult.match_reason,
-                    strengths: matchResult.strengths,
-                    skill_gaps: matchResult.skill_gaps,
-                    screening_status: "pending",
-                    stage: "screening",
-                    stage_status: "pending",
-                    stage_notes: null,
-                    priority: 0,
-                    reviewed_by: null,
-                    reviewed_at: null,
-                    created_at: new Date().toISOString()
-                  };
-                  mockDb.applications.push(app);
-                } else {
-                  app.fuzzy_score = matchResult.fuzzy_score;
-                  app.match_score = matchResult.match_score;
-                  app.match_reason = matchResult.match_reason;
-                  app.strengths = matchResult.strengths;
-                  app.skill_gaps = matchResult.skill_gaps;
-                }
-
-                // Add to Job Candidates
-                mockDb.jobCandidates.push({
-                  id: `jc-${Date.now()}-${cIdx}`,
-                  job_opening_id: id,
-                  application_id: app.id,
-                  fuzzy_score: matchResult.fuzzy_score,
-                  rank_order: cIdx + 1,
-                  created_at: new Date().toISOString(),
+              // Check if application exists, else create
+              let app = mockDb.applications.find(a => a.candidate_id === cand.id && a.job_opening_id === id);
+              if (!app) {
+                app = {
+                  id: `app-gen-${Date.now()}-${cIdx}`,
                   candidate_id: cand.id,
-                  candidate_name: cand.full_name,
-                  experience_years: cand.experience_years || 0,
-                  skills: cand.skills,
-                  strengths: app.strengths,
-                  skill_gaps: app.skill_gaps,
-                  stage: app.stage,
-                  stage_status: app.stage_status
-                });
-              });
+                  job_opening_id: id,
+                  candidate_cv: cand.resume_url,
+                  fuzzy_score: matchResult.fuzzy_score,
+                  match_score: matchResult.match_score,
+                  match_reason: matchResult.match_reason,
+                  strengths: matchResult.strengths,
+                  skill_gaps: matchResult.skill_gaps,
+                  screening_status: "pending",
+                  stage: "screening",
+                  stage_status: "pending",
+                  stage_notes: null,
+                  priority: 0,
+                  reviewed_by: currentUserId,
+                  reviewed_at: new Date().toISOString(),
+                  created_at: new Date().toISOString()
+                };
+                mockDb.applications.push(app);
+              } else {
+                app.fuzzy_score = matchResult.fuzzy_score;
+                app.match_score = matchResult.match_score;
+                app.match_reason = matchResult.match_reason;
+                app.strengths = matchResult.strengths;
+                app.skill_gaps = matchResult.skill_gaps;
+              }
 
-              // Sort by score
-              const relevantCandidates = mockDb.jobCandidates.filter(jc => jc.job_opening_id === id);
-              relevantCandidates.sort((a,b) => b.fuzzy_score - a.fuzzy_score);
-              relevantCandidates.forEach((jc, order) => {
-                jc.rank_order = order + 1;
+              // Add to Job Candidates
+              mockDb.jobCandidates.push({
+                id: `jc-${Date.now()}-${cIdx}`,
+                job_opening_id: id,
+                application_id: app.id,
+                fuzzy_score: matchResult.fuzzy_score,
+                rank_order: cIdx + 1,
+                created_at: new Date().toISOString(),
+                candidate_id: cand.id,
+                candidate_name: cand.full_name,
+                experience_years: cand.experience_years || 0,
+                skills: cand.skills,
+                strengths: app.strengths,
+                skill_gaps: app.skill_gaps,
+                stage: app.stage,
+                stage_status: app.stage_status
               });
+            });
 
-              job.processing_status = "ready";
-              job.status = "published";
-              job.published_at = new Date().toISOString();
+            // Sort by score
+            const relevantCandidates = mockDb.jobCandidates.filter(jc => jc.job_opening_id === id);
+            relevantCandidates.sort((a,b) => b.fuzzy_score - a.fuzzy_score);
+            relevantCandidates.forEach((jc, order) => {
+              jc.rank_order = order + 1;
+            });
 
-              // Log audit
-              mockDb.activityLogs.unshift({
-                id: `act-${Date.now()}`,
-                actor_id: "usr-1",
-                actor_name: "Alex Mercer",
-                action: "candidates_matched",
-                entity_type: "job_openings",
-                entity_id: id,
-                metadata: { job_title: job.title, count: relevantCandidates.length },
-                created_at: new Date().toISOString()
-              });
-            }, 3000);
-          }
+            job.processing_status = "ready";
+            job.status = "published";
+            job.published_at = new Date().toISOString();
+
+            // Log audit
+            mockDb.activityLogs.unshift({
+              id: `act-${Date.now()}`,
+              actor_id: currentUserId,
+              actor_name: currentUserFullName,
+              action: "candidates_matched",
+              entity_type: "job_openings",
+              entity_id: id,
+              metadata: { job_title: job.title, count: relevantCandidates.length },
+              created_at: new Date().toISOString()
+            });
+          }, 3000);
+
           return resolve({ success: true } as unknown as T);
         }
         if (path.startsWith("/jobs/") && path.endsWith("/candidates") && method === "GET") {
           const id = path.split("/")[2];
+          const job = mockDb.jobOpenings.find(j => j.id === id && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
+          if (!job) return reject(new Error("Job not found"));
           const candList = mockDb.jobCandidates.filter(jc => jc.job_opening_id === id);
           return resolve(candList as unknown as T);
         }
         if (path.startsWith("/jobs/") && method === "GET") {
           const id = path.split("/")[2];
-          const job = mockDb.jobOpenings.find(j => j.id === id);
+          const job = mockDb.jobOpenings.find(j => j.id === id && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
           if (!job) return reject(new Error("Job not found"));
           return resolve(job as unknown as T);
         }
         if (path.startsWith("/jobs/") && method === "PATCH") {
           const id = path.split("/")[2];
-          const jobIndex = mockDb.jobOpenings.findIndex(j => j.id === id);
+          const jobIndex = mockDb.jobOpenings.findIndex(j => j.id === id && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
           if (jobIndex === -1) return reject(new Error("Job not found"));
           mockDb.jobOpenings[jobIndex] = {
             ...mockDb.jobOpenings[jobIndex],
@@ -984,7 +1014,7 @@ function handleMockRequest<T>(
         }
         if (path.startsWith("/jobs/") && path.endsWith("/regenerate") && method === "POST") {
           const id = path.split("/")[2];
-          const job = mockDb.jobOpenings.find(j => j.id === id);
+          const job = mockDb.jobOpenings.find(j => j.id === id && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
           if (!job) return reject(new Error("Job not found"));
           
           job.processing_status = "generating";
@@ -999,14 +1029,20 @@ function handleMockRequest<T>(
 
         // CANDIDATES
         if (path === "/candidates" && method === "GET") {
-          return resolve(mockDb.candidates as unknown as T);
+          const list = mockDb.candidates.filter(c => c.uploaded_by === currentUserId);
+          return resolve(list as unknown as T);
         }
         if (path.startsWith("/candidates/") && path.endsWith("/resume-url") && method === "GET") {
+          const candidateId = path.split("/")[2];
+          const cand = mockDb.candidates.find(c => c.id === candidateId && c.uploaded_by === currentUserId);
+          if (!cand) return reject(new Error("Not found"));
           return resolve({ url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" } as unknown as T);
         }
         if (path.startsWith("/candidates/") && path.endsWith("/applications") && method === "GET") {
           const parts = path.split("/");
           const candidateId = parts[2];
+          const cand = mockDb.candidates.find(c => c.id === candidateId && c.uploaded_by === currentUserId);
+          if (!cand) return reject(new Error("Not found"));
           const candidateApps = mockDb.applications
             .filter(a => a.candidate_id === candidateId)
             .map(a => {
@@ -1022,6 +1058,8 @@ function handleMockRequest<T>(
         if (path.startsWith("/candidates/") && path.endsWith("/history") && method === "GET") {
           const parts = path.split("/");
           const candidateId = parts[2];
+          const cand = mockDb.candidates.find(c => c.id === candidateId && c.uploaded_by === currentUserId);
+          if (!cand) return reject(new Error("Not found"));
           const candidateApps = mockDb.applications.filter(a => a.candidate_id === candidateId);
           
           const history = candidateApps.map(app => {
@@ -1052,13 +1090,13 @@ function handleMockRequest<T>(
         }
         if (path.startsWith("/candidates/") && method === "GET") {
           const id = path.split("/")[2];
-          const cand = mockDb.candidates.find(c => c.id === id);
+          const cand = mockDb.candidates.find(c => c.id === id && c.uploaded_by === currentUserId);
           if (!cand) return reject(new Error("Not found"));
           return resolve(cand as unknown as T);
         }
         if (path === "/candidates" && method === "POST") {
           // Check duplicate email -> MERGE IF EXISTS
-          const exists = mockDb.candidates.find(c => c.email.toLowerCase() === data.email.toLowerCase());
+          const exists = mockDb.candidates.find(c => c.email.toLowerCase() === data.email.toLowerCase() && c.uploaded_by === currentUserId);
           if (exists) {
             exists.full_name = data.full_name || exists.full_name;
             exists.phone = data.phone || exists.phone;
@@ -1087,7 +1125,7 @@ function handleMockRequest<T>(
             academic_details: data.academic_details || null,
             achievements: data.achievements || null,
             source: "manual",
-            uploaded_by: "usr-1",
+            uploaded_by: currentUserId,
             created_at: new Date().toISOString(),
             linked_jobs: []
           };
@@ -1095,8 +1133,8 @@ function handleMockRequest<T>(
           // Activity
           mockDb.activityLogs.unshift({
             id: `act-${Date.now()}`,
-            actor_id: "usr-1",
-            actor_name: "Alex Mercer",
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
             action: "candidate_created_manual",
             entity_type: "candidates",
             entity_id: newCand.id,
@@ -1110,10 +1148,10 @@ function handleMockRequest<T>(
           const jobId = parts[2];
           const candId = parts[4];
           
-          const cand = mockDb.candidates.find(c => c.id === candId);
+          const cand = mockDb.candidates.find(c => c.id === candId && c.uploaded_by === currentUserId);
           if (!cand) return reject(new Error("Candidate not found"));
           
-          const job = mockDb.jobOpenings.find(j => j.id === jobId);
+          const job = mockDb.jobOpenings.find(j => j.id === jobId && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
           if (!job) return reject(new Error("Job not found"));
           
           // Check if already exists
@@ -1138,8 +1176,8 @@ function handleMockRequest<T>(
             stage_status: "pending" as const,
             stage_notes: null,
             priority: 0,
-            reviewed_by: null,
-            reviewed_at: null,
+            reviewed_by: currentUserId,
+            reviewed_at: new Date().toISOString(),
             created_at: new Date().toISOString()
           };
           mockDb.applications.push(app);
@@ -1179,8 +1217,8 @@ function handleMockRequest<T>(
           
           mockDb.activityLogs.unshift({
             id: `act-${Date.now()}`,
-            actor_id: "usr-1",
-            actor_name: "Alex Mercer",
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
             action: "candidate_linked",
             entity_type: "applications",
             entity_id: appId,
@@ -1191,16 +1229,18 @@ function handleMockRequest<T>(
           return resolve({ success: true, application: app } as unknown as T);
         }
         if ((path === "/candidates/upload/csv" || path.startsWith("/jobs/")) && method === "POST") {
-          // Bulk uploader CSV parser mockup
-          // Returns summary
           const jobId = path.includes("/jobs/") ? path.split("/")[3] : undefined;
+          if (jobId) {
+            const job = mockDb.jobOpenings.find(j => j.id === jobId && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
+            if (!job) return reject(new Error("Job opening not found or access denied"));
+          }
           const items = data.items || [];
           let inserted = 0;
           let skipped = 0;
           
           items.forEach((item: any, idx: number) => {
             if (!item.email || !item.full_name) return;
-            const exists = mockDb.candidates.find(c => c.email.toLowerCase() === item.email.toLowerCase());
+            const exists = mockDb.candidates.find(c => c.email.toLowerCase() === item.email.toLowerCase() && c.uploaded_by === currentUserId);
             if (exists) {
               skipped++;
               if (jobId && !mockDb.applications.some(a => a.candidate_id === exists.id && a.job_opening_id === jobId)) {
@@ -1220,8 +1260,8 @@ function handleMockRequest<T>(
                   stage_status: "pending" as const,
                   stage_notes: null,
                   priority: 0,
-                  reviewed_by: null,
-                  reviewed_at: null,
+                  reviewed_by: currentUserId,
+                  reviewed_at: new Date().toISOString(),
                   created_at: new Date().toISOString()
                 };
                 mockDb.applications.push(app);
@@ -1259,7 +1299,7 @@ function handleMockRequest<T>(
                 academic_details: item.academic_details || null,
                 achievements: item.achievements || null,
                 source: "csv",
-                uploaded_by: "usr-1",
+                uploaded_by: currentUserId,
                 created_at: new Date().toISOString()
               };
               mockDb.candidates.push(newCand);
@@ -1280,8 +1320,8 @@ function handleMockRequest<T>(
                   stage_status: "pending" as const,
                   stage_notes: null,
                   priority: 0,
-                  reviewed_by: null,
-                  reviewed_at: null,
+                  reviewed_by: currentUserId,
+                  reviewed_at: new Date().toISOString(),
                   created_at: new Date().toISOString()
                 };
                 mockDb.applications.push(app);
@@ -1297,21 +1337,28 @@ function handleMockRequest<T>(
           const id = path.split("/")[2];
           const app = mockDb.applications.find(a => a.id === id);
           if (!app) return reject(new Error("Application not found"));
+          const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+          const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+          const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
+          if (accessDenied) return reject(new Error("Access denied"));
+
           app.screening_status = "accepted";
+          app.reviewed_by = currentUserId;
+          app.reviewed_at = new Date().toISOString();
           
           // Trigger screening question generation mock
           setTimeout(() => {
-            const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
-            const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+            const jobObj = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+            const candObj = mockDb.candidates.find(c => c.id === app.candidate_id);
             
             mockDb.screeningQuestions = mockDb.screeningQuestions.filter(q => q.application_id !== id);
             const generated = [
               {
                 id: `q-g1-${Date.now()}`,
                 application_id: id,
-                requirement_id: app.job_opening_id ? job?.requirement_id || null : null,
+                requirement_id: app.job_opening_id ? jobObj?.requirement_id || null : null,
                 job_opening_id: app.job_opening_id,
-                question: `Based on your resume, can you detail a project where you solved a ${cand?.skills[0] || "React"} challenge?`,
+                question: `Based on your resume, can you detail a project where you solved a ${candObj?.skills[0] || "React"} challenge?`,
                 difficulty: "easy" as const,
                 question_order: 1,
                 modified: false, modified_by: null, modified_at: null, created_at: new Date().toISOString()
@@ -1319,7 +1366,7 @@ function handleMockRequest<T>(
               {
                 id: `q-g2-${Date.now()}`,
                 application_id: id,
-                requirement_id: app.job_opening_id ? job?.requirement_id || null : null,
+                requirement_id: app.job_opening_id ? jobObj?.requirement_id || null : null,
                 job_opening_id: app.job_opening_id,
                 question: `Explain how you would handle low latency state synchronization in micro-frontends.`,
                 difficulty: "medium" as const,
@@ -1329,7 +1376,7 @@ function handleMockRequest<T>(
               {
                 id: `q-g3-${Date.now()}`,
                 application_id: id,
-                requirement_id: app.job_opening_id ? job?.requirement_id || null : null,
+                requirement_id: app.job_opening_id ? jobObj?.requirement_id || null : null,
                 job_opening_id: app.job_opening_id,
                 question: `Describe your technical strategy for monitoring Core Web Vitals inside enterprise cloud applications.`,
                 difficulty: "hard" as const,
@@ -1342,8 +1389,8 @@ function handleMockRequest<T>(
 
           mockDb.activityLogs.unshift({
             id: `act-${Date.now()}`,
-            actor_id: "usr-1",
-            actor_name: "Alex Mercer",
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
             action: "candidate_accepted",
             entity_type: "applications",
             entity_id: app.id,
@@ -1357,9 +1404,16 @@ function handleMockRequest<T>(
           const id = path.split("/")[2];
           const app = mockDb.applications.find(a => a.id === id);
           if (!app) return reject(new Error("Application not found"));
+          const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+          const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+          const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
+          if (accessDenied) return reject(new Error("Access denied"));
+
           app.screening_status = "rejected";
           app.stage = "rejected";
           app.stage_status = "failed";
+          app.reviewed_by = currentUserId;
+          app.reviewed_at = new Date().toISOString();
           
           if (data && data.reason) {
             app.stage_notes = data.reason;
@@ -1367,8 +1421,8 @@ function handleMockRequest<T>(
 
           mockDb.activityLogs.unshift({
             id: `act-${Date.now()}`,
-            actor_id: "usr-1",
-            actor_name: "Alex Mercer",
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
             action: "candidate_rejected",
             entity_type: "applications",
             entity_id: app.id,
@@ -1382,6 +1436,10 @@ function handleMockRequest<T>(
           const id = path.split("/")[2];
           const app = mockDb.applications.find(a => a.id === id);
           if (!app) return reject(new Error("Application not found"));
+          const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+          const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+          const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
+          if (accessDenied) return reject(new Error("Access denied"));
           
           app.stage = data.stage;
           app.stage_status = data.stage_status;
@@ -1411,14 +1469,14 @@ function handleMockRequest<T>(
             scheduled_at: new Date().toISOString(),
             completed_at: new Date().toISOString(),
             notes: data.notes || "Stage state updated.",
-            updated_by: "usr-1",
+            updated_by: currentUserId,
             created_at: new Date().toISOString()
           });
 
           mockDb.activityLogs.unshift({
             id: `act-${Date.now()}`,
-            actor_id: "usr-1",
-            actor_name: "Alex Mercer",
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
             action: "stage_updated",
             entity_type: "applications",
             entity_id: id,
@@ -1430,11 +1488,25 @@ function handleMockRequest<T>(
         }
         if (path.startsWith("/applications/") && path.endsWith("/questions") && method === "GET") {
           const id = path.split("/")[2];
+          const app = mockDb.applications.find(a => a.id === id);
+          if (!app) return reject(new Error("Application not found"));
+          const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+          const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+          const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
+          if (accessDenied) return reject(new Error("Access denied"));
+
           const qs = mockDb.screeningQuestions.filter(q => q.application_id === id);
           return resolve(qs as unknown as T);
         }
         if (path.startsWith("/applications/") && path.endsWith("/questions") && method === "POST") {
           const appId = path.split("/")[2];
+          const app = mockDb.applications.find(a => a.id === appId);
+          if (!app) return reject(new Error("Application not found"));
+          const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+          const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+          const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
+          if (accessDenied) return reject(new Error("Access denied"));
+
           const newQ = {
             id: `q-custom-${Date.now()}`,
             application_id: appId,
@@ -1446,7 +1518,7 @@ function handleMockRequest<T>(
             question_order: mockDb.screeningQuestions.filter(q => q.application_id === appId).length + 1,
             ai_generated: false,
             modified: false,
-            modified_by: null,
+            modified_by: currentUserId,
             modified_at: null,
             created_at: new Date().toISOString()
           };
@@ -1455,23 +1527,40 @@ function handleMockRequest<T>(
         }
         if (path.startsWith("/applications/") && path.endsWith("/stages") && method === "GET") {
           const id = path.split("/")[2];
+          const app = mockDb.applications.find(a => a.id === id);
+          if (!app) return reject(new Error("Application not found"));
+          const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+          const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+          const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
+          if (accessDenied) return reject(new Error("Access denied"));
+
           const stages = mockDb.interviewStages.filter(s => s.application_id === id);
           return resolve(stages as unknown as T);
         }
         if (path === "/applications" && method === "GET") {
-          const list = mockDb.applications.map(app => {
-            const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
-            const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
-            const clientObj = job ? mockDb.clients.find(c => c.id === job.client_id) : null;
-            return {
-              ...app,
-              candidates: cand,
-              job_openings: job ? {
-                ...job,
-                clients: clientObj ? { name: clientObj.name } : null
-              } : null
-            };
-          });
+          const list = mockDb.applications
+            .filter(app => {
+              const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+              const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+              return (
+                app.reviewed_by === currentUserId ||
+                (cand && cand.uploaded_by === currentUserId) ||
+                (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId)))
+              );
+            })
+            .map(app => {
+              const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+              const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+              const clientObj = job ? mockDb.clients.find(c => c.id === job.client_id) : null;
+              return {
+                ...app,
+                candidates: cand,
+                job_openings: job ? {
+                  ...job,
+                  clients: clientObj ? { name: clientObj.name } : null
+                } : null
+              };
+            });
           return resolve(list as unknown as T);
         }
         if (path.startsWith("/applications/") && method === "GET") {
@@ -1481,6 +1570,10 @@ function handleMockRequest<T>(
           
           // Hydrate name & email
           const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+          const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+          const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
+          if (accessDenied) return reject(new Error("Access denied"));
+
           return resolve({
             ...app,
             candidate_name: cand?.full_name,
@@ -1496,22 +1589,35 @@ function handleMockRequest<T>(
           const id = path.split("/")[2];
           const q = mockDb.screeningQuestions.find(sq => sq.id === id);
           if (!q) return reject(new Error("Question not found"));
+          const app = mockDb.applications.find(a => a.id === q.application_id);
+          if (!app) return reject(new Error("Application not found"));
+          const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+          const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+          const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
+          if (accessDenied) return reject(new Error("Access denied"));
+
           q.question = data.question;
           q.modified = true;
           q.modified_at = new Date().toISOString();
-          q.modified_by = "usr-1";
+          q.modified_by = currentUserId;
           return resolve(q as unknown as T);
         }
         if (path.startsWith("/questions/") && path.endsWith("/ai-edit") && method === "POST") {
           const id = path.split("/")[2];
           const q = mockDb.screeningQuestions.find(sq => sq.id === id);
           if (!q) return reject(new Error("Question not found"));
+          const app = mockDb.applications.find(a => a.id === q.application_id);
+          if (!app) return reject(new Error("Application not found"));
+          const cand = mockDb.candidates.find(c => c.id === app.candidate_id);
+          const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+          const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
+          if (accessDenied) return reject(new Error("Access denied"));
           
           // Simulate Claude editing the question based on instructions
           q.question = `${q.question} (Refined with: "${data.instruction}")`;
           q.modified = true;
           q.modified_at = new Date().toISOString();
-          q.modified_by = "usr-1";
+          q.modified_by = currentUserId;
           return resolve(q as unknown as T);
         }
 
@@ -1520,10 +1626,14 @@ function handleMockRequest<T>(
           const { message, current_page } = data;
           let reply = "";
           
+          const openJobsCount = mockDb.jobOpenings.filter(j => j.status === 'published' && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId))).length;
+          const draftJobsCount = mockDb.jobOpenings.filter(j => j.status === 'draft' && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId))).length;
+          const candidateCount = mockDb.candidates.filter(c => c.uploaded_by === currentUserId).length;
+
           if (message.toLowerCase().includes("job") || message.toLowerCase().includes("openings")) {
-            reply = `Currently, you have ${mockDb.jobOpenings.filter(j => j.status === 'published').length} active job openings published, and ${mockDb.jobOpenings.filter(j => j.status === 'draft').length} drafts awaiting review. You are looking for skills like React, Next.js, and Distributed Systems.`;
+            reply = `Currently, you have ${openJobsCount} active job openings published, and ${draftJobsCount} drafts awaiting review. You are looking for skills like React, Next.js, and Distributed Systems.`;
           } else if (message.toLowerCase().includes("candidate") || message.toLowerCase().includes("pool")) {
-            reply = `The Candidate Pool currently has ${mockDb.candidates.length} unique profiles uploaded. Rohan Sharma has the highest match score of 94.5% for the Senior UI Developer position.`;
+            reply = `The Candidate Pool currently has ${candidateCount} unique profiles uploaded.`;
           } else if (message.toLowerCase().includes("stage") || message.toLowerCase().includes("interview")) {
             reply = `There is 1 candidate in the Technical interview stage (Rohan Sharma) and 1 candidate who passed the initial Recruiter Screen (Priya Patel). Ready to coordinate their next stages.`;
           } else {
@@ -1538,7 +1648,8 @@ function handleMockRequest<T>(
 
         // ACTIVITY LOG
         if (path === "/activity_log" && method === "GET") {
-          return resolve(mockDb.activityLogs as unknown as T);
+          const list = mockDb.activityLogs.filter(a => a.actor_id === currentUserId);
+          return resolve(list as unknown as T);
         }
 
         // Generic 404
