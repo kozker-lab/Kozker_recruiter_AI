@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from supabase import create_client, Client, ClientOptions
+import httpx
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +20,14 @@ logger = logging.getLogger("backend")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://covhcpsyliesrgkjxhai.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
+USE_N8N = os.getenv("USE_N8N", "False").lower() in ("true", "1", "yes")
+N8N_GENERATE_JOBS_URL = os.getenv("N8N_GENERATE_JOBS_URL", "")
+N8N_EXTRACT_SKILLS_URL = os.getenv("N8N_EXTRACT_SKILLS_URL", "")
+N8N_MATCH_CANDIDATES_URL = os.getenv("N8N_MATCH_CANDIDATES_URL", "")
+N8N_GENERATE_QUESTIONS_URL = os.getenv("N8N_GENERATE_QUESTIONS_URL", "")
+CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "kozker_callback_secret_token")
+
 
 # Initialize FastAPI
 app = FastAPI(title="Kozker Recruiter AI Backend", version="1.0.0")
@@ -77,6 +86,37 @@ def get_supabase(authorization: Optional[str] = Header(None)) -> Client:
     if authorization and authorization.startswith("Bearer "):
         jwt_token = authorization.split(" ")[1]
     return get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+
+# Security Middleware: verify callback secret
+async def verify_callback_secret(authorization: Optional[str] = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid Authorization header format. Must be Bearer <token>")
+    token = authorization.split(" ")[1]
+    if token != CALLBACK_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid callback secret token")
+    return token
+
+# Outbound Webhook Dispatcher
+async def dispatch_n8n_webhook(url: str, payload: dict, context_label: str) -> bool:
+    if not url:
+        logger.error(f"Cannot dispatch webhook for {context_label}: URL not configured")
+        return False
+    logger.info(f"Dispatching outbound webhook to {url} for {context_label}")
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(url, json=payload, timeout=30.0)
+            if res.status_code in (200, 201, 202, 204):
+                logger.info(f"Successfully dispatched webhook for {context_label} (status: {res.status_code})")
+                return True
+            else:
+                logger.error(f"Failed to dispatch webhook for {context_label} (status: {res.status_code}, response: {res.text})")
+                return False
+    except Exception as e:
+        logger.error(f"Exception during webhook dispatch for {context_label}: {e}")
+        return False
+
 
 # Text extraction helper
 def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
@@ -196,6 +236,50 @@ class ChatMessageModel(BaseModel):
 class CSVUploadModel(BaseModel):
     items: List[Dict[str, Any]]
 
+# Inbound Callback Validation Models
+class JobOpeningDraft(BaseModel):
+    title: str
+    overview: str
+    responsibilities: List[str]
+    qualifications: List[str]
+    budget: str
+    seniority: str
+    keywords: List[str]
+
+class JobOpeningsCallback(BaseModel):
+    requirement_id: str
+    job_openings: List[JobOpeningDraft]
+
+class ExtractedSkill(BaseModel):
+    name: str
+    weight: float
+    category: Optional[str] = None
+
+class JobSkillsCallback(BaseModel):
+    job_opening_id: str
+    skills: List[ExtractedSkill]
+
+class CandidateMatchItem(BaseModel):
+    candidate_id: str
+    fuzzy_score: float
+    strengths: List[str]
+    skill_gaps: List[str]
+    reasoning: Optional[str] = None
+
+class CandidateMatchesCallback(BaseModel):
+    job_opening_id: str
+    matches: List[CandidateMatchItem]
+
+class GeneratedQuestion(BaseModel):
+    question: str
+    difficulty: str
+    category: Optional[str] = None
+
+class ScreeningQuestionsCallback(BaseModel):
+    application_id: str
+    questions: List[GeneratedQuestion]
+
+
 # ============================================================
 # API ENDPOINTS
 # ============================================================
@@ -234,6 +318,185 @@ async def create_client_endpoint(client: ClientModel, db: Client = Depends(get_s
 async def delete_client(client_id: str, db: Client = Depends(get_supabase)):
     res = db.table("clients").update({"is_deleted": True}).eq("id", client_id).execute()
     return {"success": True}
+
+# ============================================================
+# n8n Dispatch Helpers
+# ============================================================
+
+async def handle_generate_jobs_dispatch(new_req: dict, jwt_token: str):
+    payload = {
+        "id": new_req["id"],
+        "client_id": new_req["client_id"],
+        "title": new_req["title"],
+        "description": new_req["description"],
+        "skills": new_req["skills"],
+        "experience_min": new_req["experience_min"],
+        "experience_max": new_req["experience_max"],
+        "budget_min": new_req["budget_min"],
+        "budget_max": new_req["budget_max"],
+        "seniority": new_req["seniority"],
+        "notes": new_req["notes"],
+        "num_posts_requested": new_req["num_posts_requested"],
+        "created_by": new_req.get("created_by")
+    }
+    success = await dispatch_n8n_webhook(N8N_GENERATE_JOBS_URL, payload, "generate_jobs")
+    if not success:
+        logger.warning("n8n dispatch failed for generate_jobs, falling back to local execution")
+        generate_job_openings_background(
+            new_req["id"],
+            new_req["client_id"],
+            new_req["title"],
+            new_req["description"],
+            new_req["skills"],
+            new_req["experience_min"],
+            new_req["experience_max"],
+            new_req["seniority"],
+            new_req["budget_min"],
+            new_req["budget_max"],
+            new_req["num_posts_requested"],
+            jwt_token
+        )
+
+def run_local_scan_publish(job_id: str, jwt_token: str):
+    logger.info(f"Running local scan and publish for job {job_id}")
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    job_res = db.table("job_openings").select("*").eq("id", job_id).execute()
+    if not job_res.data:
+        return
+    job = job_res.data[0]
+    
+    # Generate 5 default skills from keywords/responsibilities
+    keywords = job.get("keywords") or []
+    default_skills = keywords[:5]
+    while len(default_skills) < 5:
+        default_skills.append(f"Required Skill {len(default_skills) + 1}")
+        
+    weights = [30.0, 25.0, 15.0, 15.0, 15.0]
+    
+    # Clear previous skills
+    db.table("job_opening_skills").delete().eq("job_opening_id", job_id).execute()
+    
+    # Insert new skills
+    for idx, skill_name in enumerate(default_skills):
+        db.table("job_opening_skills").insert({
+            "job_opening_id": job_id,
+            "skill_name": skill_name,
+            "weight": weights[idx],
+            "skill_order": idx + 1,
+            "approved": False
+        }).execute()
+        
+    db.table("job_openings").update({"processing_status": "skill_approval"}).eq("id", job_id).execute()
+
+async def handle_scan_publish_dispatch(job: dict, jwt_token: str):
+    payload = {
+        "job_opening_id": job["id"],
+        "title": job["title"],
+        "description": job["description"],
+        "responsibilities": job["responsibilities"],
+        "qualifications": job["qualifications"],
+        "keywords": job["keywords"],
+        "salary_range": job["salary_range"]
+    }
+    success = await dispatch_n8n_webhook(N8N_EXTRACT_SKILLS_URL, payload, "extract_skills")
+    if not success:
+        logger.warning("n8n dispatch failed for extract_skills, falling back to local execution")
+        run_local_scan_publish(job["id"], jwt_token)
+
+async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    try:
+        # Fetch approved skills
+        skills_res = db.table("job_opening_skills").select("*").eq("job_opening_id", job_id).execute()
+        approved_skills = skills_res.data or []
+        
+        # Fetch candidates
+        candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
+        candidates_pool = candidates_res.data or []
+        
+        # Construct candidates pool list with applications history
+        candidates_payload_list = []
+        for cand in candidates_pool:
+            cand_id = cand["id"]
+            # Fetch other applications for this candidate
+            other_apps_res = db.table("applications").select("*, job_openings(title)").eq("candidate_id", cand_id).neq("job_opening_id", job_id).execute()
+            other_apps = other_apps_res.data or []
+            
+            # Fetch interview stages for these other applications
+            other_app_ids = [oa["id"] for oa in other_apps]
+            other_stages = []
+            if other_app_ids:
+                stages_res = db.table("interview_stages").select("*").in_("application_id", other_app_ids).execute()
+                other_stages = stages_res.data or []
+                
+            # Combine application with its stages
+            apps_history = []
+            for app in other_apps:
+                app_stages = [stg for stg in other_stages if stg["application_id"] == app["id"]]
+                apps_history.append({
+                    **app,
+                    "stages": app_stages
+                })
+                
+            candidates_payload_list.append({
+                **cand,
+                "applications_history": apps_history
+            })
+            
+        payload = {
+            "job_opening_id": job_id,
+            "approved_skills": approved_skills,
+            "candidates": candidates_payload_list
+        }
+        
+        success = await dispatch_n8n_webhook(N8N_MATCH_CANDIDATES_URL, payload, "match_candidates")
+        if not success:
+            logger.warning("n8n dispatch failed for match_candidates, falling back to local execution")
+            match_candidates_background(job_id, jwt_token)
+    except Exception as e:
+        logger.error(f"Error in handle_match_candidates_dispatch: {e}")
+        match_candidates_background(job_id, jwt_token)
+
+async def handle_generate_questions_dispatch(app_record: dict, cand: dict, job: dict, req: dict, jwt_token: str):
+    payload = {
+        "application_id": app_record["id"],
+        "candidate": {
+            "id": cand["id"],
+            "full_name": cand["full_name"],
+            "email": cand["email"],
+            "skills": cand.get("skills") or [],
+            "experience_years": cand.get("experience_years") or 0,
+            "raw_text": cand.get("raw_text") or ""
+        },
+        "job_details": {
+            "id": job.get("id"),
+            "title": job.get("title"),
+            "description": job.get("description"),
+            "responsibilities": job.get("responsibilities"),
+            "qualifications": job.get("qualifications"),
+            "keywords": job.get("keywords")
+        },
+        "requirement_details": {
+            "id": req.get("id"),
+            "title": req.get("title"),
+            "description": req.get("description"),
+            "skills": req.get("skills"),
+            "experience_min": req.get("experience_min"),
+            "experience_max": req.get("experience_max"),
+            "seniority": req.get("seniority")
+        }
+    }
+    success = await dispatch_n8n_webhook(N8N_GENERATE_QUESTIONS_URL, payload, "generate_questions")
+    if not success:
+        logger.warning("n8n dispatch failed for generate_questions, falling back to local execution")
+        generate_questions_background(
+            app_record["id"],
+            cand["full_name"],
+            cand.get("skills") or [],
+            cand.get("experience_years") or 0,
+            cand.get("raw_text") or "",
+            jwt_token
+        )
 
 # 3. Requirements & Background AI Job generation
 def generate_job_openings_background(req_id: str, client_id: str, req_title: str, req_desc: str, req_skills: List[str], req_exp_min: int, req_exp_max: int, req_seniority: str, req_budget_min: float, req_budget_max: float, num_posts: int, jwt_token: str):
@@ -378,21 +641,28 @@ async def create_requirement(req: RequirementModel, background_tasks: Background
     jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
     
     # Trigger background job openings generation task
-    background_tasks.add_task(
-        generate_job_openings_background,
-        new_req["id"],
-        req.client_id,
-        req.title,
-        req.description,
-        req.skills,
-        req.experience_min,
-        req.experience_max,
-        req.seniority,
-        req.budget_min,
-        req.budget_max,
-        req.num_posts_requested,
-        jwt_token
-    )
+    if USE_N8N:
+        background_tasks.add_task(
+            handle_generate_jobs_dispatch,
+            new_req,
+            jwt_token
+        )
+    else:
+        background_tasks.add_task(
+            generate_job_openings_background,
+            new_req["id"],
+            req.client_id,
+            req.title,
+            req.description,
+            req.skills,
+            req.experience_min,
+            req.experience_max,
+            req.seniority,
+            req.budget_min,
+            req.budget_max,
+            req.num_posts_requested,
+            jwt_token
+        )
     
     # Log activity
     db.table("activity_log").insert({
@@ -424,8 +694,9 @@ async def confirm_job(job_id: str, db: Client = Depends(get_supabase)):
     res = db.table("job_openings").update({"status": "confirmed"}).eq("id", job_id).execute()
     return res.data[0] if res.data else {}
 
+@app.post("/api/v1/jobs/{job_id}/scan-publish")
 @app.post("/api/v1/jobs/{job_id}/scan-and-publish")
-async def scan_and_publish_job(job_id: str, db: Client = Depends(get_supabase)):
+async def scan_and_publish_job(job_id: str, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
     # Fetch job details
     job_res = db.table("job_openings").select("*").eq("id", job_id).execute()
     if not job_res.data:
@@ -434,36 +705,23 @@ async def scan_and_publish_job(job_id: str, db: Client = Depends(get_supabase)):
     job = job_res.data[0]
     db.table("job_openings").update({"processing_status": "skill_approval"}).eq("id", job_id).execute()
     
-    # Generate 5 default skills from keywords/responsibilities
-    keywords = job.get("keywords") or []
-    default_skills = keywords[:5]
-    while len(default_skills) < 5:
-        default_skills.append(f"Required Skill {len(default_skills) + 1}")
-        
-    weights = [30.0, 25.0, 15.0, 15.0, 15.0]
+    auth_header = request.headers.get("Authorization", "")
+    jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
     
-    # Clear previous skills
-    db.table("job_opening_skills").delete().eq("job_opening_id", job_id).execute()
-    
-    # Insert new skills
-    for idx, skill_name in enumerate(default_skills):
-        db.table("job_opening_skills").insert({
-            "job_opening_id": job_id,
-            "skill_name": skill_name,
-            "weight": weights[idx],
-            "skill_order": idx + 1,
-            "approved": False
-        }).execute()
+    if USE_N8N:
+        background_tasks.add_task(handle_scan_publish_dispatch, job, jwt_token)
+    else:
+        background_tasks.add_task(run_local_scan_publish, job_id, jwt_token)
         
     return {"status": "skill_approval"}
+
 
 @app.get("/api/v1/jobs/{job_id}/skills")
 async def get_job_skills(job_id: str, db: Client = Depends(get_supabase)):
     res = db.table("job_opening_skills").select("*").eq("job_opening_id", job_id).execute()
     return res.data
 
-@app.put("/api/v1/jobs/{job_id}/skills")
-async def save_skills(job_id: str, skills_data: SkillsApprovalModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
+async def handle_approve_skills_logic(job_id: str, skills_data: SkillsApprovalModel, background_tasks: BackgroundTasks, request: Request, db: Client):
     # Save approved skills
     db.table("job_opening_skills").delete().eq("job_opening_id", job_id).execute()
     
@@ -486,9 +744,21 @@ async def save_skills(job_id: str, skills_data: SkillsApprovalModel, background_
     jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
     
     # Trigger matching task in the background
-    background_tasks.add_task(match_candidates_background, job_id, jwt_token)
-    
+    if USE_N8N:
+        background_tasks.add_task(handle_match_candidates_dispatch, job_id, jwt_token)
+    else:
+        background_tasks.add_task(match_candidates_background, job_id, jwt_token)
+        
     return {"status": "published"}
+
+@app.put("/api/v1/jobs/{job_id}/skills")
+async def save_skills_put(job_id: str, skills_data: SkillsApprovalModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
+    return await handle_approve_skills_logic(job_id, skills_data, background_tasks, request, db)
+
+@app.post("/api/v1/jobs/{job_id}/approve-skills")
+async def save_skills_post(job_id: str, skills_data: SkillsApprovalModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
+    return await handle_approve_skills_logic(job_id, skills_data, background_tasks, request, db)
+
 
 def evaluate_candidate_matching_with_history(db: Client, cand_id: str, job_id: str, approved_skills: list, cand_skills: list, cand_raw_text: str):
     # 1. Base skill match
@@ -1085,8 +1355,7 @@ async def get_application(app_id: str, db: Client = Depends(get_supabase)):
         "created_at": app_record.get("created_at")
     }
 
-@app.patch("/api/v1/applications/{app_id}/accept")
-async def accept_application(app_id: str, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
+async def handle_accept_application_logic(app_id: str, background_tasks: BackgroundTasks, request: Request, db: Client):
     res = db.table("applications").update({"screening_status": "accepted"}).eq("id", app_id).execute()
     if not res.data:
         raise HTTPException(status_code=400, detail="Failed to accept application")
@@ -1103,17 +1372,43 @@ async def accept_application(app_id: str, background_tasks: BackgroundTasks, req
         auth_header = request.headers.get("Authorization", "")
         jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
         
-        background_tasks.add_task(
-            generate_questions_background,
-            app_id,
-            cand["full_name"],
-            cand.get("skills") or [],
-            cand.get("experience_years") or 0,
-            cand.get("raw_text") or "",
-            jwt_token
-        )
+        # Fetch job and requirement details for the outbound payload
+        job_res = db.table("job_openings").select("*").eq("id", app_record["job_opening_id"]).execute()
+        job = job_res.data[0] if job_res.data else {}
         
+        req_res = db.table("requirements").select("*").eq("id", job.get("requirement_id", "")).execute()
+        req = req_res.data[0] if req_res.data else {}
+        
+        if USE_N8N:
+            background_tasks.add_task(
+                handle_generate_questions_dispatch,
+                app_record,
+                cand,
+                job,
+                req,
+                jwt_token
+            )
+        else:
+            background_tasks.add_task(
+                generate_questions_background,
+                app_id,
+                cand["full_name"],
+                cand.get("skills") or [],
+                cand.get("experience_years") or 0,
+                cand.get("raw_text") or "",
+                jwt_token
+            )
+            
     return app_record
+
+@app.patch("/api/v1/applications/{app_id}/accept")
+async def accept_application_patch(app_id: str, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
+    return await handle_accept_application_logic(app_id, background_tasks, request, db)
+
+@app.post("/api/v1/applications/{app_id}/accept")
+async def accept_application_post(app_id: str, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
+    return await handle_accept_application_logic(app_id, background_tasks, request, db)
+
 
 @app.patch("/api/v1/applications/{app_id}/reject")
 async def reject_application(app_id: str, db: Client = Depends(get_supabase)):
@@ -1331,6 +1626,143 @@ async def handle_chat_message(chat: ChatMessageModel, db: Client = Depends(get_s
             reply = f"Hello! I'm your Kozker Recruiter AI Companion. I see we have {clients_count} clients and {reqs_count} active mandate requirements. How can I help you manage your pipeline today?"
             
     return {"reply": reply}
+
+# ============================================================
+# n8n Inbound Callbacks
+# ============================================================
+
+@app.post("/api/v1/callbacks/job-openings", dependencies=[Depends(verify_callback_secret)])
+async def callback_job_openings(payload: JobOpeningsCallback):
+    logger.info(f"Received job openings callback for requirement {payload.requirement_id}")
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # Check if requirement exists
+    req_res = db.table("requirements").select("*").eq("id", payload.requirement_id).execute()
+    if not req_res.data:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+        
+    # Clear existing drafts for this requirement
+    db.table("job_openings").delete().eq("requirement_id", payload.requirement_id).eq("status", "draft").execute()
+    
+    # Save job opening drafts
+    for idx, jo in enumerate(payload.job_openings, 1):
+        db.table("job_openings").insert({
+            "requirement_id": payload.requirement_id,
+            "post_index": idx,
+            "title": jo.title,
+            "description": jo.overview,
+            "responsibilities": jo.responsibilities,
+            "qualifications": jo.qualifications,
+            "keywords": jo.keywords,
+            "salary_range": jo.budget,
+            "status": "draft",
+            "processing_status": "ready"
+        }).execute()
+        
+    # Set requirement status to ready
+    db.table("requirements").update({"status": "ready"}).eq("id", payload.requirement_id).execute()
+    return {"status": "success"}
+
+@app.post("/api/v1/callbacks/job-skills", dependencies=[Depends(verify_callback_secret)])
+async def callback_job_skills(payload: JobSkillsCallback):
+    logger.info(f"Received job skills callback for job {payload.job_opening_id}")
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # Clear existing skills
+    db.table("job_opening_skills").delete().eq("job_opening_id", payload.job_opening_id).execute()
+    
+    # Save skills
+    for idx, sk in enumerate(payload.skills, 1):
+        db.table("job_opening_skills").insert({
+            "job_opening_id": payload.job_opening_id,
+            "skill_name": sk.name,
+            "weight": sk.weight,
+            "skill_order": idx,
+            "approved": False
+        }).execute()
+        
+    # Set job processing_status to ready
+    db.table("job_openings").update({"processing_status": "ready"}).eq("id", payload.job_opening_id).execute()
+    return {"status": "success"}
+
+@app.post("/api/v1/callbacks/candidate-matches", dependencies=[Depends(verify_callback_secret)])
+async def callback_candidate_matches(payload: CandidateMatchesCallback):
+    logger.info(f"Received candidate matches callback for job {payload.job_opening_id}")
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # Clear existing job candidates
+    db.table("job_candidates").delete().eq("job_opening_id", payload.job_opening_id).execute()
+    
+    scored_candidates = []
+    for idx, match in enumerate(payload.matches):
+        # Upsert application
+        app_res = db.table("applications").upsert({
+            "candidate_id": match.candidate_id,
+            "job_opening_id": payload.job_opening_id,
+            "fuzzy_score": match.fuzzy_score,
+            "match_score": int(match.fuzzy_score),
+            "match_reason": match.reasoning or "",
+            "strengths": match.strengths[:3],
+            "skill_gaps": match.skill_gaps[:3],
+            "screening_status": "pending"
+        }, on_conflict="candidate_id,job_opening_id").execute()
+        
+        if app_res.data:
+            scored_candidates.append({
+                "job_opening_id": payload.job_opening_id,
+                "candidate_id": match.candidate_id,
+                "application_id": app_res.data[0]["id"],
+                "fuzzy_score": match.fuzzy_score,
+                "rank_order": 1, # updated later
+                "strengths": match.strengths[:3],
+                "skill_gaps": match.skill_gaps[:3]
+            })
+            
+    # Sort and rank
+    scored_candidates.sort(key=lambda x: x["fuzzy_score"], reverse=True)
+    for rank, item in enumerate(scored_candidates, 1):
+        item["rank_order"] = rank
+        db.table("job_candidates").insert(item).execute()
+        
+    # Set job status/processing_status
+    db.table("job_openings").update({"processing_status": "ready"}).eq("id", payload.job_opening_id).execute()
+    return {"status": "success"}
+
+@app.post("/api/v1/callbacks/screening-questions", dependencies=[Depends(verify_callback_secret)])
+async def callback_screening_questions(payload: ScreeningQuestionsCallback):
+    logger.info(f"Received screening questions callback for application {payload.application_id}")
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # Fetch job opening / requirement IDs from application
+    app_res = db.table("applications").select("*, job_openings(*)").eq("id", payload.application_id).execute()
+    if not app_res.data:
+        raise HTTPException(status_code=404, detail="Application not found")
+        
+    app_record = app_res.data[0]
+    job_opening_id = app_record["job_opening_id"]
+    job = app_record.get("job_openings") or {}
+    requirement_id = job.get("requirement_id")
+    
+    # Fetch job candidate ID
+    jc_res = db.table("job_candidates").select("id").eq("job_opening_id", job_opening_id).eq("candidate_id", app_record["candidate_id"]).execute()
+    job_candidate_id = jc_res.data[0]["id"] if jc_res.data else None
+    
+    # Clear existing questions
+    db.table("screening_questions").delete().eq("application_id", payload.application_id).execute()
+    
+    # Insert
+    for idx, q in enumerate(payload.questions, 1):
+        db.table("screening_questions").insert({
+            "application_id": payload.application_id,
+            "job_candidate_id": job_candidate_id,
+            "requirement_id": requirement_id,
+            "job_opening_id": job_opening_id,
+            "question": q.question,
+            "difficulty": q.difficulty,
+            "question_order": idx
+        }).execute()
+        
+    return {"status": "success"}
 
 # Simple index status check
 @app.get("/")

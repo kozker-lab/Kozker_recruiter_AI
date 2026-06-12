@@ -580,6 +580,171 @@ async function handleMockRequest<T>(
     // Artificial Latency
     setTimeout(() => {
       try {
+        // CALLBACKS
+        if (path === "/callbacks/job-openings" && method === "POST") {
+          const { requirement_id, job_openings } = data;
+          const req = mockDb.requirements.find(r => r.id === requirement_id);
+          if (!req) return reject(new Error("Requirement not found"));
+          
+          // Clear existing drafts
+          mockDb.jobOpenings = mockDb.jobOpenings.filter(j => !(j.requirement_id === requirement_id && j.status === "draft"));
+          
+          // Insert drafts
+          job_openings.forEach((jo: any, idx: number) => {
+            mockDb.jobOpenings.push({
+              id: `job-gen-${Date.now()}-${idx}`,
+              requirement_id,
+              client_id: req.client_id,
+              post_index: idx + 1,
+              title: jo.title,
+              description: jo.overview,
+              responsibilities: jo.responsibilities,
+              qualifications: jo.qualifications,
+              salary_range: jo.budget,
+              keywords: jo.keywords,
+              source: "ai",
+              status: "draft",
+              processing_status: "ready",
+              error_message: null,
+              created_by: currentUserId,
+              created_at: new Date().toISOString(),
+              published_at: null
+            });
+          });
+          
+          req.status = "ready";
+          return resolve({ status: "success" } as unknown as T);
+        }
+
+        if (path === "/callbacks/job-skills" && method === "POST") {
+          const { job_opening_id, skills } = data;
+          const job = mockDb.jobOpenings.find(j => j.id === job_opening_id);
+          if (!job) return reject(new Error("Job opening not found"));
+          
+          // Clear existing skills
+          mockDb.jobOpeningSkills = mockDb.jobOpeningSkills.filter(s => s.job_opening_id !== job_opening_id);
+          
+          // Save skills
+          skills.forEach((sk: any, idx: number) => {
+            mockDb.jobOpeningSkills.push({
+              id: `sk-cb-${Date.now()}-${idx}`,
+              job_opening_id,
+              skill_name: sk.name,
+              weight: sk.weight,
+              skill_order: idx + 1,
+              approved: false,
+              created_at: new Date().toISOString()
+            });
+          });
+          
+          job.processing_status = "ready";
+          return resolve({ status: "success" } as unknown as T);
+        }
+
+        if (path === "/callbacks/candidate-matches" && method === "POST") {
+          const { job_opening_id, matches } = data;
+          const job = mockDb.jobOpenings.find(j => j.id === job_opening_id);
+          if (!job) return reject(new Error("Job opening not found"));
+          
+          // Clear existing job candidates
+          mockDb.jobCandidates = mockDb.jobCandidates.filter(jc => jc.job_opening_id !== job_opening_id);
+          
+          const scoredCandidates: any[] = [];
+          matches.forEach((match: any, idx: number) => {
+            const cand = mockDb.candidates.find(c => c.id === match.candidate_id);
+            if (!cand) return;
+            
+            // Upsert application
+            let app = mockDb.applications.find(a => a.candidate_id === match.candidate_id && a.job_opening_id === job_opening_id);
+            if (!app) {
+              app = {
+                id: `app-cb-${Date.now()}-${idx}`,
+                candidate_id: match.candidate_id,
+                job_opening_id,
+                candidate_cv: cand.resume_url,
+                fuzzy_score: match.fuzzy_score,
+                match_score: Math.round(match.fuzzy_score),
+                match_reason: match.reasoning || "",
+                strengths: match.strengths,
+                skill_gaps: match.skill_gaps,
+                screening_status: "pending",
+                stage: "screening",
+                stage_status: "pending",
+                stage_notes: null,
+                priority: 0,
+                reviewed_by: currentUserId,
+                reviewed_at: new Date().toISOString(),
+                created_at: new Date().toISOString()
+              };
+              mockDb.applications.push(app);
+            } else {
+              app.fuzzy_score = match.fuzzy_score;
+              app.match_score = Math.round(match.fuzzy_score);
+              app.match_reason = match.reasoning || "";
+              app.strengths = match.strengths;
+              app.skill_gaps = match.skill_gaps;
+            }
+            
+            scoredCandidates.push({
+              id: `jc-cb-${Date.now()}-${idx}`,
+              job_opening_id,
+              candidate_id: match.candidate_id,
+              application_id: app.id,
+              fuzzy_score: match.fuzzy_score,
+              rank_order: 1,
+              created_at: new Date().toISOString(),
+              candidate_name: cand.full_name,
+              experience_years: cand.experience_years || 0,
+              skills: cand.skills,
+              strengths: app.strengths,
+              skill_gaps: app.skill_gaps,
+              stage: app.stage,
+              stage_status: app.stage_status
+            });
+          });
+          
+          // Sort and rank
+          scoredCandidates.sort((a, b) => b.fuzzy_score - a.fuzzy_score);
+          scoredCandidates.forEach((jc, rank) => {
+            jc.rank_order = rank + 1;
+            mockDb.jobCandidates.push(jc);
+          });
+          
+          job.processing_status = "ready";
+          return resolve({ status: "success" } as unknown as T);
+        }
+
+        if (path === "/callbacks/screening-questions" && method === "POST") {
+          const { application_id, questions } = data;
+          const app = mockDb.applications.find(a => a.id === application_id);
+          if (!app) return reject(new Error("Application not found"));
+          
+          const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+          const reqId = job ? job.requirement_id : null;
+          
+          // Clear existing questions
+          mockDb.screeningQuestions = mockDb.screeningQuestions.filter(q => q.application_id !== application_id);
+          
+          // Insert questions
+          questions.forEach((q: any, idx: number) => {
+            mockDb.screeningQuestions.push({
+              id: `q-cb-${Date.now()}-${idx}`,
+              application_id,
+              requirement_id: reqId,
+              job_opening_id: app.job_opening_id,
+              question: q.question,
+              difficulty: q.difficulty,
+              question_order: idx + 1,
+              modified: false,
+              modified_by: null,
+              modified_at: null,
+              created_at: new Date().toISOString()
+            });
+          });
+          
+          return resolve({ status: "success" } as unknown as T);
+        }
+
         // AUTH
         if (path === "/auth/me") {
           const userObj = mockDb.users.find(u => u.id === currentUserId) || mockDb.users[0];
