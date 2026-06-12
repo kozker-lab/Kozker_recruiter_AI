@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/api";
 import { Application, ScreeningQuestion, InterviewStage } from "../types";
@@ -53,6 +53,16 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
     queryFn: () => apiRequest<InterviewStage[]>("GET", `/applications/${applicationId}/stages`),
     enabled: !!applicationId
   });
+
+  const { data: history = [] } = useQuery<any[]>({
+    queryKey: ["candidate-history", app?.candidate_id],
+    queryFn: () => apiRequest<any[]>("GET", `/candidates/${app?.candidate_id}/history`),
+    enabled: !!app?.candidate_id
+  });
+
+  const otherHistory = useMemo(() => {
+    return history.filter((h: any) => h.application_id !== applicationId);
+  }, [history, applicationId]);
 
   // Mutations
   const updateQuestionMutation = useMutation({
@@ -289,6 +299,62 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
                   </ul>
                 </div>
               </div>
+
+              {/* Previous Performance Panel */}
+              {otherHistory.length > 0 && (
+                <div className="border border-neutral-200 rounded-sm p-4 space-y-3 bg-neutral-50/20">
+                  <div className="flex items-center gap-1.5 border-b border-neutral-200 pb-2">
+                    <Landmark className="w-4 h-4 text-neutral-500" />
+                    <span className="text-[10px] uppercase tracking-wider text-neutral-800 font-bold font-mono">
+                      Historical Performance in Other Jobs
+                    </span>
+                  </div>
+                  <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
+                    {otherHistory.map((h: any, i: number) => (
+                      <div key={i} className="border border-neutral-200 bg-neutral-white rounded-sm p-3 space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-neutral-800">
+                            {h.job_title} <span className="text-neutral-400 font-normal">at {h.client_name}</span>
+                          </span>
+                          <span className={`text-[9.5px] px-2 py-0.5 border rounded-sm font-mono font-bold capitalize ${
+                            h.stage === "hired" ? "bg-success/10 border-success/20 text-success" :
+                            h.stage === "rejected" || h.stage_status === "failed" ? "bg-error/10 border-error/20 text-error" :
+                            "bg-neutral-100 border-neutral-250 text-neutral-600"
+                          }`}>
+                            {h.stage} ({h.stage_status})
+                          </span>
+                        </div>
+                        {h.stage_notes && (
+                          <p className="text-neutral-500 italic text-[11px] leading-relaxed">
+                            <strong>Performance Note:</strong> {h.stage_notes}
+                          </p>
+                        )}
+                        {h.stages && h.stages.length > 0 && (
+                          <div className="pl-3 border-l-2 border-neutral-200 space-y-1.5 mt-2 text-[11px]">
+                            {h.stages.map((stg: any, stgIdx: number) => (
+                              <div key={stgIdx} className="space-y-0.5 text-neutral-500">
+                                <div className="flex items-center justify-between">
+                                  <span className="capitalize font-medium text-neutral-650">{stg.stage_name} Round</span>
+                                  <span className={`font-mono font-bold text-[9px] uppercase ${
+                                    stg.outcome === "passed" ? "text-success" :
+                                    stg.outcome === "failed" ? "text-error" :
+                                    "text-neutral-450"
+                                  }`}>{stg.outcome}</span>
+                                </div>
+                                {stg.notes && (
+                                  <p className="text-[10px] text-neutral-400 italic pl-1">
+                                    &ldquo;{stg.notes}&rdquo;
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

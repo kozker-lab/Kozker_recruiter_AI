@@ -436,6 +436,77 @@ class MockDatabase {
 
 const mockDb = new MockDatabase();
 
+function calculateMockFuzzyMatchScore(cand: Candidate, jobId: string) {
+  const jobSkills = mockDb.jobOpeningSkills.filter(s => s.job_opening_id === jobId);
+  let score = 50; // base score
+  const matches = cand.skills.filter(s => 
+    jobSkills.some(js => js.skill_name.toLowerCase() === s.toLowerCase())
+  );
+  score += matches.length * 10;
+  if (cand.experience_years && cand.experience_years >= 5) score += 10;
+  
+  // Apply previous performance adjustments from mockDb
+  const otherApps = mockDb.applications.filter(a => a.candidate_id === cand.id && a.job_opening_id !== jobId);
+  const otherAppIds = otherApps.map(a => a.id);
+  const otherStages = mockDb.interviewStages ? mockDb.interviewStages.filter(s => otherAppIds.includes(s.application_id)) : [];
+  
+  let scoreAdjustment = 0;
+  const perfSummaries: string[] = [];
+  
+  otherApps.forEach(app => {
+    const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+    const jobTitle = job ? job.title : "Other Role";
+    
+    if (app.stage === "hired") {
+      scoreAdjustment += 12;
+      perfSummaries.push(`Successfully Hired for '${jobTitle}'`);
+    } else if (app.stage === "rejected" || app.stage_status === "failed") {
+      scoreAdjustment -= 10;
+      perfSummaries.push(`Rejected/Failed for '${jobTitle}'`);
+    } else if (app.stage_notes) {
+      perfSummaries.push(`Applied to '${jobTitle}' (Notes: ${app.stage_notes})`);
+    }
+    
+    const appStages = otherStages.filter(s => s.application_id === app.id);
+    appStages.forEach(stg => {
+      if (stg.outcome === "passed") {
+        scoreAdjustment += 3;
+      } else if (stg.outcome === "failed") {
+        scoreAdjustment -= 6;
+        if (stg.notes) {
+          perfSummaries.push(`Failed ${stg.stage_name} stage (Notes: ${stg.notes})`);
+        } else {
+          perfSummaries.push(`Failed ${stg.stage_name} stage`);
+        }
+      } else if (stg.outcome === "on_hold") {
+        scoreAdjustment += 1;
+        if (stg.notes) {
+          perfSummaries.push(`On hold in ${stg.stage_name} stage (Notes: ${stg.notes})`);
+        }
+      }
+    });
+  });
+  
+  score += scoreAdjustment;
+  score = Math.max(0, Math.min(100, score));
+  
+  const strengths = matches.slice(0, 3);
+  const skillGaps = jobSkills.filter(js => !cand.skills.some(s => s.toLowerCase() === js.skill_name.toLowerCase())).map(js => js.skill_name);
+  
+  let matchReason = `Calculated fuzzy score matching resume skills ${cand.skills.join(", ")} with approved skills.`;
+  if (perfSummaries.length > 0) {
+    matchReason += ` Previous Performance Considerations: ${perfSummaries.join("; ")}.`;
+  }
+  
+  return {
+    fuzzy_score: score,
+    match_score: score,
+    match_reason: matchReason,
+    strengths,
+    skill_gaps: skillGaps
+  };
+}
+
 // API fetch wrapper with defensive logging and mock fallbacks
 export async function apiRequest<T>(
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
@@ -811,17 +882,8 @@ function handleMockRequest<T>(
               mockDb.jobCandidates = mockDb.jobCandidates.filter(jc => jc.job_opening_id !== id);
               
               // Score all candidates in the candidate list
-              const jobSkills = mockDb.jobOpeningSkills.filter(s => s.job_opening_id === id);
-              
               mockDb.candidates.forEach((cand, cIdx) => {
-                // Fuzzy matching logic simulation
-                let score = 50; // base score
-                const matches = cand.skills.filter(s => 
-                  jobSkills.some(js => js.skill_name.toLowerCase() === s.toLowerCase())
-                );
-                score += matches.length * 10;
-                if (cand.experience_years && cand.experience_years >= 5) score += 10;
-                if (score > 100) score = 100;
+                const matchResult = calculateMockFuzzyMatchScore(cand, id);
 
                 // Check if application exists, else create
                 let app = mockDb.applications.find(a => a.candidate_id === cand.id && a.job_opening_id === id);
@@ -831,11 +893,11 @@ function handleMockRequest<T>(
                     candidate_id: cand.id,
                     job_opening_id: id,
                     candidate_cv: cand.resume_url,
-                    fuzzy_score: score,
-                    match_score: score,
-                    match_reason: `Calculated fuzzy score matching resume skills ${cand.skills.join(", ")} with approved skills.`,
-                    strengths: matches.slice(0, 3),
-                    skill_gaps: jobSkills.filter(js => !cand.skills.includes(js.skill_name)).map(js => js.skill_name),
+                    fuzzy_score: matchResult.fuzzy_score,
+                    match_score: matchResult.match_score,
+                    match_reason: matchResult.match_reason,
+                    strengths: matchResult.strengths,
+                    skill_gaps: matchResult.skill_gaps,
                     screening_status: "pending",
                     stage: "screening",
                     stage_status: "pending",
@@ -847,10 +909,11 @@ function handleMockRequest<T>(
                   };
                   mockDb.applications.push(app);
                 } else {
-                  app.fuzzy_score = score;
-                  app.match_score = score;
-                  app.strengths = matches.slice(0, 3);
-                  app.skill_gaps = jobSkills.filter(js => !cand.skills.includes(js.skill_name)).map(js => js.skill_name);
+                  app.fuzzy_score = matchResult.fuzzy_score;
+                  app.match_score = matchResult.match_score;
+                  app.match_reason = matchResult.match_reason;
+                  app.strengths = matchResult.strengths;
+                  app.skill_gaps = matchResult.skill_gaps;
                 }
 
                 // Add to Job Candidates
@@ -858,7 +921,7 @@ function handleMockRequest<T>(
                   id: `jc-${Date.now()}-${cIdx}`,
                   job_opening_id: id,
                   application_id: app.id,
-                  fuzzy_score: score,
+                  fuzzy_score: matchResult.fuzzy_score,
                   rank_order: cIdx + 1,
                   created_at: new Date().toISOString(),
                   candidate_id: cand.id,
@@ -956,6 +1019,37 @@ function handleMockRequest<T>(
             });
           return resolve(candidateApps as unknown as T);
         }
+        if (path.startsWith("/candidates/") && path.endsWith("/history") && method === "GET") {
+          const parts = path.split("/");
+          const candidateId = parts[2];
+          const candidateApps = mockDb.applications.filter(a => a.candidate_id === candidateId);
+          
+          const history = candidateApps.map(app => {
+            const job = mockDb.jobOpenings.find(j => j.id === app.job_opening_id);
+            const appStages = mockDb.interviewStages ? mockDb.interviewStages.filter(stg => stg.application_id === app.id) : [];
+            
+            // Sort stages by order
+            appStages.sort((a, b) => (a.stage_order || 1) - (b.stage_order || 1));
+            
+            return {
+              application_id: app.id,
+              job_id: job?.id,
+              job_title: job?.title || "Unknown Job",
+              client_name: job?.client_name || "Generic Client",
+              fuzzy_score: app.fuzzy_score,
+              match_score: app.match_score,
+              match_reason: app.match_reason,
+              screening_status: app.screening_status,
+              stage: app.stage,
+              stage_status: app.stage_status,
+              stage_notes: app.stage_notes,
+              stages: appStages,
+              created_at: app.created_at
+            };
+          });
+          
+          return resolve(history as unknown as T);
+        }
         if (path.startsWith("/candidates/") && method === "GET") {
           const id = path.split("/")[2];
           const cand = mockDb.candidates.find(c => c.id === id);
@@ -1026,8 +1120,7 @@ function handleMockRequest<T>(
           const exists = mockDb.applications.some(a => a.candidate_id === candId && a.job_opening_id === jobId);
           if (exists) return reject(new Error("Candidate is already linked to this job opening"));
           
-          const strengths = ["Manual profile match", "Aligned experience"];
-          const skill_gaps: string[] = [];
+          const matchResult = calculateMockFuzzyMatchScore(cand, jobId);
           
           const appId = `app-link-${Date.now()}`;
           const app = {
@@ -1035,11 +1128,11 @@ function handleMockRequest<T>(
             candidate_id: candId,
             job_opening_id: jobId,
             candidate_cv: cand.resume_url,
-            fuzzy_score: 75.0,
-            match_score: 75,
-            match_reason: "Manually linked candidate. Match score: 75%. Ready for review.",
-            strengths,
-            skill_gaps,
+            fuzzy_score: matchResult.fuzzy_score,
+            match_score: matchResult.match_score,
+            match_reason: matchResult.match_reason,
+            strengths: matchResult.strengths,
+            skill_gaps: matchResult.skill_gaps,
             screening_status: "pending" as const,
             stage: "screening" as const,
             stage_status: "pending" as const,
@@ -1056,15 +1149,15 @@ function handleMockRequest<T>(
             id: `jc-link-${Date.now()}`,
             job_opening_id: jobId,
             application_id: appId,
-            fuzzy_score: 75.0,
+            fuzzy_score: matchResult.fuzzy_score,
             rank_order: rank,
             created_at: new Date().toISOString(),
             candidate_id: candId,
             candidate_name: cand.full_name,
             experience_years: cand.experience_years || 0,
             skills: cand.skills || [],
-            strengths,
-            skill_gaps,
+            strengths: matchResult.strengths,
+            skill_gaps: matchResult.skill_gaps,
             priority: 0,
             stage: "screening",
             stage_status: "pending"

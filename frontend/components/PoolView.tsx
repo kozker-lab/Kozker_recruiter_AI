@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/api";
 import { Candidate } from "../types";
@@ -11,6 +11,61 @@ import {
   ChevronDown, ChevronUp, AlertCircle, Sparkles, Database, FileSpreadsheet,
   Filter, FileText, CheckCircle2
 } from "lucide-react";
+
+function mergeDuplicateCandidates(list: Candidate[]): Candidate[] {
+  const map = new Map<string, Candidate>();
+  for (const c of list) {
+    if (!c.email || !c.full_name) continue;
+    const key = `${c.full_name.toLowerCase().trim()}|${c.email.toLowerCase().trim()}`;
+    if (!map.has(key)) {
+      map.set(key, { ...c, skills: [...(c.skills || [])] });
+    } else {
+      const existing = map.get(key)!;
+      if (!existing.phone && c.phone) {
+        existing.phone = c.phone;
+      }
+      const mergedSkills: string[] = [];
+      const seen = new Set<string>();
+      for (const s of [...(existing.skills || []), ...(c.skills || [])]) {
+        const lower = s.toLowerCase().trim();
+        if (lower && !seen.has(lower)) {
+          seen.add(lower);
+          mergedSkills.push(s);
+        }
+      }
+      existing.skills = mergedSkills;
+      existing.experience_years = Math.max(existing.experience_years || 0, c.experience_years || 0);
+      if (!existing.education && c.education) {
+        existing.education = c.education;
+      }
+      if (!existing.academic_details && c.academic_details) {
+        existing.academic_details = c.academic_details;
+      }
+      if (!existing.achievements && c.achievements) {
+        existing.achievements = c.achievements;
+      }
+      if (!existing.resume_url && c.resume_url) {
+        existing.resume_url = c.resume_url;
+      }
+      if (c.raw_text && existing.raw_text && !existing.raw_text.includes(c.raw_text)) {
+        existing.raw_text = `${existing.raw_text}\n\n[Merged Profile Info]:\n${c.raw_text}`;
+      } else if (c.raw_text && !existing.raw_text) {
+        existing.raw_text = c.raw_text;
+      }
+      if (c.linked_jobs && existing.linked_jobs) {
+        const jobIds = new Set(existing.linked_jobs.map(j => j.id));
+        for (const job of c.linked_jobs) {
+          if (!jobIds.has(job.id)) {
+            existing.linked_jobs.push(job);
+          }
+        }
+      } else if (c.linked_jobs) {
+        existing.linked_jobs = [...c.linked_jobs];
+      }
+    }
+  }
+  return Array.from(map.values());
+}
 
 export default function PoolView() {
   const queryClient = useQueryClient();
@@ -43,10 +98,14 @@ export default function PoolView() {
   } | null>(null);
 
   // Queries
-  const { data: candidates = [], isLoading } = useQuery<Candidate[]>({
+  const { data: rawCandidates = [], isLoading } = useQuery<Candidate[]>({
     queryKey: ["candidates"],
     queryFn: () => apiRequest<Candidate[]>("GET", "/candidates")
   });
+
+  const candidates = useMemo(() => {
+    return mergeDuplicateCandidates(rawCandidates);
+  }, [rawCandidates]);
 
   const router = useRouter();
 

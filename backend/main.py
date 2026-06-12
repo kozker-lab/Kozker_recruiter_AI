@@ -490,6 +490,89 @@ async def save_skills(job_id: str, skills_data: SkillsApprovalModel, background_
     
     return {"status": "published"}
 
+def evaluate_candidate_matching_with_history(db: Client, cand_id: str, job_id: str, approved_skills: list, cand_skills: list, cand_raw_text: str):
+    # 1. Base skill match
+    matched_score = 45.0
+    strengths = []
+    skill_gaps = []
+    
+    for sk in approved_skills:
+        sk_name = sk["skill_name"].lower()
+        sk_weight = float(sk["weight"])
+        if sk_name in cand_skills or sk_name in cand_raw_text.lower():
+            matched_score += (sk_weight * 0.5)
+            strengths.append(sk["skill_name"])
+        else:
+            skill_gaps.append(sk["skill_name"])
+            
+    matched_score = min(matched_score, 100.0)
+    
+    # 2. Get previous performance
+    # Fetch other applications
+    other_apps_res = db.table("applications").select("*, job_openings(title)").eq("candidate_id", cand_id).neq("job_opening_id", job_id).execute()
+    other_apps = other_apps_res.data or []
+    
+    # Fetch stages
+    other_app_ids = [oa["id"] for oa in other_apps]
+    other_stages = []
+    if other_app_ids:
+        stages_res = db.table("interview_stages").select("*").in_("application_id", other_app_ids).execute()
+        other_stages = stages_res.data or []
+        
+    # Adjustment
+    score_adjustment = 0.0
+    perf_summaries = []
+    
+    for app in other_apps:
+        job_title = app.get("job_openings", {}).get("title", "Other Job")
+        app_stage = app.get("stage")
+        app_status = app.get("stage_status")
+        app_notes = app.get("stage_notes")
+        
+        app_stages = [stg for stg in other_stages if stg["application_id"] == app["id"]]
+        
+        # Calculate status effect
+        if app_stage == "hired":
+            score_adjustment += 12.0
+            perf_summaries.append(f"Successfully Hired for '{job_title}'")
+        elif app_stage == "rejected" or app_status == "failed":
+            score_adjustment -= 10.0
+            perf_summaries.append(f"Rejected/Failed for '{job_title}'")
+        elif app_notes:
+            perf_summaries.append(f"Applied to '{job_title}' (Notes: {app_notes})")
+            
+        # Add details from individual rounds
+        for stg in app_stages:
+            outcome = stg.get("outcome")
+            notes = stg.get("notes")
+            round_name = stg.get("stage_name", "interview")
+            if outcome == "passed":
+                score_adjustment += 3.0
+            elif outcome == "failed":
+                score_adjustment -= 6.0
+                if notes:
+                    perf_summaries.append(f"Failed {round_name} stage (Notes: {notes})")
+                else:
+                    perf_summaries.append(f"Failed {round_name} stage")
+            elif outcome == "on_hold":
+                score_adjustment += 1.0
+                if notes:
+                    perf_summaries.append(f"On hold in {round_name} stage (Notes: {notes})")
+            elif notes:
+                perf_summaries.append(f"{round_name} stage feedback: {notes}")
+                
+    # Apply adjustment & clamp
+    matched_score += score_adjustment
+    matched_score = max(min(matched_score, 100.0), 0.0)
+    
+    # Construct match reason
+    match_reason = f"System scan matched skills: {', '.join(strengths)}. Missing: {', '.join(skill_gaps)}."
+    if perf_summaries:
+        perf_text = " Previous Performance Considerations: " + "; ".join(perf_summaries) + "."
+        match_reason += perf_text
+        
+    return matched_score, match_reason, strengths, skill_gaps
+
 # Candidate matching background task
 def match_candidates_background(job_id: str, jwt_token: str):
     logger.info(f"Starting background candidate matching for job {job_id}")
@@ -521,24 +604,10 @@ def match_candidates_background(job_id: str, jwt_token: str):
             cand_skills = [s.lower() for s in (cand.get("skills") or [])]
             cand_raw_text = cand.get("raw_text") or ""
             
-            # Simple matching heuristic
-            matched_score = 45.0  # baseline
-            strengths = []
-            skill_gaps = []
-            
-            for sk in approved_skills:
-                sk_name = sk["skill_name"].lower()
-                sk_weight = float(sk["weight"])
-                
-                # Check direct skill match or mention in raw resume text
-                if sk_name in cand_skills or sk_name in cand_raw_text.lower():
-                    matched_score += (sk_weight * 0.5)
-                    strengths.append(sk["skill_name"])
-                else:
-                    skill_gaps.append(sk["skill_name"])
-            
-            # Bound score
-            matched_score = min(matched_score, 100.0)
+            # Use unified evaluation helper
+            matched_score, match_reason, strengths, skill_gaps = evaluate_candidate_matching_with_history(
+                db, cand["id"], job_id, approved_skills, cand_skills, cand_raw_text
+            )
             
             # Create application and link candidates
             app_res = db.table("applications").upsert({
@@ -546,7 +615,7 @@ def match_candidates_background(job_id: str, jwt_token: str):
                 "job_opening_id": job_id,
                 "fuzzy_score": matched_score,
                 "match_score": int(matched_score),
-                "match_reason": f"System scan matched skills: {', '.join(strengths)}. Missing: {', '.join(skill_gaps)}.",
+                "match_reason": match_reason,
                 "strengths": strengths[:3],
                 "skill_gaps": skill_gaps[:3],
                 "screening_status": "pending"
@@ -622,27 +691,17 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
     cand_skills = [s.lower() for s in (cand.get("skills") or [])]
     cand_raw_text = cand.get("raw_text") or ""
     
-    matched_score = 45.0
-    strengths = []
-    skill_gaps = []
-    
-    for sk in approved_skills:
-        sk_name = sk["skill_name"].lower()
-        sk_weight = float(sk["weight"])
-        if sk_name in cand_skills or sk_name in cand_raw_text.lower():
-            matched_score += (sk_weight * 0.5)
-            strengths.append(sk["skill_name"])
-        else:
-            skill_gaps.append(sk["skill_name"])
-            
-    matched_score = min(matched_score, 100.0)
+    # Use unified evaluation helper
+    matched_score, match_reason, strengths, skill_gaps = evaluate_candidate_matching_with_history(
+        db, cand_id, job_id, approved_skills, cand_skills, cand_raw_text
+    )
     
     app_res = db.table("applications").insert({
         "candidate_id": cand_id,
         "job_opening_id": job_id,
         "fuzzy_score": matched_score,
         "match_score": int(matched_score),
-        "match_reason": f"Manually linked candidate. Matched skills: {', '.join(strengths)}. Missing: {', '.join(skill_gaps)}.",
+        "match_reason": match_reason,
         "strengths": strengths[:3],
         "skill_gaps": skill_gaps[:3],
         "screening_status": "pending",
@@ -711,6 +770,43 @@ async def get_candidate_applications(candidate_id: str, db: Client = Depends(get
             **{k: v for k, v in row.items() if k != "job_openings"},
             "job_title": job.get("title", "Unknown Job"),
             "client_name": cli.get("name", "Generic Client")
+        })
+    return formatted
+
+@app.get("/api/v1/candidates/{candidate_id}/history")
+async def get_candidate_history(candidate_id: str, db: Client = Depends(get_supabase)):
+    apps_res = db.table("applications").select("*, job_openings(*, clients(name))").eq("candidate_id", candidate_id).execute()
+    apps = apps_res.data or []
+    
+    app_ids = [a["id"] for a in apps]
+    stages = []
+    if app_ids:
+        stages_res = db.table("interview_stages").select("*").in_("application_id", app_ids).execute()
+        stages = stages_res.data or []
+        
+    formatted = []
+    for app_row in apps:
+        job = app_row.get("job_openings") or {}
+        cli = job.get("clients") or {}
+        app_stages = [stg for stg in stages if stg["application_id"] == app_row["id"]]
+        
+        # Sort stages by created_at or order
+        app_stages.sort(key=lambda x: x.get("stage_order") or 1)
+        
+        formatted.append({
+            "application_id": app_row["id"],
+            "job_id": job.get("id"),
+            "job_title": job.get("title", "Unknown Job"),
+            "client_name": cli.get("name", "Generic Client"),
+            "fuzzy_score": app_row.get("fuzzy_score"),
+            "match_score": app_row.get("match_score"),
+            "match_reason": app_row.get("match_reason"),
+            "screening_status": app_row.get("screening_status"),
+            "stage": app_row.get("stage"),
+            "stage_status": app_row.get("stage_status"),
+            "stage_notes": app_row.get("stage_notes"),
+            "stages": app_stages,
+            "created_at": app_row.get("created_at")
         })
     return formatted
 
