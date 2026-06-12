@@ -1162,6 +1162,20 @@ function handleMockRequest<T>(
             stage: "screening",
             stage_status: "pending"
           });
+
+          // Update candidate's linked_jobs list
+          if (!cand.linked_jobs) {
+            cand.linked_jobs = [];
+          }
+          if (!cand.linked_jobs.some(j => j.job_id === jobId)) {
+            cand.linked_jobs.push({
+              job_id: jobId,
+              job_title: job.title || "Unknown Job",
+              fuzzy_score: matchResult.fuzzy_score,
+              stage: "screening",
+              status: "pending"
+            });
+          }
           
           mockDb.activityLogs.unshift({
             id: `act-${Date.now()}`,

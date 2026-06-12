@@ -44,7 +44,7 @@ CREATE TABLE public.profiles (
 CREATE TABLE public.clients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT UNIQUE NOT NULL,
-    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_by UUID DEFAULT auth.uid() REFERENCES public.profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -66,7 +66,7 @@ CREATE TABLE public.requirements (
     notes TEXT,
     num_posts_requested INT DEFAULT 1 CHECK (num_posts_requested BETWEEN 1 AND 5),
     status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'generating', 'ready', 'archived')),
-    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_by UUID DEFAULT auth.uid() REFERENCES public.profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -125,7 +125,7 @@ CREATE TABLE public.candidates (
     academic_details TEXT,
     achievements TEXT,
     source TEXT CHECK (source IN ('csv', 'pdf', 'docx', 'manual')),
-    uploaded_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    uploaded_by UUID DEFAULT auth.uid() REFERENCES public.profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     -- Deduplication constraint (email is primary unique identifier)
@@ -218,7 +218,7 @@ CREATE TABLE public.interview_stages (
 -- ============================================================
 CREATE TABLE public.activity_log (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    actor_id UUID DEFAULT auth.uid() REFERENCES public.profiles(id) ON DELETE SET NULL,
     actor_name TEXT,
     action TEXT NOT NULL,
     entity_type TEXT NOT NULL,
@@ -483,55 +483,55 @@ ALTER TABLE public.interview_stages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_log ENABLE ROW LEVEL SECURITY;
 
 -- 1. Profiles Policies
-CREATE POLICY "Allow public read of profiles" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Allow public read of profiles" ON public.profiles FOR SELECT USING (auth.uid() = id OR is_admin());
 CREATE POLICY "Allow self-update profiles" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Allow admin full access profiles" ON public.profiles FOR ALL TO authenticated USING (is_admin());
 CREATE POLICY "Allow self-insert profiles" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
 -- 2. Clients Policies
-CREATE POLICY "Allow recruiters to view clients" ON public.clients FOR SELECT TO authenticated USING (is_recruiter() OR is_admin() OR is_manager());
-CREATE POLICY "Allow recruiters to modify clients" ON public.clients FOR INSERT WITH CHECK (is_recruiter() OR is_admin());
-CREATE POLICY "Allow recruiters to update clients" ON public.clients FOR UPDATE USING (is_recruiter() OR is_admin());
+CREATE POLICY "Allow recruiters to view clients" ON public.clients FOR SELECT TO authenticated USING (auth.uid() = created_by OR is_admin());
+CREATE POLICY "Allow recruiters to modify clients" ON public.clients FOR INSERT WITH CHECK (auth.uid() = created_by OR is_admin());
+CREATE POLICY "Allow recruiters to update clients" ON public.clients FOR UPDATE USING (auth.uid() = created_by OR is_admin());
 CREATE POLICY "Allow admin to delete clients" ON public.clients FOR DELETE USING (is_admin());
 
 -- 3. Requirements Policies
-CREATE POLICY "Allow recruiters to view requirements" ON public.requirements FOR SELECT TO authenticated USING (is_recruiter() OR is_admin() OR is_manager());
-CREATE POLICY "Allow recruiters to modify requirements" ON public.requirements FOR INSERT WITH CHECK (is_recruiter() OR is_admin());
-CREATE POLICY "Allow recruiters to update requirements" ON public.requirements FOR UPDATE USING (is_recruiter() OR is_admin());
+CREATE POLICY "Allow recruiters to view requirements" ON public.requirements FOR SELECT TO authenticated USING (auth.uid() = created_by OR is_admin());
+CREATE POLICY "Allow recruiters to modify requirements" ON public.requirements FOR INSERT WITH CHECK (auth.uid() = created_by OR is_admin());
+CREATE POLICY "Allow recruiters to update requirements" ON public.requirements FOR UPDATE USING (auth.uid() = created_by OR is_admin());
 CREATE POLICY "Allow admin to delete requirements" ON public.requirements FOR DELETE USING (is_admin());
 
 -- 4. Job Openings Policies
-CREATE POLICY "Allow recruiters to view jobs" ON public.job_openings FOR SELECT TO authenticated USING (is_recruiter() OR is_admin() OR is_manager());
-CREATE POLICY "Allow recruiters to modify jobs" ON public.job_openings FOR INSERT WITH CHECK (is_recruiter() OR is_admin());
-CREATE POLICY "Allow recruiters to update jobs" ON public.job_openings FOR UPDATE USING (is_recruiter() OR is_admin());
+CREATE POLICY "Allow recruiters to view jobs" ON public.job_openings FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.requirements r WHERE r.id = requirement_id AND r.created_by = auth.uid()) OR is_admin());
+CREATE POLICY "Allow recruiters to modify jobs" ON public.job_openings FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM public.requirements r WHERE r.id = requirement_id AND r.created_by = auth.uid()) OR is_admin());
+CREATE POLICY "Allow recruiters to update jobs" ON public.job_openings FOR UPDATE USING (EXISTS (SELECT 1 FROM public.requirements r WHERE r.id = requirement_id AND r.created_by = auth.uid()) OR is_admin());
 CREATE POLICY "Allow admin to delete jobs" ON public.job_openings FOR DELETE USING (is_admin());
 
 -- 5. Job Opening Skills Policies
-CREATE POLICY "Allow view skills" ON public.job_opening_skills FOR SELECT TO authenticated USING (is_recruiter() OR is_admin() OR is_manager());
-CREATE POLICY "Allow modify skills" ON public.job_opening_skills FOR ALL TO authenticated USING (is_recruiter() OR is_admin());
+CREATE POLICY "Allow view skills" ON public.job_opening_skills FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
+CREATE POLICY "Allow modify skills" ON public.job_opening_skills FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
 
 -- 6. Candidates Policies
-CREATE POLICY "Allow view candidates" ON public.candidates FOR SELECT TO authenticated USING (is_recruiter() OR is_admin() OR is_manager());
-CREATE POLICY "Allow modify candidates" ON public.candidates FOR ALL TO authenticated USING (is_recruiter() OR is_admin());
+CREATE POLICY "Allow view candidates" ON public.candidates FOR SELECT TO authenticated USING (auth.uid() = uploaded_by OR is_admin());
+CREATE POLICY "Allow modify candidates" ON public.candidates FOR ALL TO authenticated USING (auth.uid() = uploaded_by OR is_admin());
 
 -- 7. Applications Policies
-CREATE POLICY "Allow view applications" ON public.applications FOR SELECT TO authenticated USING (is_recruiter() OR is_admin() OR is_manager());
-CREATE POLICY "Allow modify applications" ON public.applications FOR ALL TO authenticated USING (is_recruiter() OR is_admin());
+CREATE POLICY "Allow view applications" ON public.applications FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR EXISTS (SELECT 1 FROM public.candidates c WHERE c.id = candidate_id AND c.uploaded_by = auth.uid()) OR is_admin());
+CREATE POLICY "Allow modify applications" ON public.applications FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
 
 -- 8. Job Candidates Policies
-CREATE POLICY "Allow view job candidates" ON public.job_candidates FOR SELECT TO authenticated USING (is_recruiter() OR is_admin() OR is_manager());
-CREATE POLICY "Allow modify job candidates" ON public.job_candidates FOR ALL TO authenticated USING (is_recruiter() OR is_admin());
+CREATE POLICY "Allow view job candidates" ON public.job_candidates FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
+CREATE POLICY "Allow modify job candidates" ON public.job_candidates FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
 
 -- 9. Screening Questions Policies
-CREATE POLICY "Allow view questions" ON public.screening_questions FOR SELECT TO authenticated USING (is_recruiter() OR is_admin() OR is_manager());
-CREATE POLICY "Allow modify questions" ON public.screening_questions FOR ALL TO authenticated USING (is_recruiter() OR is_admin());
+CREATE POLICY "Allow view questions" ON public.screening_questions FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
+CREATE POLICY "Allow modify questions" ON public.screening_questions FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
 
 -- 10. Interview Stages Policies
-CREATE POLICY "Allow view stages" ON public.interview_stages FOR SELECT TO authenticated USING (is_recruiter() OR is_admin() OR is_manager());
-CREATE POLICY "Allow modify stages" ON public.interview_stages FOR ALL TO authenticated USING (is_recruiter() OR is_admin());
+CREATE POLICY "Allow view stages" ON public.interview_stages FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.applications a JOIN public.job_openings j ON a.job_opening_id = j.id JOIN public.requirements r ON j.requirement_id = r.id WHERE a.id = application_id AND r.created_by = auth.uid()) OR is_admin());
+CREATE POLICY "Allow modify stages" ON public.interview_stages FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.applications a JOIN public.job_openings j ON a.job_opening_id = j.id JOIN public.requirements r ON j.requirement_id = r.id WHERE a.id = application_id AND r.created_by = auth.uid()) OR is_admin());
 
 -- 11. Activity Log Policies
-CREATE POLICY "Allow view log" ON public.activity_log FOR SELECT TO authenticated USING (is_recruiter() OR is_admin() OR is_manager());
+CREATE POLICY "Allow view log" ON public.activity_log FOR SELECT TO authenticated USING (auth.uid() = actor_id OR is_admin());
 CREATE POLICY "Allow insert log" ON public.activity_log FOR INSERT TO authenticated WITH CHECK (true);
 
 -- ============================================================

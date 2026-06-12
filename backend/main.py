@@ -761,11 +761,12 @@ async def get_candidate_details(candidate_id: str, db: Client = Depends(get_supa
 
 @app.get("/api/v1/candidates/{candidate_id}/applications")
 async def get_candidate_applications(candidate_id: str, db: Client = Depends(get_supabase)):
-    res = db.table("applications").select("*, job_openings(*, clients(name))").eq("candidate_id", candidate_id).execute()
+    res = db.table("applications").select("*, job_openings(*, requirements(*, clients(name)))").eq("candidate_id", candidate_id).execute()
     formatted = []
     for row in res.data:
         job = row.get("job_openings") or {}
-        cli = job.get("clients") or {}
+        req = job.get("requirements") or {}
+        cli = req.get("clients") or {}
         formatted.append({
             **{k: v for k, v in row.items() if k != "job_openings"},
             "job_title": job.get("title", "Unknown Job"),
@@ -775,7 +776,7 @@ async def get_candidate_applications(candidate_id: str, db: Client = Depends(get
 
 @app.get("/api/v1/candidates/{candidate_id}/history")
 async def get_candidate_history(candidate_id: str, db: Client = Depends(get_supabase)):
-    apps_res = db.table("applications").select("*, job_openings(*, clients(name))").eq("candidate_id", candidate_id).execute()
+    apps_res = db.table("applications").select("*, job_openings(*, requirements(*, clients(name)))").eq("candidate_id", candidate_id).execute()
     apps = apps_res.data or []
     
     app_ids = [a["id"] for a in apps]
@@ -787,7 +788,8 @@ async def get_candidate_history(candidate_id: str, db: Client = Depends(get_supa
     formatted = []
     for app_row in apps:
         job = app_row.get("job_openings") or {}
-        cli = job.get("clients") or {}
+        req = job.get("requirements") or {}
+        cli = req.get("clients") or {}
         app_stages = [stg for stg in stages if stg["application_id"] == app_row["id"]]
         
         # Sort stages by created_at or order
@@ -812,13 +814,24 @@ async def get_candidate_history(candidate_id: str, db: Client = Depends(get_supa
 
 @app.get("/api/v1/applications")
 async def get_all_applications(db: Client = Depends(get_supabase)):
-    res = db.table("applications").select("*, candidates(*), job_openings(*, clients(name))").execute()
+    res = db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(name)))").execute()
     data = res.data or []
     for app_rec in data:
         cand = app_rec.get("candidates") or {}
         if cand and "parsed_resume_json" in cand and cand["parsed_resume_json"]:
             if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
                 cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
+        
+        # Format job_openings to contain clients and client_name for backward compatibility
+        job = app_rec.get("job_openings") or {}
+        if job:
+            req = job.get("requirements") or {}
+            cli = req.get("clients") or {}
+            job["clients"] = cli
+            job["client_name"] = cli.get("name", "Generic Client")
+            # Remove nested requirements to keep payload clean
+            if "requirements" in job:
+                del job["requirements"]
     return data
 
 @app.post("/api/v1/candidates")
