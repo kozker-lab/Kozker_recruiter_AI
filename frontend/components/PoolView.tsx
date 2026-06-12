@@ -53,9 +53,9 @@ function mergeDuplicateCandidates(list: Candidate[]): Candidate[] {
         existing.raw_text = c.raw_text;
       }
       if (c.linked_jobs && existing.linked_jobs) {
-        const jobIds = new Set(existing.linked_jobs.map(j => j.id));
+        const jobIds = new Set(existing.linked_jobs.map(j => j.job_id));
         for (const job of c.linked_jobs) {
-          if (!jobIds.has(job.id)) {
+          if (!jobIds.has(job.job_id)) {
             existing.linked_jobs.push(job);
           }
         }
