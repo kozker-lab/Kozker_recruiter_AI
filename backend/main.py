@@ -19,7 +19,6 @@ logger = logging.getLogger("backend")
 # Read config
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://covhcpsyliesrgkjxhai.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 USE_N8N = os.getenv("USE_N8N", "False").lower() in ("true", "1", "yes")
 N8N_GENERATE_JOBS_URL = os.getenv("N8N_GENERATE_JOBS_URL", "")
@@ -41,17 +40,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Anthropic Client setup
-anthropic_client = None
-if ANTHROPIC_API_KEY and ANTHROPIC_API_KEY != "your_anthropic_api_key_here":
-    try:
-        from anthropic import Anthropic
-        anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
-        logger.info("Anthropic Claude API client successfully initialized.")
-    except Exception as e:
-        logger.error(f"Failed to initialize Anthropic client: {e}")
-else:
-    logger.warning("ANTHROPIC_API_KEY not found or is placeholder. Using mock AI fallbacks for Claude.")
 
 # Helper: Safe client creator to bypass validation for new publishable keys
 def get_safe_supabase_client(url: str, key: str, jwt_token: str = None) -> Client:
@@ -144,34 +132,6 @@ def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
             return file_bytes.decode("utf-8", errors="ignore")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to read file as text: {e}")
-
-# Helper: Call Claude with JSON extraction prompt
-def call_claude_json(system_prompt: str, user_prompt: str) -> Dict[str, Any]:
-    if not anthropic_client:
-        logger.warning("Claude requested but Anthropic client is not initialized. Using simulated response.")
-        return {}
-    
-    try:
-        message = anthropic_client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=4000,
-            temperature=0.0,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
-        )
-        # Extract text content
-        res_text = message.content[0].text.strip()
-        # Find JSON boundaries
-        start_idx = res_text.find("{")
-        end_idx = res_text.rfind("}")
-        if start_idx != -1 and end_idx != -1:
-            json_str = res_text[start_idx:end_idx + 1]
-            return json.loads(json_str)
-        else:
-            return json.loads(res_text)
-    except Exception as e:
-        logger.error(f"Claude API call failed: {e}")
-        raise HTTPException(status_code=502, detail=f"Claude API Error: {e}")
 
 # Models
 class ClientModel(BaseModel):
@@ -515,54 +475,21 @@ def generate_job_openings_background(req_id: str, client_id: str, req_title: str
             salary_range = f"₹{int(req_budget_min)} - ₹{int(req_budget_max)} LPA"
             keywords = req_skills
             
-            if anthropic_client:
-                system_prompt = "You are a professional recruitment assistant helping write job descriptions. Return ONLY a valid JSON object."
-                user_prompt = f"""
-                Given the following job requirement, generate a complete and compelling job opening.
-                This is job post {i} of {num_posts} for this requirement — make each post distinct in tone/angle.
-                
-                Requirement details:
-                - Title: {req_title}
-                - Description / brief: {req_desc}
-                - Required skills: {', '.join(req_skills)}
-                - Experience: {req_exp_min}–{req_exp_max} years
-                - Seniority: {req_seniority}
-                - Budget: ₹{req_budget_min}–{req_budget_max} LPA
-                
-                Return ONLY a valid JSON object with these exact fields:
-                {{
-                  "title": "string (specific job title)",
-                  "description": "string (2-3 paragraph overview of the role)",
-                  "responsibilities": ["string", ...] (6-8 bullet points),
-                  "qualifications": ["string", ...] (5-7 bullet points),
-                  "salary_range": "string (e.g. ₹12–18 LPA)",
-                  "keywords": ["string", ...] (8-10 keywords)
-                }}
-                Do not include any text outside the JSON object.
-                """
-                ai_data = call_claude_json(system_prompt, user_prompt)
-                if ai_data:
-                    job_title = ai_data.get("title", job_title)
-                    job_desc = ai_data.get("description", "")
-                    responsibilities = ai_data.get("responsibilities", [])
-                    qualifications = ai_data.get("qualifications", [])
-                    salary_range = ai_data.get("salary_range", salary_range)
-                    keywords = ai_data.get("keywords", keywords)
-            else:
-                # Simulated Fallback
-                job_title = f"Senior {req_title} - Strategy & Execution (Option {i})" if i == 1 else f"Lead {req_title} - Innovation & Delivery (Option {i})"
-                job_desc = f"We are seeking a talented {job_title} for our client. The ideal candidate will leverage modern patterns, lead key initiatives, and deliver high-impact features. This is a fast-paced environment requiring strong problem-solving skills."
-                responsibilities = [
-                    "Lead development of core features and platform widgets.",
-                    "Collaborate with product and UX designers to craft high-fidelity interfaces.",
-                    "Ensure responsive designs and optimize rendering code for target metrics.",
-                    "Implement thorough unit testing across critical flows."
-                ]
-                qualifications = [
-                    f"At least {req_exp_min} years of professional engineering experience.",
-                    f"Strong competency in: {', '.join(req_skills[:4])}.",
-                    "Excellent analytical thinking and clear articulation of design decisions."
-                ]
+            # Simulated Fallback
+            job_title = f"Senior {req_title} - Strategy & Execution (Option {i})" if i == 1 else f"Lead {req_title} - Innovation & Delivery (Option {i})"
+            job_desc = f"We are seeking a talented {job_title} for our client. The ideal candidate will leverage modern patterns, lead key initiatives, and deliver high-impact features. This is a fast-paced environment requiring strong problem-solving skills."
+            responsibilities = [
+                "Lead development of core features and platform widgets.",
+                "Collaborate with product and UX designers to craft high-fidelity interfaces.",
+                "Ensure responsive designs and optimize rendering code for target metrics.",
+                "Implement thorough unit testing across critical flows."
+            ]
+            qualifications = [
+                f"At least {req_exp_min} years of professional engineering experience.",
+                f"Strong competency in: {', '.join(req_skills[:4])}.",
+                "Excellent analytical thinking and clear articulation of design decisions."
+            ]
+            
             
             # Insert job opening draft
             db.table("job_openings").insert({
@@ -1273,35 +1200,12 @@ def generate_questions_background(app_id: str, candidate_name: str, skills: List
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
     
     try:
-        questions = []
-        if anthropic_client:
-            system_prompt = "You are a professional hiring screening manager. Return ONLY a valid JSON array of question objects."
-            user_prompt = f"""
-            Generate a personalized list of 5 technical screening questions for {candidate_name}.
-            
-            Candidate background:
-            - Skills: {', '.join(skills)}
-            - Experience: {exp_years} years
-            - Resume snippet: {raw_text[:1000]}
-            
-            Return ONLY a valid JSON array where each item is:
-            {{
-              "question": "string (the screening question)",
-              "difficulty": "easy" | "medium" | "hard"
-            }}
-            Do not include any wrapper text outside the JSON array.
-            """
-            ai_data = call_claude_json(system_prompt, user_prompt)
-            if isinstance(ai_data, list):
-                questions = ai_data
-        
         # Fallback if no questions generated or no client
-        if not questions:
-            questions = [
-                {"question": f"Can you detail your experience working with {skills[0] if skills else 'modern tech'} and how you applied it in your previous role?", "difficulty": "easy"},
-                {"question": "How do you handle client-side rendering bottlenecks when managing large datagrid lists?", "difficulty": "medium"},
-                {"question": "Describe a time you solved a challenging concurrency/state synchronization issue.", "difficulty": "hard"}
-            ]
+        questions = [
+            {"question": f"Can you detail your experience working with {skills[0] if skills else 'modern tech'} and how you applied it in your previous role?", "difficulty": "easy"},
+            {"question": "How do you handle client-side rendering bottlenecks when managing large datagrid lists?", "difficulty": "medium"},
+            {"question": "Describe a time you solved a challenging concurrency/state synchronization issue.", "difficulty": "hard"}
+        ]
             
         # Clear existing
         db.table("screening_questions").delete().eq("application_id", app_id).execute()
@@ -1540,30 +1444,7 @@ async def ai_edit_question(q_id: str, data: Dict[str, str], db: Client = Depends
         raise HTTPException(status_code=404, detail="Question not found")
         
     old_question = q_res.data[0]["question"]
-    new_question = old_question
-    
-    if anthropic_client:
-        system_prompt = "You are a professional recruitment coach. Return ONLY a revised question string."
-        user_prompt = f"""
-        Refine the following screening question according to this instruction:
-        Instruction: "{instruction}"
-        Original Question: "{old_question}"
-        
-        Provide the final single-sentence or multi-sentence question. Do not include any wrappers, quotes, or preambles.
-        """
-        try:
-            message = anthropic_client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=500,
-                temperature=0.3,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}]
-            )
-            new_question = message.content[0].text.strip()
-        except Exception as e:
-            logger.error(f"Claude AI question edit failed: {e}")
-    else:
-        new_question = f"{old_question} (AI instructions applied: {instruction})"
+    new_question = f"{old_question} (AI instructions applied: {instruction})"
         
     # Update question
     res = db.table("screening_questions").update({
@@ -1596,34 +1477,14 @@ async def handle_chat_message(chat: ChatMessageModel, db: Client = Depends(get_s
     - Candidate Pool Size: {candidates_count}
     """
     
+    # Mock chatbot replies
     reply = ""
-    if anthropic_client:
-        system_prompt = "You are 'Kozker Recruiter AI Companion', a conversational assistant helping recruiters coordinate and manage candidate matching pipelines."
-        user_prompt = f"""
-        Recruiter current page context: {json.dumps(ctx)}
-        Database summary: {db_summary}
-        
-        Recruiter query: {user_msg}
-        """
-        try:
-            message = anthropic_client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=1000,
-                temperature=0.7,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}]
-            )
-            reply = message.content[0].text.strip()
-        except Exception as e:
-            reply = f"Sorry, I experienced an error calling Claude AI: {e}"
+    if "candidate" in user_msg.lower():
+        reply = f"Currently, there are {candidates_count} candidates in the common pool. Rohan Sharma (fuzzy match score: 94.5%) is accepted and in the Technical Interview stage."
+    elif "job" in user_msg.lower() or "opening" in user_msg.lower():
+        reply = f"We have {jobs_count} job openings. The most recent one created is mapped to Google client requirements."
     else:
-        # Mock chatbot replies
-        if "candidate" in user_msg.lower():
-            reply = f"Currently, there are {candidates_count} candidates in the common pool. Rohan Sharma (fuzzy match score: 94.5%) is accepted and in the Technical Interview stage."
-        elif "job" in user_msg.lower() or "opening" in user_msg.lower():
-            reply = f"We have {jobs_count} job openings. The most recent one created is mapped to Google client requirements."
-        else:
-            reply = f"Hello! I'm your Kozker Recruiter AI Companion. I see we have {clients_count} clients and {reqs_count} active mandate requirements. How can I help you manage your pipeline today?"
+        reply = f"Hello! I'm your Kozker Recruiter AI Companion. I see we have {clients_count} clients and {reqs_count} active mandate requirements. How can I help you manage your pipeline today?"
             
     return {"reply": reply}
 
