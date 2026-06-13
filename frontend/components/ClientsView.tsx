@@ -270,12 +270,23 @@ export default function ClientsView() {
     }
   };
 
-  // Helper to ensure first client is selected
   React.useEffect(() => {
     if (clients.length > 0 && !selectedClientId) {
       setSelectedClientId(clients[0].id);
     }
   }, [clients, selectedClientId]);
+
+  React.useEffect(() => {
+    if (!isClientModalOpen) {
+      createClientMutation.reset();
+    }
+  }, [isClientModalOpen]);
+
+  React.useEffect(() => {
+    if (!isEditClientModalOpen) {
+      updateClientMutation.reset();
+    }
+  }, [isEditClientModalOpen]);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch font-sans text-neutral-700 max-w-7xl mx-auto w-full select-none">
@@ -525,6 +536,12 @@ export default function ClientsView() {
                 />
               </div>
 
+              {createClientMutation.isError && (
+                <div className="text-red-500 text-[11px] font-mono leading-relaxed bg-red-50 border border-red-200/50 p-2.5 rounded-sm">
+                  {createClientMutation.error instanceof Error ? createClientMutation.error.message : "Failed to create client."}
+                </div>
+              )}
+
               <div className="flex justify-end gap-2.5 pt-2">
                 <button
                   type="button"
@@ -574,6 +591,12 @@ export default function ClientsView() {
                   className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 placeholder:text-neutral-400 focus:ring-1 focus:ring-primary"
                 />
               </div>
+
+              {updateClientMutation.isError && (
+                <div className="text-red-500 text-[11px] font-mono leading-relaxed bg-red-50 border border-red-200/50 p-2.5 rounded-sm">
+                  {updateClientMutation.error instanceof Error ? updateClientMutation.error.message : "Failed to update client."}
+                </div>
+              )}
 
               <div className="flex justify-end gap-2.5 pt-2">
                 <button

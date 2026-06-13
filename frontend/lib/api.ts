@@ -6,7 +6,7 @@ import {
 import { createClient } from "./supabase/client";
 
 // Base Configuration
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
 // Persistent memory-store for mock fallback
 // Serves as a local stateful database to make the UI completely interactive
@@ -542,9 +542,17 @@ export async function apiRequest<T>(
     
     if (res.status === 418 || res.status === 404 || res.status === 500 || res.status === 503) {
       console.warn(`API returned status ${res.status}. Falling back to persisted mock database.`);
+    } else {
+      const errBody = await res.json().catch(() => ({}));
+      const errMsg = errBody.detail || `Request failed with status ${res.status}`;
+      throw new Error(errMsg);
     }
   } catch (err) {
-    console.warn("Backend server not reached. Serving data from static mock storage fallback.", err);
+    if (err instanceof Error && !err.message.includes("Request failed with status")) {
+      console.warn("Backend server not reached. Serving data from static mock storage fallback.", err);
+    } else {
+      throw err;
+    }
   }
 
   // Persisted Mock Database Handlers

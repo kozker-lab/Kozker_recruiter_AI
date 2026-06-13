@@ -8,7 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from supabase import create_client, Client, ClientOptions
+from postgrest.exceptions import APIError
 import httpx
+import jwt
 
 # Load environment variables
 load_dotenv()
@@ -34,7 +36,7 @@ app = FastAPI(title="Kozker Recruiter AI Backend", version="1.0.0")
 # CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,9 +73,30 @@ def get_safe_supabase_client(url: str, key: str, jwt_token: str = None) -> Clien
 # Helper: Get Supabase client authenticated as the user
 def get_supabase(authorization: Optional[str] = Header(None)) -> Client:
     jwt_token = None
-    if authorization and authorization.startswith("Bearer "):
-        jwt_token = authorization.split(" ")[1]
+    if authorization:
+        if authorization.startswith("Bearer "):
+            jwt_token = authorization.split(" ")[1]
+        elif authorization.startswith("eyJ"):
+            jwt_token = authorization
     return get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+
+# Helper: Extract current user ID from Authorization header Bearer token
+def get_current_user_id(authorization: Optional[str] = Header(None)) -> Optional[str]:
+    if authorization:
+        token = None
+        if authorization.startswith("Bearer "):
+            token = authorization.split(" ")[1]
+        elif authorization.startswith("eyJ"):
+            token = authorization
+            
+        if token:
+            try:
+                # Decode without verification as signature is verified by Supabase API gateway
+                payload = jwt.decode(token, options={"verify_signature": False})
+                return payload.get("sub")
+            except Exception as e:
+                logger.error(f"Failed to decode JWT: {e}")
+    return None
 
 # Security Middleware: verify callback secret
 async def verify_callback_secret(authorization: Optional[str] = Header(None)):
@@ -258,36 +281,59 @@ async def get_clients(db: Client = Depends(get_supabase)):
     return res.data
 
 @app.post("/api/v1/clients")
-async def create_client_endpoint(client: ClientModel, db: Client = Depends(get_supabase)):
-    res = db.table("clients").insert({"name": client.name}).execute()
+async def create_client_endpoint(client: ClientModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    payload = {"name": client.name}
+    if user_id:
+        payload["created_by"] = user_id
+    try:
+        res = db.table("clients").insert(payload).execute()
+    except APIError as e:
+        logger.error(f"Error creating client: {e}")
+        if e.code == "23505":
+            raise HTTPException(status_code=409, detail="A client with this name already exists for your account.")
+        raise HTTPException(status_code=500, detail=str(e))
+
     if not res.data:
         raise HTTPException(status_code=400, detail="Failed to create client")
     
     # Log activity
-    db.table("activity_log").insert({
-        "action": "client_created",
-        "entity_type": "clients",
-        "entity_id": res.data[0]["id"],
-        "actor_name": "Recruiter",
-        "metadata": {"client_name": client.name}
-    }).execute()
+    try:
+        db.table("activity_log").insert({
+            "action": "client_created",
+            "entity_type": "clients",
+            "entity_id": res.data[0]["id"],
+            "actor_name": "Recruiter",
+            "metadata": {"client_name": client.name}
+        }).execute()
+    except Exception as e:
+        logger.error(f"Failed to log client creation activity: {e}")
     
     return res.data[0]
 
 @app.put("/api/v1/clients/{client_id}")
 async def update_client(client_id: str, client: ClientModel, db: Client = Depends(get_supabase)):
-    res = db.table("clients").update({"name": client.name}).eq("id", client_id).execute()
+    try:
+        res = db.table("clients").update({"name": client.name}).eq("id", client_id).execute()
+    except APIError as e:
+        logger.error(f"Error updating client {client_id}: {e}")
+        if e.code == "23505":
+            raise HTTPException(status_code=409, detail="A client with this name already exists for your account.")
+        raise HTTPException(status_code=500, detail=str(e))
+
     if not res.data:
         raise HTTPException(status_code=404, detail="Client not found")
     
     # Log activity
-    db.table("activity_log").insert({
-        "action": "client_updated",
-        "entity_type": "clients",
-        "entity_id": client_id,
-        "actor_name": "Recruiter",
-        "metadata": {"client_name": client.name}
-    }).execute()
+    try:
+        db.table("activity_log").insert({
+            "action": "client_updated",
+            "entity_type": "clients",
+            "entity_id": client_id,
+            "actor_name": "Recruiter",
+            "metadata": {"client_name": client.name}
+        }).execute()
+    except Exception as e:
+        logger.error(f"Failed to log client update activity: {e}")
     
     return res.data[0]
 
@@ -559,8 +605,8 @@ async def update_requirement(req_id: str, req: RequirementUpdateModel, db: Clien
     return res.data[0]
 
 @app.post("/api/v1/requirements")
-async def create_requirement(req: RequirementModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
-    res = db.table("requirements").insert({
+async def create_requirement(req: RequirementModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    payload = {
         "client_id": req.client_id,
         "title": req.title,
         "description": req.description,
@@ -573,7 +619,10 @@ async def create_requirement(req: RequirementModel, background_tasks: Background
         "notes": req.notes,
         "num_posts_requested": req.num_posts_requested,
         "status": "generating"
-    }).execute()
+    }
+    if user_id:
+        payload["created_by"] = user_id
+    res = db.table("requirements").insert(payload).execute()
     
     if not res.data:
         raise HTTPException(status_code=400, detail="Failed to create requirement")
@@ -582,7 +631,12 @@ async def create_requirement(req: RequirementModel, background_tasks: Background
     
     # Forward the user's JWT token
     auth_header = request.headers.get("Authorization", "")
-    jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
+    jwt_token = ""
+    if auth_header:
+        if auth_header.startswith("Bearer "):
+            jwt_token = auth_header.split(" ")[1]
+        elif auth_header.startswith("eyJ"):
+            jwt_token = auth_header
     
     # Trigger background job openings generation task
     if USE_N8N:
@@ -1049,7 +1103,7 @@ async def get_all_applications(db: Client = Depends(get_supabase)):
     return data
 
 @app.post("/api/v1/candidates")
-async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supabase)):
+async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
     # Limit source value to allowed constraints: 'csv', 'pdf', 'docx', 'manual'
     db_source = cand.source
     if db_source not in ["csv", "pdf", "docx", "manual"]:
@@ -1099,7 +1153,7 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
             data["raw_text"] = merged_raw
             return data
 
-    res = db.table("candidates").insert({
+    payload = {
         "full_name": cand.full_name,
         "email": cand.email,
         "phone": cand.phone if cand.phone else None,
@@ -1112,7 +1166,10 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
         "academic_details": cand.academic_details,
         "achievements": cand.achievements,
         "source": db_source
-    }).execute()
+    }
+    if user_id:
+        payload["uploaded_by"] = user_id
+    res = db.table("candidates").insert(payload).execute()
     
     if res.data:
         data = res.data[0]
