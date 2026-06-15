@@ -541,14 +541,26 @@ export async function apiRequest<T>(
     }
     
     if (res.status === 418 || res.status === 404 || res.status === 500 || res.status === 503) {
-      console.warn(`API returned status ${res.status}. Falling back to persisted mock database.`);
+      const errBody = await res.json().catch(() => ({}));
+      const errMsg = errBody.detail || `Request failed with status ${res.status}`;
+      
+      const isCandidatePath = path.startsWith("/candidates/");
+      const candidateId = isCandidatePath ? path.split("/")[2] : null;
+      const isMockCandidate = candidateId ? candidateId.startsWith("cand-") : false;
+      
+      if (isCandidatePath && !isMockCandidate) {
+        console.error(`Backend candidate API call failed: ${errMsg}`);
+        throw new Error(`Backend candidate API call failed: ${errMsg}`);
+      }
+      
+      console.warn(`API returned status ${res.status} (${errMsg}). Falling back to persisted mock database.`);
     } else {
       const errBody = await res.json().catch(() => ({}));
       const errMsg = errBody.detail || `Request failed with status ${res.status}`;
       throw new Error(errMsg);
     }
   } catch (err) {
-    if (err instanceof Error && !err.message.includes("Request failed with status")) {
+    if (err instanceof Error && !err.message.includes("Request failed with status") && !err.message.includes("Backend candidate API call failed")) {
       console.warn("Backend server not reached. Serving data from static mock storage fallback.", err);
     } else {
       throw err;
@@ -581,6 +593,31 @@ async function handleMockRequest<T>(
       role: "recruiter",
       is_onboarded: false,
       created_at: new Date().toISOString()
+    });
+  }
+  
+  // Dynamically map seeded data to current logged-in user in mock mode
+  if (currentUserId !== "usr-1") {
+    mockDb.candidates.forEach(c => {
+      if (c.uploaded_by === "usr-1") c.uploaded_by = currentUserId;
+    });
+    mockDb.clients.forEach(c => {
+      if (c.created_by === "usr-1") c.created_by = currentUserId;
+    });
+    mockDb.requirements.forEach(r => {
+      if (r.created_by === "usr-1") r.created_by = currentUserId;
+    });
+    mockDb.jobOpenings.forEach(j => {
+      if (j.created_by === "usr-1") j.created_by = currentUserId;
+    });
+    mockDb.applications.forEach(a => {
+      if (a.reviewed_by === "usr-1") a.reviewed_by = currentUserId;
+    });
+    mockDb.activityLogs.forEach(l => {
+      if (l.actor_id === "usr-1") {
+        l.actor_id = currentUserId;
+        l.actor_name = currentUserFullName;
+      }
     });
   }
 
@@ -1281,8 +1318,67 @@ async function handleMockRequest<T>(
         if (path.startsWith("/candidates/") && method === "GET") {
           const id = path.split("/")[2];
           const cand = mockDb.candidates.find(c => c.id === id && c.uploaded_by === currentUserId);
-          if (!cand) return reject(new Error("Not found"));
+          if (!cand) {
+            const allCands = mockDb.candidates.map(c => `(id:${c.id}, owner:${c.uploaded_by})`).join(", ");
+            return reject(new Error(`Candidate not found for GET. Requested ID: "${id}", currentUserId: "${currentUserId}". Existing: [${allCands}]`));
+          }
           return resolve(cand as unknown as T);
+        }
+        if (path.startsWith("/candidates/") && method === "PUT") {
+          const id = path.split("/")[2];
+          const cand = mockDb.candidates.find(c => c.id === id && c.uploaded_by === currentUserId);
+          if (!cand) {
+            const allCands = mockDb.candidates.map(c => `(id:${c.id}, owner:${c.uploaded_by})`).join(", ");
+            return reject(new Error(`Candidate not found for PUT. Requested ID: "${id}", currentUserId: "${currentUserId}". Existing: [${allCands}]`));
+          }
+          
+          if (data.full_name !== undefined) cand.full_name = data.full_name;
+          if (data.email !== undefined) cand.email = data.email;
+          if (data.phone !== undefined) cand.phone = data.phone;
+          if (data.skills !== undefined) cand.skills = data.skills;
+          if (data.experience_years !== undefined) cand.experience_years = Number(data.experience_years);
+          if (data.resume_url !== undefined) cand.resume_url = data.resume_url;
+          if (data.education !== undefined) cand.education = data.education;
+          if (data.working_or_not !== undefined) cand.working_or_not = data.working_or_not;
+          if (data.academic_details !== undefined) cand.academic_details = data.academic_details;
+          if (data.achievements !== undefined) cand.achievements = data.achievements;
+          
+          if (data.summary !== undefined || data.raw_text !== undefined) {
+            if (!cand.parsed_resume_json) cand.parsed_resume_json = {};
+            if (data.summary !== undefined) cand.parsed_resume_json.summary = data.summary;
+            if (data.raw_text !== undefined) cand.parsed_resume_json.raw_text = data.raw_text;
+          }
+
+          mockDb.activityLogs.unshift({
+            id: `act-${Date.now()}`,
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
+            action: "candidate_updated",
+            entity_type: "candidates",
+            entity_id: cand.id,
+            metadata: { candidate_name: cand.full_name },
+            created_at: new Date().toISOString()
+          });
+          return resolve(cand as unknown as T);
+        }
+        if (path.startsWith("/candidates/") && method === "DELETE") {
+          const id = path.split("/")[2];
+          const candIdx = mockDb.candidates.findIndex(c => c.id === id && c.uploaded_by === currentUserId);
+          if (candIdx === -1) return reject(new Error("Not found"));
+          const cand = mockDb.candidates[candIdx];
+          mockDb.candidates.splice(candIdx, 1);
+          
+          mockDb.activityLogs.unshift({
+            id: `act-${Date.now()}`,
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
+            action: "candidate_deleted",
+            entity_type: "candidates",
+            entity_id: id,
+            metadata: { candidate_name: cand.full_name },
+            created_at: new Date().toISOString()
+          });
+          return resolve({ success: true } as unknown as T);
         }
         if (path === "/candidates" && method === "POST") {
           // Check duplicate email -> MERGE IF EXISTS
@@ -1299,6 +1395,10 @@ async function handleMockRequest<T>(
             if (data.raw_text && !exists.raw_text?.includes(data.raw_text)) {
               exists.raw_text = `${exists.raw_text}\n\n[Updated Profile]:\n${data.raw_text}`;
             }
+            if (data.summary) {
+              if (!exists.parsed_resume_json) exists.parsed_resume_json = {};
+              exists.parsed_resume_json.summary = data.summary;
+            }
             return resolve(exists as unknown as T);
           }
           const newCand: Candidate = {
@@ -1314,6 +1414,10 @@ async function handleMockRequest<T>(
             working_or_not: data.working_or_not !== undefined ? !!data.working_or_not : true,
             academic_details: data.academic_details || null,
             achievements: data.achievements || null,
+            parsed_resume_json: {
+              summary: data.summary || "",
+              raw_text: data.raw_text || ""
+            },
             source: "manual",
             uploaded_by: currentUserId,
             created_at: new Date().toISOString(),

@@ -211,6 +211,21 @@ class CandidateModel(BaseModel):
     academic_details: Optional[str] = ""
     achievements: Optional[str] = ""
     source: str = "manual"
+    summary: Optional[str] = ""
+
+class CandidateUpdateModel(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    skills: Optional[List[str]] = None
+    experience_years: Optional[int] = None
+    resume_url: Optional[str] = None
+    raw_text: Optional[str] = None
+    education: Optional[str] = None
+    working_or_not: Optional[bool] = None
+    academic_details: Optional[str] = None
+    achievements: Optional[str] = None
+    summary: Optional[str] = None
 
 class ChatMessageModel(BaseModel):
     message: str
@@ -1027,6 +1042,110 @@ async def get_candidate_details(candidate_id: str, db: Client = Depends(get_supa
             cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
     return cand
 
+@app.put("/api/v1/candidates/{candidate_id}")
+async def update_candidate(candidate_id: str, cand: CandidateUpdateModel, db: Client = Depends(get_supabase)):
+    current_res = db.table("candidates").select("*").eq("id", candidate_id).execute()
+    if not current_res.data:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    current_cand = current_res.data[0]
+
+    if cand.email is not None and cand.email.strip().lower() != (current_cand.get("email") or "").strip().lower():
+        dup_check = db.table("candidates").select("id").eq("email", cand.email.strip()).execute()
+        if dup_check.data:
+            other_ids = [r["id"] for r in dup_check.data if r["id"] != candidate_id]
+            if other_ids:
+                raise HTTPException(
+                    status_code=409, 
+                    detail=f"A candidate with the email address '{cand.email}' already exists in the database."
+                )
+
+    update_data = {}
+    if cand.full_name is not None:
+        update_data["full_name"] = cand.full_name
+    if cand.email is not None:
+        update_data["email"] = cand.email
+    if cand.phone is not None:
+        update_data["phone"] = cand.phone
+    if cand.skills is not None:
+        update_data["skills"] = cand.skills
+    if cand.experience_years is not None:
+        update_data["experience_years"] = cand.experience_years
+    if cand.resume_url is not None:
+        update_data["resume_url"] = cand.resume_url
+    if cand.education is not None:
+        update_data["education"] = cand.education
+    if cand.working_or_not is not None:
+        update_data["working_or_not"] = cand.working_or_not
+    if cand.academic_details is not None:
+        update_data["academic_details"] = cand.academic_details
+    if cand.achievements is not None:
+        update_data["achievements"] = cand.achievements
+
+    parsed_json = current_cand.get("parsed_resume_json") or {}
+    if not isinstance(parsed_json, dict):
+        parsed_json = {}
+
+    modified_json = False
+    if cand.summary is not None:
+        parsed_json["summary"] = cand.summary
+        modified_json = True
+    if cand.raw_text is not None:
+        parsed_json["raw_text"] = cand.raw_text
+        modified_json = True
+
+    if modified_json:
+        update_data["parsed_resume_json"] = parsed_json
+
+    if update_data:
+        try:
+            res = db.table("candidates").update(update_data).eq("id", candidate_id).execute()
+        except Exception as e:
+            logger.error(f"Database error during candidate update of ID '{candidate_id}': {e}")
+            raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
+            
+        if not res.data:
+            logger.warning(f"No candidate rows returned after update for ID '{candidate_id}'. Permisson denied or not found.")
+            raise HTTPException(status_code=500, detail="Update failed: candidate row not updated. Check permission policies.")
+        updated_cand = res.data[0]
+    else:
+        updated_cand = current_cand
+
+    if "parsed_resume_json" in updated_cand and updated_cand["parsed_resume_json"]:
+        if isinstance(updated_cand["parsed_resume_json"], dict) and "raw_text" in updated_cand["parsed_resume_json"]:
+            updated_cand["raw_text"] = updated_cand["parsed_resume_json"]["raw_text"]
+
+    try:
+        db.table("activity_log").insert({
+            "action": "candidate_updated",
+            "entity_type": "candidates",
+            "entity_id": candidate_id,
+            "actor_name": "Recruiter",
+            "metadata": {"candidate_name": updated_cand.get("full_name", "")}
+        }).execute()
+    except Exception as e:
+        logger.error(f"Failed to log candidate update activity: {e}")
+
+    return updated_cand
+
+@app.delete("/api/v1/candidates/{candidate_id}")
+async def delete_candidate(candidate_id: str, db: Client = Depends(get_supabase)):
+    res = db.table("candidates").update({"is_deleted": True}).eq("id", candidate_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+        
+    try:
+        db.table("activity_log").insert({
+            "action": "candidate_deleted",
+            "entity_type": "candidates",
+            "entity_id": candidate_id,
+            "actor_name": "Recruiter",
+            "metadata": {"candidate_name": res.data[0].get("full_name", "")}
+        }).execute()
+    except Exception as e:
+        logger.error(f"Failed to log candidate deletion activity: {e}")
+        
+    return {"success": True}
+
 @app.get("/api/v1/candidates/{candidate_id}/applications")
 async def get_candidate_applications(candidate_id: str, db: Client = Depends(get_supabase)):
     res = db.table("applications").select("*, job_openings(*, requirements(*, clients(name)))").eq("candidate_id", candidate_id).execute()
@@ -1109,8 +1228,8 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
     if db_source not in ["csv", "pdf", "docx", "manual"]:
         db_source = "manual"
 
-    # Search if candidate already exists
-    exists = db.table("candidates").select("*").eq("email", cand.email).eq("is_deleted", False).execute()
+    # Search if candidate already exists (globally, including soft-deleted ones)
+    exists = db.table("candidates").select("*").eq("email", cand.email).execute()
     if exists.data:
         existing_cand = exists.data[0]
         # Merge skills (take union)
@@ -1125,15 +1244,17 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
         merged_phone = cand.phone if cand.phone else existing_cand.get("phone")
         merged_academic = cand.academic_details if cand.academic_details else existing_cand.get("academic_details")
         merged_achievements = cand.achievements if cand.achievements else existing_cand.get("achievements")
-        
-        # Merge raw text
+             # Merge raw text
         existing_raw = ""
+        existing_summary = ""
         if "parsed_resume_json" in existing_cand and isinstance(existing_cand["parsed_resume_json"], dict):
             existing_raw = existing_cand["parsed_resume_json"].get("raw_text") or ""
+            existing_summary = existing_cand["parsed_resume_json"].get("summary") or ""
         
         merged_raw = existing_raw
         if cand.raw_text and cand.raw_text not in existing_raw:
             merged_raw = f"{existing_raw}\n\n[Updated Profile]:\n{cand.raw_text}" if existing_raw else cand.raw_text
+        merged_summary = cand.summary if cand.summary else existing_summary
             
         res = db.table("candidates").update({
             "full_name": cand.full_name,
@@ -1144,15 +1265,16 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
             "working_or_not": cand.working_or_not,
             "academic_details": merged_academic,
             "achievements": merged_achievements,
-            "parsed_resume_json": {"raw_text": merged_raw},
-            "source": db_source
+            "parsed_resume_json": {"raw_text": merged_raw, "summary": merged_summary},
+            "source": db_source,
+            "is_deleted": False  # Reactivate candidate if it was soft-deleted
         }).eq("id", existing_cand["id"]).execute()
         
         if res.data:
             data = res.data[0]
             data["raw_text"] = merged_raw
             return data
-
+ 
     payload = {
         "full_name": cand.full_name,
         "email": cand.email,
@@ -1160,7 +1282,7 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
         "skills": cand.skills,
         "experience_years": cand.experience_years,
         "resume_url": cand.resume_url,
-        "parsed_resume_json": {"raw_text": cand.raw_text},
+        "parsed_resume_json": {"raw_text": cand.raw_text, "summary": cand.summary or ""},
         "education": cand.education,
         "working_or_not": cand.working_or_not,
         "academic_details": cand.academic_details,
@@ -1188,8 +1310,8 @@ async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(ge
         if not email or not full_name:
             continue
             
-        # Check if candidate email already exists (active)
-        exists_res = db.table("candidates").select("*").eq("email", email).eq("is_deleted", False).execute()
+        # Check if candidate email already exists (globally, including soft-deleted ones)
+        exists_res = db.table("candidates").select("*").eq("email", email).execute()
         
         # Skills list parser
         skills_input = item.get("skills", "")
@@ -1246,7 +1368,8 @@ async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(ge
                 "achievements": merged_achievements,
                 "resume_url": resume_url_val if resume_url_val else existing_cand.get("resume_url"),
                 "parsed_resume_json": {"raw_text": merged_raw},
-                "source": "csv"
+                "source": "csv",
+                "is_deleted": False  # Reactivate candidate if it was soft-deleted
             }).eq("email", email).execute()
         else:
             inserted += 1

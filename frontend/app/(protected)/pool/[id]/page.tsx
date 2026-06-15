@@ -1,13 +1,15 @@
 "use client";
 
-import React, { use } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { use, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, API_BASE_URL, apiUploadFile } from "@/lib/api";
 import { Candidate } from "@/types";
+import { parseResumeTextHeuristically } from "@/components/PoolView";
 import { 
   ArrowLeft, User, Mail, Phone, Calendar, Briefcase, 
-  GraduationCap, Trophy, FileText, CheckCircle2, AlertCircle, Bookmark
+  GraduationCap, Trophy, FileText, CheckCircle2, AlertCircle, Bookmark,
+  Sparkles, Edit2, RefreshCcw, Trash2, Upload
 } from "lucide-react";
 
 interface CandidateApplicationHistory {
@@ -30,12 +32,86 @@ interface CandidateApplicationHistory {
 export default function CandidateDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { id } = use(params);
+  const queryClient = useQueryClient();
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editSummary, setEditSummary] = useState("");
+  const [isReuploading, setIsReuploading] = useState(false);
+
+  const handleReupload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsReuploading(true);
+    try {
+      let text = "";
+      if (file.type === "text/plain") {
+        const reader = new FileReader();
+        text = await new Promise<string>((resolve) => {
+          reader.onload = (evt) => resolve(evt.target?.result as string || "");
+          reader.readAsText(file);
+        });
+      } else {
+        const result = await apiUploadFile("/requirements/parse-file", file);
+        text = result.text || "";
+      }
+
+      if (text && candidate) {
+        const parsed = parseResumeTextHeuristically(text);
+        const skillsList = parsed.skills ? parsed.skills.split(",").map(s => s.trim()).filter(Boolean) : [];
+        await apiRequest("PUT", `/candidates/${candidate.id}`, {
+          raw_text: text,
+          summary: parsed.summary,
+          full_name: parsed.name || candidate.full_name,
+          email: parsed.email || candidate.email,
+          phone: parsed.phone || candidate.phone,
+          skills: skillsList.length > 0 ? skillsList : candidate.skills,
+          experience_years: parsed.experience_years || candidate.experience_years,
+          education: parsed.education || candidate.education,
+          academic_details: parsed.academicDetails || candidate.academic_details,
+          achievements: parsed.achievements || candidate.achievements,
+          resume_url: `/resumes/${file.name}`
+        });
+        queryClient.invalidateQueries({ queryKey: ["candidates"] });
+        queryClient.invalidateQueries({ queryKey: ["candidate", candidate.id] });
+        alert("Resume re-uploaded and candidate details extracted successfully!");
+      } else {
+        throw new Error("No text content could be extracted from this resume.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to parse/re-upload resume: " + (err.message || err));
+    } finally {
+      setIsReuploading(false);
+    }
+  };
 
   // Queries
   const { data: candidate, isLoading: loadingCandidate, error: candidateError } = useQuery<Candidate>({
     queryKey: ["candidate", id],
     queryFn: () => apiRequest<Candidate>("GET", `/candidates/${id}`)
   });
+
+  const saveMutation = useMutation({
+    mutationFn: (updatedSummary: string) => {
+      return apiRequest("PUT", `/candidates/${id}`, {
+        summary: updatedSummary
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["candidate", id] });
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      setIsEditing(false);
+    }
+  });
+
+  const handleEdit = () => {
+    setEditSummary(candidate?.parsed_resume_json?.summary || "");
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    saveMutation.mutate(editSummary);
+  };
 
   const { data: history = [], isLoading: loadingHistory } = useQuery<CandidateApplicationHistory[]>({
     queryKey: ["candidate_history", id],
@@ -140,6 +216,77 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
             <span className="font-mono font-extrabold text-lg text-primary">{history.length} Jobs</span>
           </div>
         </div>
+      </div>
+
+      {/* Executive Summary Card */}
+      <div className="bg-neutral-white border border-neutral-200 rounded-sm p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-neutral-150 pb-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4.5 h-4.5 text-primary animate-pulse" />
+            <h3 className="font-tight font-extrabold text-sm uppercase tracking-wider text-neutral-800">Executive Summary</h3>
+          </div>
+          {isEditing ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsEditing(false)}
+                className="px-2.5 py-1 text-xs border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer font-medium font-sans text-neutral-550"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saveMutation.isPending}
+                className="px-3 py-1 text-xs bg-primary text-neutral-white font-medium hover:bg-primary/95 rounded-sm cursor-pointer flex items-center gap-1.5"
+              >
+                {saveMutation.isPending && <RefreshCcw className="w-3 h-3 animate-spin" />}
+                Save Summary
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2 items-center">
+              {isReuploading ? (
+                <span className="text-[11px] text-neutral-400 font-mono flex items-center gap-1">
+                  <RefreshCcw className="w-3 h-3 animate-spin" />
+                  Re-uploading...
+                </span>
+              ) : (
+                <>
+                  <label className="px-2.5 py-1 text-xs border border-neutral-250 bg-neutral-white hover:bg-neutral-50 text-neutral-600 rounded-sm cursor-pointer font-semibold flex items-center gap-1.5 transition-colors">
+                    <Upload className="w-3 h-3 text-neutral-400" />
+                    Re-upload Resume
+                    <input
+                      type="file"
+                      accept=".pdf,.txt,.docx"
+                      onChange={handleReupload}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    onClick={handleEdit}
+                    className="px-2.5 py-1 text-xs border border-neutral-250 bg-neutral-white hover:bg-neutral-50 text-neutral-600 rounded-sm cursor-pointer font-semibold flex items-center gap-1.5 transition-colors"
+                  >
+                    <Edit2 className="w-3 h-3 text-neutral-400" />
+                    Edit Summary
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {isEditing ? (
+          <textarea
+            value={editSummary}
+            onChange={(e) => setEditSummary(e.target.value)}
+            rows={4}
+            className="w-full p-3 border border-neutral-250 rounded-sm text-xs text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-none bg-neutral-50/50"
+            placeholder="Write candidate's executive summary..."
+          />
+        ) : (
+          <p className="text-neutral-600 text-xs leading-relaxed whitespace-pre-wrap">
+            {candidate.parsed_resume_json?.summary || "No executive summary available for this candidate. Click 'Edit Summary' to write one."}
+          </p>
+        )}
       </div>
 
       {/* Skills list */}

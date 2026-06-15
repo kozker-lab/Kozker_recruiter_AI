@@ -105,6 +105,10 @@ export interface Candidate {
   working_or_not?: boolean | null;
   academic_details?: string | null;
   achievements?: string | null;
+  parsed_resume_json?: {
+    summary?: string;
+    raw_text?: string;
+  } | null;
   source: 'csv' | 'pdf' | 'docx' | 'manual' | null;
   uploaded_by: string | null;
   created_at: string;

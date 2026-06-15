@@ -2,14 +2,14 @@
 
 import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "../lib/api";
+import { apiRequest, API_BASE_URL, apiUploadFile } from "../lib/api";
 import { Candidate } from "../types";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { 
   Users, UserPlus, Upload, ShieldCheck, Search, Plus, 
-  ChevronDown, ChevronUp, AlertCircle, Sparkles, Database, FileSpreadsheet,
-  Filter, FileText, CheckCircle2, Mail, Layers
+  ChevronDown, ChevronUp, ChevronRight, Edit2, RefreshCcw, AlertCircle, Sparkles, Database, FileSpreadsheet,
+  Filter, FileText, CheckCircle2, Mail, Layers, GraduationCap, Trophy, Trash2
 } from "lucide-react";
 
 function mergeDuplicateCandidates(list: Candidate[]): Candidate[] {
@@ -67,43 +67,276 @@ function mergeDuplicateCandidates(list: Candidate[]): Candidate[] {
   return Array.from(map.values());
 }
 
-function CandidateRow({ c, router }: { c: Candidate; router: ReturnType<typeof useRouter> }) {
+export function parseResumeTextHeuristically(text: string) {
+  // 1. Clean up text
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  
+  // 2. Extract Name
+  let name = "";
+  for (const line of lines.slice(0, 5)) {
+    if (
+      !line.includes("@") &&
+      !line.match(/\+?\d/) &&
+      !line.toLowerCase().includes("resume") &&
+      !line.toLowerCase().includes("cv") &&
+      line.length > 2 &&
+      line.length < 35
+    ) {
+      name = line;
+      break;
+    }
+  }
+
+  // 3. Extract Email
+  const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  const email = emailMatch ? emailMatch[0] : "";
+
+  // 4. Extract Phone
+  const phoneMatch = text.match(/(?:\+?\d{1,3}[ -]?)?\(?\d{3}\)?[ -]?\d{3}[ -]?\d{4}/);
+  const phone = phoneMatch ? phoneMatch[0] : "";
+
+  // 5. Extract Skills
+  const commonSkills = [
+    "React", "Next.js", "TypeScript", "JavaScript", "HTML", "CSS", "Tailwind", 
+    "Node.js", "Express", "Python", "FastAPI", "Django", "Rust", "Go", "Golang", 
+    "Java", "C++", "SQL", "PostgreSQL", "MongoDB", "Docker", "Kubernetes", "AWS", 
+    "Git", "Redux", "GraphQL", "Webpack", "Vite"
+  ];
+  const foundSkills = commonSkills.filter(s => {
+    const esc = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = (s.match(/^\w/) ? "\\b" : "") + esc + (s.match(/\w$/) ? "\\b" : "");
+    const regex = new RegExp(pattern, "i");
+    return regex.test(text);
+  });
+  const skillsString = foundSkills.join(", ");
+
+  // 6. Extract Experience
+  const expMatch = text.match(/(\d+)\+?\s*years?\s+(?:of\s+)?experience/i) || text.match(/experience:\s*(\d+)/i);
+  const exp = expMatch ? parseInt(expMatch[1]) : 3;
+
+  // 7. Extract Education
+  let education = "";
+  const eduKeywords = ["Bachelor", "Master", "PhD", "B.Tech", "M.Tech", "B.Sc", "M.Sc", "B.E", "M.E", "MBA", "B.A", "M.A"];
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes("education") || lower.includes("degree") || lower.includes("university") || lower.includes("college")) {
+      for (const kw of eduKeywords) {
+        if (new RegExp(`\\b${kw}\\b`, "i").test(line)) {
+          education = line;
+          break;
+        }
+      }
+    }
+    if (education) break;
+  }
+  if (!education) {
+    const simpleEduMatch = text.match(/(bachelor|master|phd|b\.tech|m\.tech|b\.sc|m\.sc|b\.e|m\.e|mba)[^\n,.]{0,50}/i);
+    education = simpleEduMatch ? simpleEduMatch[0] : "";
+  }
+
+  // 8. Extract Academic Details
+  let academicDetails = "";
+  const gpaMatch = text.match(/(?:gpa|cgpa|marks|percentage):\s*([a-zA-Z0-9./%]+)/i);
+  const univMatch = text.match(/[A-Z][a-zA-Z0-9\s,.]{5,50} (?:University|Institute|IIT|College)/);
+  if (education) academicDetails += `Degree/Major: ${education}\n`;
+  if (univMatch) academicDetails += `Institution: ${univMatch[0]}\n`;
+  if (gpaMatch) academicDetails += `Grade: ${gpaMatch[1]}`;
+
+  // 9. Extract Achievements
+  let achievements = "";
+  const achievementLines: string[] = [];
+  let recordingAchievements = false;
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes("achievement") || lower.includes("award") || lower.includes("honor") || lower.includes("certification")) {
+      recordingAchievements = true;
+      continue;
+    }
+    if (recordingAchievements) {
+      if (line.match(/^[A-Z\s]{4,}/) || lower.includes("experience") || lower.includes("education") || lower.includes("skills")) {
+        break;
+      }
+      achievementLines.push(line);
+      if (achievementLines.length >= 4) break;
+    }
+  }
+  if (achievementLines.length > 0) {
+    achievements = achievementLines.join("\n");
+  } else {
+    const matchingLines = lines.filter(l => 
+      l.toLowerCase().includes("won ") || 
+      l.toLowerCase().includes("award") || 
+      l.toLowerCase().includes("winner") || 
+      l.toLowerCase().includes("certified") || 
+      l.toLowerCase().includes("first place")
+    );
+    achievements = matchingLines.slice(0, 3).join("\n");
+  }
+
+  // 10. Extract Summary
+  let summary = "";
+  const summaryMatch = text.match(/(?:summary|profile|about me|objective):\s*([\s\S]*?)(?=\n\n|\n[A-Z][a-z]+:|\n[A-Z\s]{4,}\n)/i);
+  if (summaryMatch && summaryMatch[1].trim().length > 10) {
+    summary = summaryMatch[1].trim();
+  } else {
+    const contentLines = lines.filter(l => 
+      l.length > 40 && 
+      !l.includes("@") && 
+      !l.toLowerCase().includes("university") && 
+      !l.toLowerCase().includes("college")
+    );
+    summary = contentLines.slice(0, 2).join(" ");
+  }
+
+  return {
+    name,
+    email,
+    phone,
+    skills: skillsString,
+    experience_years: exp,
+    education,
+    academicDetails,
+    achievements,
+    summary
+  };
+}
+
+function CandidateRow({ 
+  c, 
+  router, 
+  isExpanded, 
+  onToggleExpand 
+}: { 
+  c: Candidate; 
+  router: ReturnType<typeof useRouter>;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editSummary, setEditSummary] = useState(c.parsed_resume_json?.summary || "");
+  const [isReuploading, setIsReuploading] = useState(false);
+  const queryClient = useQueryClient();
+
+  const updateSummaryMutation = useMutation({
+    mutationFn: (updatedSummary: string) => {
+      return apiRequest("PUT", `/candidates/${c.id}`, {
+        summary: updatedSummary
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["candidate", c.id] });
+      setIsEditing(false);
+    }
+  });
+
+  const deleteCandidateMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/candidates/${c.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["activity_log"] });
+    },
+    onError: (err: any) => {
+      alert(err.message || "Failed to delete candidate.");
+    }
+  });
+
+  const handleReupload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsReuploading(true);
+    try {
+      let text = "";
+      if (file.type === "text/plain") {
+        const reader = new FileReader();
+        text = await new Promise<string>((resolve) => {
+          reader.onload = (evt) => resolve(evt.target?.result as string || "");
+          reader.readAsText(file);
+        });
+      } else {
+        const result = await apiUploadFile("/requirements/parse-file", file);
+        text = result.text || "";
+      }
+
+      if (text) {
+        const parsed = parseResumeTextHeuristically(text);
+        const skillsList = parsed.skills ? parsed.skills.split(",").map(s => s.trim()).filter(Boolean) : [];
+        await apiRequest("PUT", `/candidates/${c.id}`, {
+          raw_text: text,
+          summary: parsed.summary,
+          full_name: parsed.name || c.full_name,
+          email: parsed.email || c.email,
+          phone: parsed.phone || c.phone,
+          skills: skillsList.length > 0 ? skillsList : c.skills,
+          experience_years: parsed.experience_years || c.experience_years,
+          education: parsed.education || c.education,
+          academic_details: parsed.academicDetails || c.academic_details,
+          achievements: parsed.achievements || c.achievements,
+          resume_url: `/resumes/${file.name}`
+        });
+        queryClient.invalidateQueries({ queryKey: ["candidates"] });
+        queryClient.invalidateQueries({ queryKey: ["candidate", c.id] });
+        alert("Resume re-uploaded and candidate details extracted successfully!");
+      } else {
+        throw new Error("No text content could be extracted from this resume.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to parse/re-upload resume: " + (err.message || err));
+    } finally {
+      setIsReuploading(false);
+    }
+  };
+
   return (
     <div className="hover:bg-neutral-50/20 transition-colors border-b border-neutral-150">
       <div 
         onClick={() => router.push(`/pool/${c.id}`)}
         className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none"
       >
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-tight font-bold text-sm text-neutral-850 hover:text-primary transition-colors">{c.full_name}</span>
-            <span className="text-[9px] px-1.5 py-0.2 bg-neutral-100 border border-neutral-250 font-mono text-neutral-500 rounded-sm">
-              {c.source || "Manual"}
-            </span>
-            {c.working_or_not === false ? (
-              <span className="text-[9px] px-1.5 py-0.2 bg-warning/10 border border-warning/30 font-mono text-warning rounded-sm font-semibold">
-                Open to Work
+        <div className="flex items-center gap-3">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand();
+            }}
+            title={isExpanded ? "Collapse Details" : "Expand Details"}
+            className="p-1 hover:bg-neutral-100 border border-neutral-200 rounded-sm text-neutral-450 cursor-pointer flex items-center justify-center"
+          >
+            {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          </button>
+          
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-tight font-bold text-sm text-neutral-850 hover:text-primary transition-colors">{c.full_name}</span>
+              <span className="text-[9px] px-1.5 py-0.2 bg-neutral-100 border border-neutral-250 font-mono text-neutral-500 rounded-sm">
+                {c.source || "Manual"}
               </span>
-            ) : (
-              <span className="text-[9px] px-1.5 py-0.2 bg-success/10 border border-success/30 font-mono text-success rounded-sm font-semibold">
-                Employed
-              </span>
-            )}
-            {c.resume_url && (
-              <a
-                href={c.resume_url}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                title={`PDF Resume: ${c.resume_url}`}
-                className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-sm text-red-700 transition-colors text-[9px] font-mono font-semibold"
-              >
-                <FileText className="w-3 h-3 text-red-500" />
-                PDF CV
-              </a>
-            )}
+              {c.working_or_not === false ? (
+                <span className="text-[9px] px-1.5 py-0.2 bg-warning/10 border border-warning/30 font-mono text-warning rounded-sm font-semibold">
+                  Open to Work
+                </span>
+              ) : (
+                <span className="text-[9px] px-1.5 py-0.2 bg-success/10 border border-success/30 font-mono text-success rounded-sm font-semibold">
+                  Employed
+                </span>
+              )}
+              {c.resume_url && (
+                <a
+                  href={c.resume_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  title={`PDF Resume: ${c.resume_url}`}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-sm text-red-700 transition-colors text-[9px] font-mono font-semibold"
+                >
+                  <FileText className="w-3 h-3 text-red-500" />
+                  PDF CV
+                </a>
+              )}
+            </div>
+            <p className="text-[10px] text-neutral-400 font-mono">{c.email} • {c.phone || "No phone listed"}</p>
           </div>
-          <p className="text-[10px] text-neutral-400 font-mono">{c.email} • {c.phone || "No phone listed"}</p>
         </div>
 
         <div className="flex items-center gap-6 font-mono text-[10px] text-neutral-500">
@@ -120,6 +353,139 @@ function CandidateRow({ c, router }: { c: Candidate; router: ReturnType<typeof u
           </div>
         </div>
       </div>
+
+      {isExpanded && (
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          className="px-6 pb-4 pt-2 border-t border-neutral-150 bg-neutral-50/20 space-y-4"
+        >
+          {/* Summary section */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between border-b border-neutral-150 pb-1">
+              <span className="text-[9px] uppercase tracking-wider text-neutral-450 font-bold font-mono flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse" />
+                Candidate Executive Summary
+              </span>
+              {isEditing ? (
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="px-2 py-0.5 text-[9px] border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer font-medium text-neutral-550"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => updateSummaryMutation.mutate(editSummary)}
+                    disabled={updateSummaryMutation.isPending}
+                    className="px-2.5 py-0.5 text-[9px] bg-primary text-neutral-white hover:bg-primary/95 rounded-sm cursor-pointer flex items-center gap-1 font-semibold"
+                  >
+                    {updateSummaryMutation.isPending && <RefreshCcw className="w-2.5 h-2.5 animate-spin" />}
+                    Save
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-1.5 items-center">
+                  {isReuploading ? (
+                    <span className="text-[9px] text-neutral-400 font-mono flex items-center gap-1">
+                      <RefreshCcw className="w-2.5 h-2.5 animate-spin" />
+                      Re-uploading...
+                    </span>
+                  ) : (
+                    <>
+                      <label className="px-2 py-0.5 text-[9px] border border-neutral-250 bg-neutral-white hover:bg-neutral-50 text-neutral-600 rounded-sm cursor-pointer font-semibold flex items-center gap-1 transition-colors">
+                        <Upload className="w-2.5 h-2.5 text-neutral-400" />
+                        Re-upload Resume
+                        <input
+                          type="file"
+                          accept=".pdf,.txt,.docx"
+                          onChange={handleReupload}
+                          className="hidden"
+                        />
+                      </label>
+                      <button
+                        onClick={() => {
+                          setEditSummary(c.parsed_resume_json?.summary || "");
+                          setIsEditing(true);
+                        }}
+                        className="px-2 py-0.5 text-[9px] border border-neutral-255 bg-neutral-white hover:bg-neutral-50 text-neutral-600 rounded-sm cursor-pointer font-semibold flex items-center gap-1 transition-colors"
+                      >
+                        <Edit2 className="w-2.5 h-2.5 text-neutral-400" />
+                        Edit Summary
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {isEditing ? (
+              <textarea
+                value={editSummary}
+                onChange={(e) => setEditSummary(e.target.value)}
+                rows={3}
+                className="w-full p-2.5 border border-neutral-200 bg-neutral-white rounded-sm text-xs text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-none"
+                placeholder="Write candidate executive summary..."
+              />
+            ) : (
+              <p className="text-neutral-600 text-xs leading-relaxed whitespace-pre-wrap">
+                {c.parsed_resume_json?.summary || "No executive summary available for this candidate. Click Edit Summary to add one."}
+              </p>
+            )}
+          </div>
+
+          {/* Academic & Achievements Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-neutral-150 text-xs">
+            {/* Academic Credentials */}
+            <div className="space-y-1.5">
+              <span className="text-[9px] uppercase tracking-wider text-neutral-450 font-bold font-mono flex items-center gap-1.5">
+                <GraduationCap className="w-3.5 h-3.5 text-primary" />
+                Academic Credentials
+              </span>
+              <div className="bg-neutral-50/50 p-2.5 border border-neutral-200/50 rounded-sm space-y-1">
+                {c.education && (
+                  <p className="font-semibold text-neutral-850">{c.education}</p>
+                )}
+                <p className="text-neutral-600 leading-relaxed whitespace-pre-wrap text-[11px]">
+                  {c.academic_details || "No additional academic credentials recorded."}
+                </p>
+              </div>
+            </div>
+
+            {/* Achievements & Accolades */}
+            <div className="space-y-1.5">
+              <span className="text-[9px] uppercase tracking-wider text-neutral-450 font-bold font-mono flex items-center gap-1.5">
+                <Trophy className="w-3.5 h-3.5 text-warning" />
+                Achievements & Accolades
+              </span>
+              <div className="bg-neutral-50/50 p-2.5 border border-neutral-200/50 rounded-sm">
+                <p className="text-neutral-600 leading-relaxed whitespace-pre-wrap text-[11px]">
+                  {c.achievements || "No achievements or honors cataloged in talent profile."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Remove Candidate footer action */}
+          <div className="flex justify-end pt-2 border-t border-neutral-150">
+            <button
+              onClick={() => {
+                if (confirm(`Are you sure you want to remove candidate ${c.full_name}?`)) {
+                  deleteCandidateMutation.mutate();
+                }
+              }}
+              disabled={deleteCandidateMutation.isPending}
+              className="px-2.5 py-1 text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50/50 border border-red-200 hover:border-red-300 rounded-sm font-semibold flex items-center gap-1 transition-all cursor-pointer bg-neutral-white"
+            >
+              {deleteCandidateMutation.isPending ? (
+                <RefreshCcw className="w-3 h-3 animate-spin" />
+              ) : (
+                <Trash2 className="w-3 h-3" />
+              )}
+              Remove Candidate
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -146,6 +512,8 @@ export default function PoolView() {
   const [rawText, setRawText] = useState("");
   const [academicDetails, setAcademicDetails] = useState("");
   const [achievements, setAchievements] = useState("");
+  const [summary, setSummary] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
   const [resumeUrl, setResumeUrl] = useState("");
   const [resumeFileName, setResumeFileName] = useState("");
 
@@ -270,6 +638,7 @@ export default function PoolView() {
       setRawText("");
       setAcademicDetails("");
       setAchievements("");
+      setSummary("");
       setResumeUrl("");
       setResumeFileName("");
     },
@@ -311,7 +680,8 @@ export default function PoolView() {
       raw_text: rawText,
       academic_details: academicDetails || null,
       achievements: achievements || null,
-      resume_url: resumeUrl || null
+      resume_url: resumeUrl || null,
+      summary: summary || null
     });
   };
 
@@ -605,7 +975,13 @@ export default function PoolView() {
                     </div>
                     <div className="divide-y divide-neutral-150">
                       {domainGroups[domain].map((c) => (
-                        <CandidateRow key={c.id} c={c} router={router} />
+                        <CandidateRow 
+                          key={c.id} 
+                          c={c} 
+                          router={router} 
+                          isExpanded={expandedCandidateId === c.id}
+                          onToggleExpand={() => setExpandedCandidateId(expandedCandidateId === c.id ? null : c.id)}
+                        />
                       ))}
                     </div>
                   </div>
@@ -616,7 +992,13 @@ export default function PoolView() {
         ) : (
           <div className="divide-y divide-neutral-150">
             {filteredCandidates.map((c) => (
-              <CandidateRow key={c.id} c={c} router={router} />
+              <CandidateRow 
+                key={c.id} 
+                c={c} 
+                router={router} 
+                isExpanded={expandedCandidateId === c.id}
+                onToggleExpand={() => setExpandedCandidateId(expandedCandidateId === c.id ? null : c.id)}
+              />
             ))}
           </div>
         )}
@@ -748,6 +1130,17 @@ export default function PoolView() {
                 />
               </div>
 
+              <div className="space-y-1">
+                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Executive Summary</label>
+                <textarea
+                  placeholder="e.g. Experienced UI Developer specializing in Next.js transitions and performance optimization..."
+                  rows={2}
+                  value={summary}
+                  onChange={(e) => setSummary(e.target.value)}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
               {/* Upload Resume File Section */}
               <div className="space-y-1 bg-neutral-50 p-3 border border-neutral-200 rounded-sm">
                 <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono mb-1">
@@ -760,27 +1153,57 @@ export default function PoolView() {
                     <input
                       type="file"
                       accept=".pdf,.docx,.txt"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
                         setResumeFileName(file.name);
                         setResumeUrl(`/resumes/${file.name}`);
+                        setIsExtracting(true);
                         
-                        // Parse plain text or mock PDF
-                        if (file.type === "text/plain") {
-                          const reader = new FileReader();
-                          reader.onload = (evt) => {
-                            setRawText(evt.target?.result as string);
-                          };
-                          reader.readAsText(file);
-                        } else {
-                          setRawText(`--- EXTRACTED RESUME RAW TEXT FROM ${file.name.toUpperCase()} ---\n\nName: ${name || "Candidate"}\nEmail: ${email || "Email"}\nEducation: ${education || "Education"}\nSkills: ${skills || "Skills"}\nExperience: ${exp} years\n\n[Parsed achievements and credentials from uploaded document]`);
+                        try {
+                          let text = "";
+                          if (file.type === "text/plain") {
+                            const reader = new FileReader();
+                            text = await new Promise<string>((resolve) => {
+                              reader.onload = (evt) => resolve(evt.target?.result as string || "");
+                              reader.readAsText(file);
+                            });
+                          } else {
+                            const result = await apiUploadFile("/requirements/parse-file", file);
+                            text = result.text || "";
+                          }
+
+                          if (text) {
+                            setRawText(text);
+                            const parsed = parseResumeTextHeuristically(text);
+                            if (parsed.name) setName(parsed.name);
+                            if (parsed.email) setEmail(parsed.email);
+                            if (parsed.phone) setPhone(parsed.phone);
+                            if (parsed.skills) setSkills(parsed.skills);
+                            if (parsed.experience_years) setExp(parsed.experience_years);
+                            if (parsed.education) setEducation(parsed.education);
+                            if (parsed.academicDetails) setAcademicDetails(parsed.academicDetails);
+                            if (parsed.achievements) setAchievements(parsed.achievements);
+                            if (parsed.summary) setSummary(parsed.summary);
+                          } else {
+                            throw new Error("No text content could be extracted from this resume.");
+                          }
+                        } catch (err: any) {
+                          console.error("Resume extraction failed:", err);
+                          alert("Failed to parse resume file: " + (err.message || err));
+                        } finally {
+                          setIsExtracting(false);
                         }
                       }}
                       className="hidden"
                     />
                   </label>
-                  {resumeFileName ? (
+                  {isExtracting ? (
+                    <div className="flex items-center gap-1.5 text-primary font-semibold font-mono text-[10px] animate-pulse">
+                      <RefreshCcw className="w-3.5 h-3.5 animate-spin text-primary" />
+                      Extracting resume details...
+                    </div>
+                  ) : resumeFileName ? (
                     <div className="flex items-center gap-1.5 text-success font-semibold font-mono text-[10px]">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       {resumeFileName}
