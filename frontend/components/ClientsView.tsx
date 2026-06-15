@@ -6,13 +6,23 @@ import { apiRequest } from "../lib/api";
 import { Client, Requirement } from "../types";
 import { 
   Building2, Plus, FileText, ChevronRight, CheckCircle2, 
-  MapPin, DollarSign, BrainCircuit, Loader2, Award, Upload, Edit, Trash2, Pencil
+  MapPin, DollarSign, BrainCircuit, Loader2, Award, Upload, Edit, Trash2, Pencil,
+  ChevronDown, UserCheck, Code, Users, CheckSquare, XCircle, Activity
 } from "lucide-react";
 import { RequirementStatus } from "../types";
 
 export default function ClientsView() {
   const queryClient = useQueryClient();
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [expandedReqId, setExpandedReqId] = useState<string | null>(null);
+
+  const stages = [
+    { id: "screening", label: "Screening", icon: UserCheck, color: "text-blue-600 bg-blue-50 border-blue-200" },
+    { id: "technical", label: "Technical", icon: Code, color: "text-amber-600 bg-amber-50 border-amber-200" },
+    { id: "hr", label: "HR Round", icon: Users, color: "text-purple-600 bg-purple-50 border-purple-200" },
+    { id: "final", label: "Final Round", icon: CheckSquare, color: "text-teal-600 bg-teal-50 border-teal-200" },
+    { id: "hired", label: "Hired", icon: Award, color: "text-green-600 bg-green-50 border-green-200" }
+  ];
   
   // Modals state
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
@@ -100,6 +110,16 @@ export default function ClientsView() {
   const { data: requirements = [], isLoading: loadingReqs } = useQuery<Requirement[]>({
     queryKey: ["requirements"],
     queryFn: () => apiRequest<Requirement[]>("GET", "/requirements")
+  });
+
+  const { data: jobs = [], isLoading: loadingJobs } = useQuery<any[]>({
+    queryKey: ["jobs"],
+    queryFn: () => apiRequest<any[]>("GET", "/jobs")
+  });
+
+  const { data: applications = [], isLoading: loadingApps } = useQuery<any[]>({
+    queryKey: ["applications"],
+    queryFn: () => apiRequest<any[]>("GET", "/applications")
   });
 
   // Filter requirements for the selected client, with search and status filter
@@ -467,6 +487,15 @@ export default function ClientsView() {
                     >
                       <Edit className="w-3.5 h-3.5" />
                     </button>
+
+                    {/* Chevron Toggle Button */}
+                    <button
+                      onClick={() => setExpandedReqId(expandedReqId === r.id ? null : r.id)}
+                      className="p-1 hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700 rounded-sm border border-neutral-200 transition-colors cursor-pointer"
+                      title={expandedReqId === r.id ? "Hide Pipeline" : "Show Pipeline"}
+                    >
+                      {expandedReqId === r.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    </button>
                   </div>
                 </div>
 
@@ -506,6 +535,129 @@ export default function ClientsView() {
                 {r.notes && (
                   <div className="text-[10px] text-neutral-400 bg-neutral-50 border-l-2 border-neutral-300 p-2 italic leading-relaxed">
                     Notes: {r.notes}
+                  </div>
+                )}
+
+                {/* Expandable Pipeline Block */}
+                {expandedReqId === r.id && (
+                  <div className="mt-4 pt-4 border-t border-neutral-150 space-y-4 select-none">
+                    <h5 className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider font-mono">Mandate Progress & Pipeline</h5>
+                    {loadingJobs || loadingApps ? (
+                      <div className="text-center py-6 text-[10px] text-neutral-400 font-mono">Loading pipelines...</div>
+                    ) : (
+                      (() => {
+                        const reqJobs = jobs.filter(j => j.requirement_id === r.id);
+                        if (reqJobs.length === 0) {
+                          return (
+                            <div className="text-center py-6 text-[10px] text-neutral-450 italic bg-neutral-50 border border-neutral-200 rounded-sm">
+                              No active job postings generated yet. Update requirement status to "Ready" to generate posts.
+                            </div>
+                          );
+                        }
+                        return reqJobs.map((job) => {
+                          const jobApps = applications.filter(app => app.job_opening_id === job.id);
+                          const disqualifiedCount = jobApps.filter(app => app.stage === 'rejected' || app.stage_status === 'failed').length;
+                          return (
+                            <div key={job.id} className="space-y-3 p-3 bg-neutral-50/50 border border-neutral-150 rounded-sm">
+                              <div className="flex items-center justify-between text-xs font-semibold text-neutral-800 border-b border-neutral-150 pb-1.5">
+                                <span className="flex items-center gap-1.5">
+                                  <Activity className="w-3.5 h-3.5 text-primary/70 animate-pulse" />
+                                  Post #{job.post_index || 1}: {job.title}
+                                </span>
+                                <span className="text-[10px] text-neutral-400 font-mono uppercase bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded-sm">
+                                  {job.status}
+                                </span>
+                              </div>
+                              
+                              {/* Horizontal Pipeline */}
+                              <div className="relative flex items-center justify-between py-2 mt-4 select-none">
+                                {/* Track Line */}
+                                <div className="absolute left-[8%] right-[8%] top-[20px] h-0.5 bg-neutral-200 z-0"></div>
+                                
+                                {/* Stage Nodes */}
+                                {stages.map((stage) => {
+                                  const stageApps = jobApps.filter(app => app.stage === stage.id && app.stage_status !== 'failed' && app.stage !== 'rejected');
+                                  const count = stageApps.length;
+                                  const IconComponent = stage.icon;
+                                  const isActive = count > 0;
+                                  
+                                  return (
+                                    <div key={stage.id} className="relative flex flex-col items-center flex-1 z-10 group/stage">
+                                      {/* Icon Circle */}
+                                      <div className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all cursor-help ${
+                                        isActive 
+                                          ? `${stage.color} shadow-sm scale-110 font-bold` 
+                                          : 'text-neutral-400 bg-neutral-50 border-neutral-200'
+                                      }`}>
+                                        <IconComponent className="w-4 h-4" />
+                                      </div>
+                                      
+                                      {/* Label */}
+                                      <span className={`text-[9px] mt-1.5 font-medium transition-all ${
+                                        isActive ? 'text-neutral-800 font-semibold' : 'text-neutral-450'
+                                      }`}>
+                                        {stage.label}
+                                      </span>
+                                      
+                                      {/* Count Badge */}
+                                      {isActive && (
+                                        <span className="absolute -top-1 right-[25%] flex h-4 w-4 items-center justify-center rounded-full bg-primary text-neutral-white font-mono text-[8px] font-bold shadow-xs">
+                                          {count}
+                                        </span>
+                                      )}
+                                      
+                                      {/* CSS Tooltip */}
+                                      <div className="absolute z-30 hidden group-hover/stage:block bottom-full left-1/2 -translate-x-1/2 mb-2.5 w-56 bg-neutral-900 text-neutral-150 p-2.5 rounded-sm shadow-xl border border-neutral-850 text-[10px] font-sans">
+                                        <div className="font-semibold text-neutral-200 border-b border-neutral-850 pb-1 mb-1.5 flex justify-between items-center">
+                                          <span>{stage.label} Candidates</span>
+                                          <span className="px-1.5 py-0.2 bg-neutral-800 text-neutral-400 rounded-sm font-mono text-[9px]">
+                                            {count} active
+                                          </span>
+                                        </div>
+                                        {count === 0 ? (
+                                          <div className="text-neutral-500 italic text-center py-1">No active candidates</div>
+                                        ) : (
+                                          <ul className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                                            {stageApps.slice(0, 4).map(app => (
+                                              <li key={app.id} className="flex items-center justify-between gap-1.5">
+                                                <span className="text-neutral-300 font-medium truncate max-w-[120px]">
+                                                  {app.candidates?.full_name || "Unknown Candidate"}
+                                                </span>
+                                                <span className={`text-[8px] font-mono uppercase px-1 rounded-xs ${
+                                                  app.stage_status === 'in_progress' ? 'bg-amber-950/80 text-amber-400 border border-amber-800/40' :
+                                                  app.stage_status === 'passed' ? 'bg-green-950/80 text-green-400 border border-green-800/40' :
+                                                  'bg-neutral-850 text-neutral-400 border border-neutral-750/30'
+                                                }`}>
+                                                  {app.stage_status || 'pending'}
+                                                </span>
+                                              </li>
+                                            ))}
+                                            {count > 4 && (
+                                              <li className="text-[9px] text-neutral-500 italic pt-1 text-center border-t border-neutral-850/50">
+                                                ... and {count - 4} more
+                                              </li>
+                                            )}
+                                          </ul>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              
+                              {/* Summary Stats */}
+                              <div className="flex justify-between items-center text-[10px] font-mono text-neutral-500 pt-2 border-t border-neutral-150 select-none">
+                                <div className="flex gap-4">
+                                  <span>Total Applicants: <strong className="text-neutral-700">{jobApps.length}</strong></span>
+                                  <span>Disqualified: <strong className="text-red-500">{disqualifiedCount}</strong></span>
+                                </div>
+                                <span className="text-neutral-455">Hover stages for candidate details</span>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()
+                    )}
                   </div>
                 )}
               </div>
