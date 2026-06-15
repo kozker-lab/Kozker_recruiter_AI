@@ -609,35 +609,40 @@ export default function ClientsView() {
                                       {/* CSS Tooltip */}
                                       <div className="absolute z-30 hidden group-hover/stage:block bottom-full left-1/2 -translate-x-1/2 mb-2.5 w-56 bg-neutral-900 text-neutral-150 p-2.5 rounded-sm shadow-xl border border-neutral-850 text-[10px] font-sans">
                                         <div className="font-semibold text-neutral-200 border-b border-neutral-850 pb-1 mb-1.5 flex justify-between items-center">
-                                          <span>{stage.label} Candidates</span>
-                                          <span className="px-1.5 py-0.2 bg-neutral-800 text-neutral-400 rounded-sm font-mono text-[9px]">
-                                            {count} active
+                                          <span>{stage.label}</span>
+                                          <span className="px-1.5 py-0.5 bg-neutral-800 text-neutral-300 rounded-sm font-mono text-[9px]">
+                                            {count} {count === 1 ? 'Candidate' : 'Candidates'}
                                           </span>
                                         </div>
                                         {count === 0 ? (
                                           <div className="text-neutral-500 italic text-center py-1">No active candidates</div>
                                         ) : (
-                                          <ul className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
-                                            {stageApps.slice(0, 4).map(app => (
-                                              <li key={app.id} className="flex items-center justify-between gap-1.5">
-                                                <span className="text-neutral-300 font-medium truncate max-w-[120px]">
-                                                  {app.candidates?.full_name || "Unknown Candidate"}
-                                                </span>
-                                                <span className={`text-[8px] font-mono uppercase px-1 rounded-xs ${
-                                                  app.stage_status === 'in_progress' ? 'bg-amber-950/80 text-amber-400 border border-amber-800/40' :
-                                                  app.stage_status === 'passed' ? 'bg-green-950/80 text-green-400 border border-green-800/40' :
-                                                  'bg-neutral-850 text-neutral-400 border border-neutral-750/30'
-                                                }`}>
-                                                  {app.stage_status || 'pending'}
-                                                </span>
-                                              </li>
-                                            ))}
-                                            {count > 4 && (
-                                              <li className="text-[9px] text-neutral-500 italic pt-1 text-center border-t border-neutral-850/50">
-                                                ... and {count - 4} more
-                                              </li>
-                                            )}
-                                          </ul>
+                                          <div className="space-y-1.5">
+                                            <div className="text-neutral-450 text-[9px] font-mono">
+                                              Candidates list ({count}):
+                                            </div>
+                                            <ul className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                                              {stageApps.slice(0, 4).map(app => (
+                                                <li key={app.id} className="flex items-center justify-between gap-1.5">
+                                                  <span className="text-neutral-300 font-medium truncate max-w-[120px]">
+                                                    {app.candidates?.full_name || "Unknown Candidate"}
+                                                  </span>
+                                                  <span className={`text-[8px] font-mono uppercase px-1 rounded-xs ${
+                                                    app.stage_status === 'in_progress' ? 'bg-amber-950/80 text-amber-400 border border-amber-800/40' :
+                                                    app.stage_status === 'passed' ? 'bg-green-950/80 text-green-400 border border-green-800/40' :
+                                                    'bg-neutral-850 text-neutral-400 border border-neutral-750/30'
+                                                  }`}>
+                                                    {app.stage_status || 'pending'}
+                                                  </span>
+                                                </li>
+                                              ))}
+                                              {count > 4 && (
+                                                <li className="text-[9px] text-neutral-500 italic pt-1 text-center border-t border-neutral-850/50">
+                                                  ... and {count - 4} more
+                                                </li>
+                                              )}
+                                            </ul>
+                                          </div>
                                         )}
                                       </div>
                                     </div>
