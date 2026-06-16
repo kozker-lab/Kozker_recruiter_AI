@@ -2,6 +2,7 @@ import os
 import io
 import json
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -128,6 +129,77 @@ async def dispatch_n8n_webhook(url: str, payload: dict, context_label: str) -> b
         logger.error(f"Exception during webhook dispatch for {context_label}: {e}")
         return False
 
+
+# Google Drive helper functions
+def is_google_drive_url(url: str) -> bool:
+    if not url:
+        return False
+    return "drive.google.com" in url
+
+def get_drive_download_url(url: str) -> str:
+    # Match standard /file/d/<ID>/view structure
+    match_d = re.search(r'/file/d/([a-zA-Z0-9_-]+)', url)
+    if match_d:
+        file_id = match_d.group(1)
+        return f"https://drive.google.com/uc?export=download&id={file_id}"
+        
+    # Match query parameter structure id=<ID>
+    match_id = re.search(r'id=([a-zA-Z0-9_-]+)', url)
+    if match_id:
+        file_id = match_id.group(1)
+        return f"https://drive.google.com/uc?export=download&id={file_id}"
+        
+    return url
+
+# Background task to download Google Drive files and parse them
+def download_resumes_background(candidates_list: List[Dict[str, str]], jwt_token: str):
+    logger.info(f"Starting background download of Google Drive resumes for {len(candidates_list)} candidates")
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    
+    for item in candidates_list:
+        cand_id = item.get("id")
+        url = item.get("resume_url")
+        email = item.get("email")
+        
+        if not cand_id or not url:
+            continue
+            
+        try:
+            download_url = get_drive_download_url(url)
+            logger.info(f"Downloading resume for {email} from: {download_url}")
+            
+            with httpx.Client(follow_redirects=True) as client:
+                res = client.get(download_url, timeout=30.0)
+                if res.status_code != 200:
+                    logger.error(f"Failed to download GD resume for candidate {email}: status {res.status_code}")
+                    continue
+                content = res.content
+                content_type = res.headers.get("content-type", "").lower()
+                
+            filename = "resume.pdf"
+            if "application/pdf" in content_type:
+                filename = "resume.pdf"
+            elif "word" in content_type or "officedocument" in content_type:
+                filename = "resume.docx"
+            elif "text/plain" in content_type:
+                filename = "resume.txt"
+            else:
+                if ".docx" in url.lower():
+                    filename = "resume.docx"
+                elif ".txt" in url.lower():
+                    filename = "resume.txt"
+                    
+            text = extract_text_from_file(content, filename)
+            if text:
+                db.table("candidates").update({
+                    "parsed_resume_json": {"raw_text": text}
+                }).eq("id", cand_id).execute()
+                logger.info(f"Successfully downloaded and parsed Google Drive resume for candidate {email}")
+            else:
+                logger.warning(f"No text extracted from GD resume for candidate {email}")
+                
+        except Exception as e:
+            logger.error(f"Error downloading/parsing GD resume for candidate {email}: {e}")
 
 # Text extraction helper
 def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
@@ -1300,10 +1372,23 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
     return {}
 
 @app.post("/api/v1/candidates/upload/csv")
-async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(get_supabase)):
+async def upload_csv_candidates(
+    payload: CSVUploadModel, 
+    background_tasks: BackgroundTasks, 
+    db: Client = Depends(get_supabase), 
+    authorization: Optional[str] = Header(None)
+):
     inserted = 0
     skipped = 0
+    candidates_with_gd_resumes = []
     
+    jwt_token = None
+    if authorization:
+        if authorization.startswith("Bearer "):
+            jwt_token = authorization.split(" ")[1]
+        elif authorization.startswith("eyJ"):
+            jwt_token = authorization
+            
     for item in payload.items:
         email = item.get("email")
         full_name = item.get("full_name")
@@ -1341,9 +1426,12 @@ async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(ge
         else:
             working_bool = True  # default
         
+        candidate_id = None
+        
         if exists_res.data:
             skipped += 1
             existing_cand = exists_res.data[0]
+            candidate_id = existing_cand["id"]
             existing_skills = existing_cand.get("skills") or []
             merged_skills = list(set(existing_skills + skills_list))
             merged_exp = max(existing_cand.get("experience_years") or 0, exp_years)
@@ -1356,6 +1444,11 @@ async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(ge
                 existing_raw = existing_cand["parsed_resume_json"].get("raw_text") or ""
             merged_raw = f"{existing_raw}\n\n[CSV Re-upload]: Parsed from CSV: {full_name}" if existing_raw else f"Parsed from CSV: {full_name}"
             
+            # If the resume URL is a Google Drive URL, set a placeholder while we fetch it in background
+            parsed_resume_payload = {"raw_text": merged_raw}
+            if resume_url_val and is_google_drive_url(resume_url_val):
+                parsed_resume_payload = {"raw_text": "Downloading and extracting Google Drive resume..."}
+            
             # Update existing candidate details
             db.table("candidates").update({
                 "full_name": full_name,
@@ -1367,20 +1460,25 @@ async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(ge
                 "academic_details": merged_academic,
                 "achievements": merged_achievements,
                 "resume_url": resume_url_val if resume_url_val else existing_cand.get("resume_url"),
-                "parsed_resume_json": {"raw_text": merged_raw},
+                "parsed_resume_json": parsed_resume_payload,
                 "source": "csv",
                 "is_deleted": False  # Reactivate candidate if it was soft-deleted
             }).eq("email", email).execute()
         else:
             inserted += 1
+            # If the resume URL is a Google Drive URL, set a placeholder while we fetch it in background
+            parsed_resume_payload = {"raw_text": f"Parsed from CSV: {full_name}"}
+            if resume_url_val and is_google_drive_url(resume_url_val):
+                parsed_resume_payload = {"raw_text": "Downloading and extracting Google Drive resume..."}
+                
             # Insert new candidate
-            db.table("candidates").insert({
+            res = db.table("candidates").insert({
                 "full_name": full_name,
                 "email": email,
                 "phone": phone_val,
                 "skills": skills_list,
                 "experience_years": exp_years,
-                "parsed_resume_json": {"raw_text": f"Parsed from CSV: {full_name}"},
+                "parsed_resume_json": parsed_resume_payload,
                 "resume_url": resume_url_val,
                 "education": education_val,
                 "working_or_not": working_bool,
@@ -1389,6 +1487,20 @@ async def upload_csv_candidates(payload: CSVUploadModel, db: Client = Depends(ge
                 "source": "csv"
             }).execute()
             
+            if res.data:
+                candidate_id = res.data[0]["id"]
+                
+        # If candidate has Google Drive resume URL, add to background processing list
+        if candidate_id and resume_url_val and is_google_drive_url(resume_url_val):
+            candidates_with_gd_resumes.append({
+                "id": candidate_id,
+                "email": email,
+                "resume_url": resume_url_val
+            })
+            
+    if candidates_with_gd_resumes:
+        background_tasks.add_task(download_resumes_background, candidates_with_gd_resumes, jwt_token)
+        
     return {"inserted": inserted, "skipped": skipped}
 
 # accept application -> triggers background personalized question generation
