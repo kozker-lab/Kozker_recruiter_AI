@@ -29,6 +29,7 @@ N8N_EXTRACT_SKILLS_URL = os.getenv("N8N_EXTRACT_SKILLS_URL", "")
 N8N_MATCH_CANDIDATES_URL = os.getenv("N8N_MATCH_CANDIDATES_URL", "")
 N8N_GENERATE_QUESTIONS_URL = os.getenv("N8N_GENERATE_QUESTIONS_URL", "")
 CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "kozker_callback_secret_token")
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
 
 
 # Initialize FastAPI
@@ -434,20 +435,49 @@ async def delete_client(client_id: str, db: Client = Depends(get_supabase)):
 # ============================================================
 
 async def handle_generate_jobs_dispatch(new_req: dict, jwt_token: str):
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    
+    # Resolve client name
+    client_name = "Generic Client"
+    try:
+        client_res = db.table("clients").select("name").eq("id", new_req["client_id"]).execute()
+        if client_res.data:
+            client_name = client_res.data[0]["name"]
+    except Exception as e:
+        logger.error(f"Failed to fetch client name for n8n payload: {e}")
+
+    callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/job-openings"
+    
     payload = {
-        "id": new_req["id"],
-        "client_id": new_req["client_id"],
-        "title": new_req["title"],
-        "description": new_req["description"],
-        "skills": new_req["skills"],
-        "experience_min": new_req["experience_min"],
-        "experience_max": new_req["experience_max"],
-        "budget_min": new_req["budget_min"],
-        "budget_max": new_req["budget_max"],
-        "seniority": new_req["seniority"],
-        "notes": new_req["notes"],
-        "num_posts_requested": new_req["num_posts_requested"],
-        "created_by": new_req.get("created_by")
+        "automation_type": "generate_job_openings",
+        "request_id": f"reqjob_{new_req['id']}",
+        "callback_url": callback_url,
+        "requirement": {
+            "requirement_id": new_req["id"],
+            "client_id": new_req["client_id"],
+            "client_name": client_name,
+            "title": new_req["title"],
+            "description": new_req["description"],
+            "skills": new_req["skills"],
+            "experience_min": new_req.get("experience_min") or 0,
+            "experience_max": new_req.get("experience_max") or 0,
+            "budget_min": new_req.get("budget_min") or 0.0,
+            "budget_max": new_req.get("budget_max") or 0.0,
+            "currency": "INR",
+            "seniority": new_req["seniority"],
+            "location": "Bangalore / Remote",
+            "employment_type": "full_time",
+            "notes": new_req["notes"],
+            "num_posts_requested": new_req["num_posts_requested"]
+        },
+        "ai_instruction": {
+            "instruction": f"Generate {new_req['num_posts_requested']} job openings: technical, leadership, or concise as specified.",
+            "tone": "professional",
+            "output_language": "en",
+            "must_include": new_req["skills"],
+            "avoid": ["casual wording"]
+        },
+        "metadata": {}
     }
     success = await dispatch_n8n_webhook(N8N_GENERATE_JOBS_URL, payload, "generate_jobs")
     if not success:
