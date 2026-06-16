@@ -452,6 +452,8 @@ async def handle_generate_jobs_dispatch(new_req: dict, jwt_token: str):
         "automation_type": "generate_job_openings",
         "request_id": f"reqjob_{new_req['id']}",
         "callback_url": callback_url,
+        "authorization": f"Bearer {CALLBACK_SECRET}",
+        "auth_header": f"Bearer {CALLBACK_SECRET}",
         "requirement": {
             "requirement_id": new_req["id"],
             "client_id": new_req["client_id"],
@@ -529,6 +531,7 @@ def run_local_scan_publish(job_id: str, jwt_token: str):
     db.table("job_openings").update({"processing_status": "skill_approval"}).eq("id", job_id).execute()
 
 async def handle_scan_publish_dispatch(job: dict, jwt_token: str):
+    callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/job-skills"
     payload = {
         "job_opening_id": job["id"],
         "title": job["title"],
@@ -536,7 +539,10 @@ async def handle_scan_publish_dispatch(job: dict, jwt_token: str):
         "responsibilities": job["responsibilities"],
         "qualifications": job["qualifications"],
         "keywords": job["keywords"],
-        "salary_range": job["salary_range"]
+        "salary_range": job["salary_range"],
+        "callback_url": callback_url,
+        "authorization": f"Bearer {CALLBACK_SECRET}",
+        "auth_header": f"Bearer {CALLBACK_SECRET}"
     }
     success = await dispatch_n8n_webhook(N8N_EXTRACT_SKILLS_URL, payload, "extract_skills")
     if not success:
@@ -583,10 +589,14 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
                 "applications_history": apps_history
             })
             
+        callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/candidate-matches"
         payload = {
             "job_opening_id": job_id,
             "approved_skills": approved_skills,
-            "candidates": candidates_payload_list
+            "candidates": candidates_payload_list,
+            "callback_url": callback_url,
+            "authorization": f"Bearer {CALLBACK_SECRET}",
+            "auth_header": f"Bearer {CALLBACK_SECRET}"
         }
         
         success = await dispatch_n8n_webhook(N8N_MATCH_CANDIDATES_URL, payload, "match_candidates")
@@ -598,8 +608,12 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
         match_candidates_background(job_id, jwt_token)
 
 async def handle_generate_questions_dispatch(app_record: dict, cand: dict, job: dict, req: dict, jwt_token: str):
+    callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/screening-questions"
     payload = {
         "application_id": app_record["id"],
+        "callback_url": callback_url,
+        "authorization": f"Bearer {CALLBACK_SECRET}",
+        "auth_header": f"Bearer {CALLBACK_SECRET}",
         "candidate": {
             "id": cand["id"],
             "full_name": cand["full_name"],
