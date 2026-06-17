@@ -504,6 +504,17 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     }
   });
 
+  const updateJobStatusMutation = useMutation({
+    mutationFn: (newStatus: string) => apiRequest<JobOpening>("PATCH", `/jobs/${selectedJobId}`, { status: newStatus }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["activity_log"] });
+    },
+    onError: (err: any) => {
+      alert(`Failed to update status: ${err.message || err}`);
+    }
+  });
+
   const confirmJobMutation = useMutation({
     mutationFn: () => apiRequest<JobOpening>("POST", `/jobs/${selectedJobId}/confirm`),
     onSuccess: () => {
@@ -1145,6 +1156,86 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           >
             <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse" />
             AI Edit JD
+          </button>
+        </div>
+      </div>
+
+      {/* Interactive Status Bar */}
+      <div className="bg-neutral-50 border border-neutral-200 rounded-sm p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] uppercase tracking-wider font-bold text-neutral-400 font-mono">Job Status Flow</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-neutral-white border border-neutral-200 rounded-xs select-none">
+            <span className={`w-2 h-2 rounded-full ${
+              activeJob?.status === "published" ? "bg-success" :
+              activeJob?.status === "confirmed" ? "bg-info" :
+              activeJob?.status === "closed" ? "bg-error" : "bg-neutral-400"
+            }`} />
+            <span className="font-mono text-xs font-bold uppercase text-neutral-850">
+              {activeJob?.status === "published" ? "Open (Published)" : activeJob?.status === "closed" ? "Closed" : activeJob?.status}
+            </span>
+          </div>
+        </div>
+
+        {/* Status Actions */}
+        <div className="flex items-center gap-1 font-mono text-[10px] select-none">
+          <button
+            type="button"
+            onClick={() => updateJobStatusMutation.mutate("draft")}
+            disabled={updateJobStatusMutation.isPending}
+            className={`px-3 py-1.5 border rounded-xs font-semibold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 ${
+              activeJob?.status === "draft"
+                ? "bg-neutral-200 border-neutral-300 text-neutral-800"
+                : "border-neutral-200 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-700"
+            }`}
+          >
+            Draft
+          </button>
+          
+          <span className="text-neutral-300 px-1">→</span>
+          
+          <button
+            type="button"
+            onClick={() => updateJobStatusMutation.mutate("confirmed")}
+            disabled={updateJobStatusMutation.isPending}
+            className={`px-3 py-1.5 border rounded-xs font-semibold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 ${
+              activeJob?.status === "confirmed"
+                ? "bg-info/10 border-info/30 text-info"
+                : "border-neutral-200 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-700"
+            }`}
+          >
+            Confirmed
+          </button>
+          
+          <span className="text-neutral-300 px-1">→</span>
+          
+          <button
+            type="button"
+            onClick={() => updateJobStatusMutation.mutate("published")}
+            disabled={updateJobStatusMutation.isPending}
+            className={`px-3 py-1.5 border rounded-xs font-semibold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 ${
+              activeJob?.status === "published"
+                ? "bg-success/10 border-success/30 text-success"
+                : "border-neutral-200 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-700"
+            }`}
+            title="Mark job opening as Open / Published"
+          >
+            Open
+          </button>
+          
+          <span className="text-neutral-300 px-1">→</span>
+          
+          <button
+            type="button"
+            onClick={() => updateJobStatusMutation.mutate("closed")}
+            disabled={updateJobStatusMutation.isPending}
+            className={`px-3 py-1.5 border rounded-xs font-semibold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 ${
+              activeJob?.status === "closed"
+                ? "bg-error/10 border-error/30 text-error"
+                : "border-neutral-200 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-700"
+            }`}
+            title="Mark job opening as Closed"
+          >
+            Closed
           </button>
         </div>
       </div>

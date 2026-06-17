@@ -6,7 +6,7 @@ import {
 import { createClient } from "./supabase/client";
 
 // Base Configuration
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 // Persistent memory-store for mock fallback
 // Serves as a local stateful database to make the UI completely interactive
@@ -513,6 +513,7 @@ export async function apiRequest<T>(
   path: string,
   data?: any
 ): Promise<T> {
+  let serverReached = false;
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -535,6 +536,7 @@ export async function apiRequest<T>(
       headers,
       body: data ? JSON.stringify(data) : undefined,
     });
+    serverReached = true;
     
     if (res.ok) {
       return await res.json() as T;
@@ -543,6 +545,11 @@ export async function apiRequest<T>(
     if (res.status === 418 || res.status === 404 || res.status === 500 || res.status === 503) {
       const errBody = await res.json().catch(() => ({}));
       const errMsg = errBody.detail || `Request failed with status ${res.status}`;
+      
+      const hasUuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(path);
+      if (hasUuid) {
+        throw new Error(errMsg);
+      }
       
       const isCandidatePath = path.startsWith("/candidates/");
       const candidateId = isCandidatePath ? path.split("/")[2] : null;
@@ -560,6 +567,14 @@ export async function apiRequest<T>(
       throw new Error(errMsg);
     }
   } catch (err) {
+    const hasUuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(path);
+    if (hasUuid) {
+      if (!serverReached) {
+        throw new Error(`Backend server not reached. Please check if your backend is running. (${err instanceof Error ? err.message : err})`);
+      } else {
+        throw err;
+      }
+    }
     if (err instanceof Error && !err.message.includes("Request failed with status") && !err.message.includes("Backend candidate API call failed")) {
       console.warn("Backend server not reached. Serving data from static mock storage fallback.", err);
     } else {

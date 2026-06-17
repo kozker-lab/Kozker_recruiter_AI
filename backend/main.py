@@ -6,6 +6,9 @@ import re
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from supabase import create_client, Client, ClientOptions
@@ -43,6 +46,42 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(APIError)
+async def postgrest_api_error_handler(request: Request, exc: APIError):
+    logger.error(f"Postgrest APIError on {request.method} {request.url.path}: {exc.message} (details: {exc.details})")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": exc.message}
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, (StarletteHTTPException, RequestValidationError)):
+        raise exc
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {str(exc)}"}
+    )
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    import time
+    start_time = time.time()
+    path = request.url.path
+    method = request.method
+    headers = dict(request.headers)
+    auth_header = headers.get("authorization", "")
+    has_auth = f"Yes ({auth_header[:25]}...)" if auth_header else "No"
+    
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    
+    with open("requests.log", "a") as f:
+        f.write(f"[{method}] {path} | Auth: {has_auth} | Status: {response.status_code} | Time: {process_time:.4f}s\n")
+        
+    return response
 
 
 # Helper: Safe client creator to bypass validation for new publishable keys
@@ -267,6 +306,17 @@ class JobOpeningModel(BaseModel):
     qualifications: List[str]
     keywords: List[str]
     salary_range: str
+
+class JobOpeningUpdateModel(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    responsibilities: Optional[List[str]] = None
+    qualifications: Optional[List[str]] = None
+    keywords: Optional[List[str]] = None
+    salary_range: Optional[str] = None
+    status: Optional[str] = None
+    processing_status: Optional[str] = None
+    error_message: Optional[str] = None
 
 class SkillsApprovalModel(BaseModel):
     skills: List[Dict[str, Any]]
@@ -804,6 +854,13 @@ async def create_requirement(req: RequirementModel, background_tasks: Background
     
     return new_req
 
+
+@app.get("/api/v1/activity_log")
+async def get_activity_log(db: Client = Depends(get_supabase)):
+    res = db.table("activity_log").select("*").order("created_at", desc=True).execute()
+    return res.data
+
+
 # 4. Job Openings endpoints
 @app.get("/api/v1/jobs")
 async def get_jobs(db: Client = Depends(get_supabase)):
@@ -817,6 +874,53 @@ async def get_jobs(db: Client = Depends(get_supabase)):
             "client_name": cli.get("name") or "Generic Client"
         })
     return formatted
+
+@app.patch("/api/v1/jobs/{job_id}")
+async def patch_job(job_id: str, job_update: JobOpeningUpdateModel, db: Client = Depends(get_supabase)):
+    job_res = db.table("job_openings").select("*").eq("id", job_id).execute()
+    if not job_res.data:
+        raise HTTPException(status_code=404, detail="Job opening not found")
+        
+    update_data = {}
+    if job_update.title is not None:
+        update_data["title"] = job_update.title
+    if job_update.description is not None:
+        update_data["description"] = job_update.description
+    if job_update.responsibilities is not None:
+        update_data["responsibilities"] = job_update.responsibilities
+    if job_update.qualifications is not None:
+        update_data["qualifications"] = job_update.qualifications
+    if job_update.keywords is not None:
+        update_data["keywords"] = job_update.keywords
+    if job_update.salary_range is not None:
+        update_data["salary_range"] = job_update.salary_range
+    if job_update.status is not None:
+        if job_update.status not in ['draft', 'confirmed', 'published', 'closed']:
+            raise HTTPException(status_code=400, detail="Invalid status value")
+        update_data["status"] = job_update.status
+    if job_update.processing_status is not None:
+        update_data["processing_status"] = job_update.processing_status
+    if job_update.error_message is not None:
+        update_data["error_message"] = job_update.error_message
+
+    if update_data:
+        res = db.table("job_openings").update(update_data).eq("id", job_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=500, detail="Failed to update job opening")
+        updated_job = res.data[0]
+        
+        try:
+            db.table("activity_log").insert({
+                "action": "job_updated",
+                "entity_type": "job_openings",
+                "entity_id": job_id,
+                "actor_name": "Recruiter",
+                "metadata": {"job_title": updated_job.get("title", ""), "updated_fields": list(update_data.keys())}
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to log job update activity: {e}")
+        return updated_job
+    return job_res.data[0]
 
 @app.post("/api/v1/jobs/{job_id}/confirm")
 async def confirm_job(job_id: str, db: Client = Depends(get_supabase)):
