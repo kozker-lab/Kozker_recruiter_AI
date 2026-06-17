@@ -109,12 +109,14 @@ export default function ClientsView() {
 
   const { data: requirements = [], isLoading: loadingReqs } = useQuery<Requirement[]>({
     queryKey: ["requirements"],
-    queryFn: () => apiRequest<Requirement[]>("GET", "/requirements")
+    queryFn: () => apiRequest<Requirement[]>("GET", "/requirements"),
+    refetchInterval: 3000 // Refetch every 3s to capture background AI/n8n status transitions
   });
 
   const { data: jobs = [], isLoading: loadingJobs } = useQuery<any[]>({
     queryKey: ["jobs"],
-    queryFn: () => apiRequest<any[]>("GET", "/jobs")
+    queryFn: () => apiRequest<any[]>("GET", "/jobs"),
+    refetchInterval: 3000 // Refetch every 3s to sync new job drafts generated in the background
   });
 
   const { data: applications = [], isLoading: loadingApps } = useQuery<any[]>({

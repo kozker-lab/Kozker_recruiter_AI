@@ -527,7 +527,8 @@ export default function PoolView() {
   // Queries
   const { data: rawCandidates = [], isLoading } = useQuery<Candidate[]>({
     queryKey: ["candidates"],
-    queryFn: () => apiRequest<Candidate[]>("GET", "/candidates")
+    queryFn: () => apiRequest<Candidate[]>("GET", "/candidates"),
+    refetchInterval: 3000 // Refetch every 3s to capture background resume downloads and details parsing
   });
 
   const candidates = useMemo(() => {
