@@ -1092,9 +1092,15 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-neutral-200 pb-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setSelectedJobId(null)}
+            onClick={() => {
+              if (reviewApplicationId) {
+                setReviewApplicationId(null);
+              } else {
+                setSelectedJobId(null);
+              }
+            }}
             className="p-1.5 hover:bg-neutral-200 border border-neutral-200 rounded-sm text-neutral-500 cursor-pointer"
-            title="Back to Catalog"
+            title={reviewApplicationId ? "Back to Candidate Rankings" : "Back to Catalog"}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
