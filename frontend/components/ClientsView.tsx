@@ -962,7 +962,7 @@ export default function ClientsView() {
                   <input
                     type="number"
                     min={1}
-                    max={3}
+                    max={999}
                     value={reqPosts}
                     onChange={(e) => setReqPosts(Number(e.target.value))}
                     className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800"

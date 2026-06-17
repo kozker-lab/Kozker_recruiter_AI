@@ -1,0 +1,10 @@
+{
+  "name": "kozker-recruiter-ai-root",
+  "version": "1.0.0",
+  "description": "Root workspace runner for Kozker Recruiter AI",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && ./venv/bin/python main.py",
+    "dev": "npx concurrently --kill-others \"npm run dev:frontend\" \"npm run dev:backend\""
+  }
+}

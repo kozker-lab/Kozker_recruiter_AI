@@ -8,7 +8,8 @@ import { JobOpening, JobOpeningSkill, JobCandidate, Candidate } from "../types";
 import { 
   Table, Briefcase, FileSignature, Sparkles, CheckSquare, 
   Play, Check, Edit3, ArrowLeft, RefreshCcw, Save, Trash2, 
-  Sliders, UserCheck, AlertTriangle, Layers, UserCircle, ChevronRight, Plus, CheckCircle2, FileText
+  Sliders, UserCheck, AlertTriangle, Layers, UserCircle, ChevronRight, Plus, CheckCircle2, FileText,
+  Folder, FolderOpen, Search, Filter, Building2, ChevronDown, LayoutGrid, List
 } from "lucide-react";
 
 // Custom ScatterPlot Component
@@ -330,6 +331,13 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const [selectedJobId, setSelectedJobId] = useState<string | null>(initialJobId || null);
   const [activeTab, setActiveTab] = useState<"jd" | "skills" | "candidates">("jd");
 
+  // View mode and filtering states
+  const [viewMode, setViewMode] = useState<"tree" | "accordion" | "table">("tree");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [clientFilter, setClientFilter] = useState("all");
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+
   // State for AI JD Regeneration instruction
   const [regenInstruction, setRegenInstruction] = useState("");
   const [isRegenOpen, setIsRegenOpen] = useState(false);
@@ -362,6 +370,88 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   });
 
   const activeJob = jobs.find(j => j.id === selectedJobId);
+
+  // 1. Extract unique client names for the filter dropdown
+  const uniqueClients = React.useMemo(() => {
+    const clientsSet = new Set<string>();
+    jobs.forEach(j => {
+      if (j.client_name) {
+        clientsSet.add(j.client_name);
+      }
+    });
+    return Array.from(clientsSet);
+  }, [jobs]);
+
+  // 2. Filter the jobs list based on controls
+  const filteredJobs = React.useMemo(() => {
+    return jobs.filter(j => {
+      // Search query filter
+      const searchLower = searchQuery.toLowerCase();
+      const titleMatches = j.title?.toLowerCase().includes(searchLower);
+      const clientMatches = j.client_name?.toLowerCase().includes(searchLower);
+      const reqMatches = j.requirement_title?.toLowerCase().includes(searchLower) || j.requirement_id?.toLowerCase().includes(searchLower);
+      const textMatches = searchQuery ? (titleMatches || clientMatches || reqMatches) : true;
+
+      // Status filter
+      const statusMatches = statusFilter === "all" ? true : j.status === statusFilter;
+
+      // Client filter
+      const clientMatchesFilter = clientFilter === "all" ? true : j.client_name === clientFilter;
+
+      return textMatches && statusMatches && clientMatchesFilter;
+    });
+  }, [jobs, searchQuery, statusFilter, clientFilter]);
+
+  // 3. Group jobs hierarchically by Client -> Requirement
+  const groupedJobs = React.useMemo(() => {
+    const clientsMap: Record<string, {
+      client_name: string;
+      requirements: Record<string, {
+        requirement_id: string;
+        requirement_title: string;
+        jobs: JobOpening[];
+      }>;
+    }> = {};
+
+    filteredJobs.forEach(j => {
+      const clientName = j.client_name || "Unassigned Clients";
+      const reqId = j.requirement_id || "unassigned-req";
+      const reqTitle = j.requirement_title || j.title || "General Postings";
+
+      if (!clientsMap[clientName]) {
+        clientsMap[clientName] = {
+          client_name: clientName,
+          requirements: {}
+        };
+      }
+
+      if (!clientsMap[clientName].requirements[reqId]) {
+        clientsMap[clientName].requirements[reqId] = {
+          requirement_id: reqId,
+          requirement_title: reqTitle,
+          jobs: []
+        };
+      }
+
+      clientsMap[clientName].requirements[reqId].jobs.push(j);
+    });
+
+    // Sort jobs in each requirement group by post_index
+    Object.values(clientsMap).forEach(c => {
+      Object.values(c.requirements).forEach(r => {
+        r.jobs.sort((a, b) => (a.post_index || 0) - (b.post_index || 0));
+      });
+    });
+
+    return clientsMap;
+  }, [filteredJobs]);
+
+  const toggleNode = (nodeKey: string) => {
+    setExpandedNodes(prev => ({
+      ...prev,
+      [nodeKey]: prev[nodeKey] === false ? true : false
+    }));
+  };
 
   const { data: skills = EMPTY_SKILLS, isLoading: loadingSkills } = useQuery<JobOpeningSkill[]>({
     queryKey: ["skills", selectedJobId],
@@ -504,93 +594,486 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   };
 
   if (!selectedJobId) {
-    // 1. Notion Style High-Density Table View
     return (
-      <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm font-sans text-neutral-700 max-w-7xl mx-auto w-full select-none">
-        <div className="p-4 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
+      <div className="space-y-6 font-sans text-neutral-700 max-w-7xl mx-auto w-full select-none">
+        {/* Header and Controls */}
+        <div className="bg-neutral-white border border-neutral-200 rounded-sm p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Notion Job Openings Catalog</h3>
-            <p className="text-[10px] text-neutral-400 font-mono mt-0.5">Full corporate hiring postings index</p>
+            <h2 className="text-lg font-tight font-bold text-neutral-850 flex items-center gap-2">
+              <Briefcase className="w-5 h-5 text-primary" />
+              Job Catalog Workspace
+            </h2>
+            <p className="text-[10px] text-neutral-400 font-mono mt-0.5">
+              Browse, filter, and manage your AI-generated and manual job openings.
+            </p>
+          </div>
+
+          {/* View Toggle Group */}
+          <div className="flex items-center self-start md:self-auto border border-neutral-200 rounded-sm overflow-hidden p-0.5 bg-neutral-50">
+            <button
+              onClick={() => setViewMode("tree")}
+              className={`px-3 py-1.5 rounded-xs text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === "tree"
+                  ? "bg-neutral-900 text-neutral-white shadow-xs"
+                  : "text-neutral-500 hover:text-neutral-800"
+              }`}
+              title="File System View"
+            >
+              <Folder className="w-3.5 h-3.5" />
+              File System
+            </button>
+            <button
+              onClick={() => setViewMode("accordion")}
+              className={`px-3 py-1.5 rounded-xs text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === "accordion"
+                  ? "bg-neutral-900 text-neutral-white shadow-xs"
+                  : "text-neutral-500 hover:text-neutral-800"
+              }`}
+              title="Accordion View"
+            >
+              <List className="w-3.5 h-3.5" />
+              Accordion
+            </button>
+            <button
+              onClick={() => setViewMode("table")}
+              className={`px-3 py-1.5 rounded-xs text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === "table"
+                  ? "bg-neutral-900 text-neutral-white shadow-xs"
+                  : "text-neutral-500 hover:text-neutral-800"
+              }`}
+              title="Table View"
+            >
+              <Table className="w-3.5 h-3.5" />
+              Flat Table
+            </button>
           </div>
         </div>
 
+        {/* Filter Controls Bar */}
+        <div className="bg-neutral-white border border-neutral-200 rounded-sm p-4 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          {/* Search query */}
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-450" />
+            <input
+              type="text"
+              placeholder="Search job title, client, mandate..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 bg-neutral-white placeholder:text-neutral-400 focus:ring-1 focus:ring-primary focus:outline-hidden"
+            />
+          </div>
+
+          {/* Client Filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-neutral-450 uppercase font-mono font-semibold shrink-0">Client:</span>
+            <select
+              value={clientFilter}
+              onChange={(e) => setClientFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+            >
+              <option value="all">All Clients</option>
+              {uniqueClients.map((client) => (
+                <option key={client} value={client}>
+                  {client}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status Filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-neutral-450 uppercase font-mono font-semibold shrink-0">Status:</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+            >
+              <option value="all">All Statuses</option>
+              <option value="draft">Draft</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="published">Published</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Loading and empty states */}
         {loadingJobs ? (
-          <div className="text-center py-12 text-xs text-neutral-400 font-mono">Loading job database...</div>
-        ) : jobs.length === 0 ? (
-          <div className="text-center py-12 text-xs text-neutral-400">No job openings created. Go to Clients to generate drafts.</div>
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm p-12 text-center text-neutral-400 font-mono text-xs shadow-sm">
+            <RefreshCcw className="w-5 h-5 animate-spin mx-auto mb-2 text-neutral-400" />
+            Loading job catalog...
+          </div>
+        ) : filteredJobs.length === 0 ? (
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm p-12 text-center text-neutral-400 text-xs shadow-sm italic animate-fade-in">
+            No job openings match the selected filters.
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-neutral-50/50 border-b border-neutral-200 text-neutral-400 font-mono uppercase text-[9px] tracking-wider">
-                  <th className="p-4 font-semibold">Client</th>
-                  <th className="p-4 font-semibold">Job Title</th>
-                  <th className="p-4 font-semibold">Post Index</th>
-                  <th className="p-4 font-semibold">Publish State</th>
-                  <th className="p-4 font-semibold">AI Process Queue</th>
-                  <th className="p-4 font-semibold">Top Score</th>
-                  <th className="p-4 font-semibold">Created At</th>
-                  <th className="p-4"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-150">
-                {jobs.map((j) => (
-                  <tr key={j.id} className="hover:bg-neutral-50/55 transition-colors group">
-                    <td className="p-4 font-mono font-medium text-neutral-500 uppercase">
-                      <div>{j.client_name || "Generic Client"}</div>
-                      <div className="text-[9px] text-neutral-400 lowercase font-normal">Req ID: {j.requirement_id ? j.requirement_id.substring(0, 8) + '...' : '-'}</div>
-                    </td>
-                    <td className="p-4 font-semibold text-neutral-800">
-                      <button 
-                        onClick={() => { setSelectedJobId(j.id); setActiveTab("jd"); }}
-                        className="hover:text-primary transition-colors cursor-pointer text-left font-tight"
+          /* Main Views Panel */
+          <div className="space-y-4">
+            {/* VIEW MODE: FILE SYSTEM TREE VIEW */}
+            {viewMode === "tree" && (
+              <div className="bg-neutral-white border border-neutral-200 rounded-sm shadow-sm p-4 space-y-2 select-none">
+                {Object.entries(groupedJobs).map(([clientName, clientData]) => {
+                  const clientKey = `client:${clientName}`;
+                  const isClientExpanded = expandedNodes[clientKey] !== false; // Default to expanded
+
+                  return (
+                    <div key={clientName} className="space-y-1">
+                      {/* Client Level Folder */}
+                      <div
+                        onClick={() => toggleNode(clientKey)}
+                        className="flex items-center justify-between p-2.5 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors border border-neutral-100 bg-neutral-50/30"
                       >
-                        {j.title}
-                      </button>
-                    </td>
-                    <td className="p-4 font-mono text-neutral-400">#{j.post_index}</td>
-                    <td className="p-4">
-                      <span className={`text-[9px] px-2 py-0.5 rounded-sm border font-semibold uppercase font-mono ${
-                        j.status === "published" ? "bg-success/10 border-success/20 text-success" :
-                        j.status === "confirmed" ? "bg-info/10 border-info/20 text-info" :
-                        "bg-neutral-100 border-neutral-250 text-neutral-400"
-                      }`}>
-                        {j.status}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <span className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-semibold ${
-                        j.processing_status === "ready" ? "text-success" :
-                        j.processing_status === "error" ? "text-error" :
-                        "text-primary animate-pulse"
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          j.processing_status === "ready" ? "bg-success" :
-                          j.processing_status === "error" ? "bg-error" :
-                          "bg-primary animate-ping"
-                        }`}></span>
-                        {j.processing_status.replace("_", " ")}
-                      </span>
-                    </td>
-                    <td className="p-4 font-mono font-bold text-neutral-700">
-                      {j.top_score && j.top_score > 0 ? `${j.top_score}%` : "-"}
-                    </td>
-                    <td className="p-4 text-neutral-400 font-mono">
-                      {new Date(j.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="p-4 text-right">
-                      <button
-                        onClick={() => { setSelectedJobId(j.id); setActiveTab("jd"); }}
-                        className="text-[10px] text-neutral-400 hover:text-primary font-semibold uppercase tracking-wider font-mono flex items-center gap-0.5 ml-auto cursor-pointer"
+                        <div className="flex items-center gap-2.5">
+                          <Building2 className="w-4 h-4 text-neutral-400" />
+                          {isClientExpanded ? (
+                            <FolderOpen className="w-4 h-4 text-primary/70" />
+                          ) : (
+                            <Folder className="w-4 h-4 text-primary/70" />
+                          )}
+                          <span className="font-semibold text-neutral-850 text-xs uppercase tracking-tight">
+                            {clientName}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-mono text-neutral-400 px-1.5 py-0.5 bg-neutral-100 border border-neutral-200 rounded-xs">
+                            {Object.keys(clientData.requirements).length} Mandate(s)
+                          </span>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 text-neutral-450 transition-transform ${
+                              isClientExpanded ? "" : "-rotate-90"
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Requirements Level (Subfolders) */}
+                      {isClientExpanded && (
+                        <div className="pl-6 border-l border-neutral-150 ml-4.5 space-y-1 mt-1">
+                          {Object.entries(clientData.requirements).map(([reqId, reqData]) => {
+                            const reqKey = `req:${clientName}:${reqId}`;
+                            const isReqExpanded = expandedNodes[reqKey] !== false; // Default to expanded
+
+                            return (
+                              <div key={reqId} className="space-y-1">
+                                <div
+                                  onClick={() => toggleNode(reqKey)}
+                                  className="flex items-center justify-between p-2 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors border border-neutral-100/50 bg-neutral-50/10"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {isReqExpanded ? (
+                                      <FolderOpen className="w-3.5 h-3.5 text-neutral-450" />
+                                    ) : (
+                                      <Folder className="w-3.5 h-3.5 text-neutral-450" />
+                                    )}
+                                    <span className="font-medium text-neutral-800 text-xs">
+                                      {reqData.requirement_title}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[9px] font-mono text-neutral-450 px-1.5 py-0.2 bg-neutral-100 border border-neutral-200 rounded-xs">
+                                      {reqData.jobs.length} Post(s)
+                                    </span>
+                                    <ChevronDown
+                                      className={`w-3 h-3 text-neutral-400 transition-transform ${
+                                        isReqExpanded ? "" : "-rotate-90"
+                                      }`}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Job Openings Level (Files) */}
+                                {isReqExpanded && (
+                                  <div className="pl-6 border-l border-neutral-150 ml-3.5 space-y-1 mt-1">
+                                    {reqData.jobs.map((job) => (
+                                      <div
+                                        key={job.id}
+                                        className="flex flex-col sm:flex-row sm:items-center justify-between p-2 hover:bg-neutral-50 border border-neutral-150/50 rounded-sm transition-colors text-xs gap-3"
+                                      >
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                          <FileText className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                                          <span className="font-mono text-neutral-400 text-[10px] shrink-0">
+                                            #{job.post_index}
+                                          </span>
+                                          <button
+                                            onClick={() => {
+                                              setSelectedJobId(job.id);
+                                              setActiveTab("jd");
+                                            }}
+                                            className="font-medium text-neutral-800 hover:text-primary transition-colors truncate text-left cursor-pointer"
+                                          >
+                                            {job.title}
+                                          </button>
+                                        </div>
+
+                                        {/* Status and Actions Badges */}
+                                        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 select-none">
+                                          <span
+                                            className={`text-[8px] font-semibold uppercase px-1.5 py-0.2 rounded-xs border font-mono ${
+                                              job.status === "published"
+                                                ? "bg-success/5 border-success/20 text-success"
+                                                : job.status === "confirmed"
+                                                ? "bg-info/5 border-info/20 text-info"
+                                                : "bg-neutral-100 border-neutral-250 text-neutral-400"
+                                            }`}
+                                          >
+                                            {job.status}
+                                          </span>
+
+                                          <span
+                                            className={`flex items-center gap-1 font-mono text-[9px] uppercase font-semibold ${
+                                              job.processing_status === "ready"
+                                                ? "text-success"
+                                                : job.processing_status === "error"
+                                                ? "text-error"
+                                                : "text-primary"
+                                            }`}
+                                          >
+                                            <span
+                                              className={`w-1 h-1 rounded-full ${
+                                                job.processing_status === "ready"
+                                                  ? "bg-success"
+                                                  : job.processing_status === "error"
+                                                  ? "bg-error"
+                                                  : "bg-primary animate-ping"
+                                              }`}
+                                            ></span>
+                                            {job.processing_status.replace("_", " ")}
+                                          </span>
+
+                                          {job.top_score && job.top_score > 0 ? (
+                                            <span className="font-mono font-bold text-[10px] bg-neutral-50 px-1 border border-neutral-200 rounded-xs text-neutral-600">
+                                              Top: {job.top_score}%
+                                            </span>
+                                          ) : null}
+
+                                          <button
+                                            onClick={() => {
+                                              setSelectedJobId(job.id);
+                                              setActiveTab("jd");
+                                            }}
+                                            className="px-2 py-0.5 bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 hover:border-neutral-300 rounded-xs text-[9px] font-mono font-semibold uppercase text-neutral-600 transition-all flex items-center gap-0.5 cursor-pointer"
+                                          >
+                                            Open
+                                            <ChevronRight className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* VIEW MODE: ACCORDION VIEW */}
+            {viewMode === "accordion" && (
+              <div className="space-y-3 animate-fade-in">
+                {Object.entries(groupedJobs).map(([clientName, clientData]) => {
+                  const clientKey = `accordion:client:${clientName}`;
+                  const isClientExpanded = expandedNodes[clientKey] !== false; // Default to expanded
+
+                  return (
+                    <div
+                      key={clientName}
+                      className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-xs"
+                    >
+                      {/* Accordion Client Header */}
+                      <div
+                        onClick={() => toggleNode(clientKey)}
+                        className="p-4 bg-neutral-50 flex items-center justify-between cursor-pointer border-b border-neutral-150"
                       >
-                        Open
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-neutral-405" />
+                          <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">
+                            {clientName}
+                          </h3>
+                        </div>
+                        <ChevronDown
+                          className={`w-4 h-4 text-neutral-400 transition-transform ${
+                            isClientExpanded ? "" : "-rotate-90"
+                          }`}
+                        />
+                      </div>
+
+                      {/* Accordion Client Content */}
+                      {isClientExpanded && (
+                        <div className="p-4 divide-y divide-neutral-200 space-y-4">
+                          {Object.entries(clientData.requirements).map(([reqId, reqData]) => (
+                            <div key={reqId} className="pt-3 first:pt-0 space-y-2">
+                              <h4 className="font-bold text-xs text-neutral-800 flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 bg-primary rounded-xs"></span>
+                                {reqData.requirement_title}
+                              </h4>
+                              
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-3">
+                                {reqData.jobs.map((job) => (
+                                  <div
+                                    key={job.id}
+                                    className="p-3 border border-neutral-200 hover:border-neutral-350 bg-neutral-50/20 rounded-sm hover:shadow-xs transition-all flex flex-col justify-between h-[100px]"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <span className="font-semibold text-neutral-800 text-xs truncate">
+                                        Post #{job.post_index}: {job.title}
+                                      </span>
+                                      <span
+                                        className={`text-[8px] font-semibold font-mono uppercase px-1 border rounded-xs ${
+                                          job.status === "published"
+                                            ? "bg-success/10 border-success/20 text-success"
+                                            : job.status === "confirmed"
+                                            ? "bg-info/10 border-info/20 text-info"
+                                            : "bg-neutral-100 border-neutral-250 text-neutral-400"
+                                        }`}
+                                      >
+                                        {job.status}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-[10px] pt-2 border-t border-neutral-150/50">
+                                      <span
+                                        className={`flex items-center gap-1 font-mono text-[9px] uppercase font-semibold ${
+                                          job.processing_status === "ready"
+                                            ? "text-success"
+                                            : job.processing_status === "error"
+                                            ? "text-error"
+                                            : "text-primary animate-pulse"
+                                        }`}
+                                      >
+                                        {job.processing_status.replace("_", " ")}
+                                      </span>
+                                      {job.top_score && job.top_score > 0 ? (
+                                        <span className="font-mono text-neutral-500 font-semibold">
+                                          Top match: {job.top_score}%
+                                        </span>
+                                      ) : null}
+                                      <button
+                                        onClick={() => {
+                                          setSelectedJobId(job.id);
+                                          setActiveTab("jd");
+                                        }}
+                                        className="text-[9px] font-mono text-primary font-bold hover:underline cursor-pointer flex items-center"
+                                      >
+                                        View Workspace ➔
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* VIEW MODE: FLAT TABLE VIEW */}
+            {viewMode === "table" && (
+              <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm animate-fade-in">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-neutral-50/50 border-b border-neutral-200 text-neutral-400 font-mono uppercase text-[9px] tracking-wider">
+                        <th className="p-4 font-semibold">Client</th>
+                        <th className="p-4 font-semibold">Job Title</th>
+                        <th className="p-4 font-semibold">Post Index</th>
+                        <th className="p-4 font-semibold">Publish State</th>
+                        <th className="p-4 font-semibold">AI Process Queue</th>
+                        <th className="p-4 font-semibold">Top Score</th>
+                        <th className="p-4 font-semibold">Created At</th>
+                        <th className="p-4"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-150">
+                      {filteredJobs.map((j) => (
+                        <tr key={j.id} className="hover:bg-neutral-50/55 transition-colors group">
+                          <td className="p-4 font-mono font-medium text-neutral-500 uppercase">
+                            <div>{j.client_name || "Generic Client"}</div>
+                            <div className="text-[9px] text-neutral-400 lowercase font-normal">
+                              Req ID: {j.requirement_id ? j.requirement_id.substring(0, 8) + "..." : "-"}
+                            </div>
+                          </td>
+                          <td className="p-4 font-semibold text-neutral-800">
+                            <button
+                              onClick={() => {
+                                setSelectedJobId(j.id);
+                                setActiveTab("jd");
+                              }}
+                              className="hover:text-primary transition-colors cursor-pointer text-left font-tight"
+                            >
+                              {j.title}
+                            </button>
+                          </td>
+                          <td className="p-4 font-mono text-neutral-400">#{j.post_index}</td>
+                          <td className="p-4">
+                            <span
+                              className={`text-[9px] px-2 py-0.5 rounded-sm border font-semibold uppercase font-mono ${
+                                j.status === "published"
+                                  ? "bg-success/10 border-success/20 text-success"
+                                  : j.status === "confirmed"
+                                  ? "bg-info/10 border-info/20 text-info"
+                                  : "bg-neutral-100 border-neutral-250 text-neutral-400"
+                              }`}
+                            >
+                              {j.status}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <span
+                              className={`flex items-center gap-1.5 font-mono text-[10px] uppercase font-semibold ${
+                                j.processing_status === "ready"
+                                  ? "text-success"
+                                  : j.processing_status === "error"
+                                  ? "text-error"
+                                  : "text-primary animate-pulse"
+                              }`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  j.processing_status === "ready"
+                                    ? "bg-success"
+                                    : j.processing_status === "error"
+                                    ? "bg-error"
+                                    : "bg-primary animate-ping"
+                                }`}
+                              ></span>
+                              {j.processing_status.replace("_", " ")}
+                            </span>
+                          </td>
+                          <td className="p-4 font-mono font-bold text-neutral-700">
+                            {j.top_score && j.top_score > 0 ? `${j.top_score}%` : "-"}
+                          </td>
+                          <td className="p-4 text-neutral-400 font-mono">
+                            {new Date(j.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="p-4 text-right">
+                            <button
+                              onClick={() => {
+                                setSelectedJobId(j.id);
+                                setActiveTab("jd");
+                              }}
+                              className="text-[10px] text-neutral-400 hover:text-primary font-semibold uppercase tracking-wider font-mono flex items-center gap-0.5 ml-auto cursor-pointer"
+                            >
+                              Open
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

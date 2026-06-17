@@ -64,7 +64,7 @@ CREATE TABLE public.requirements (
     budget_max NUMERIC DEFAULT 1000,
     seniority TEXT CHECK (seniority IN ('junior', 'mid', 'senior', 'lead', 'any')),
     notes TEXT,
-    num_posts_requested INT DEFAULT 1 CHECK (num_posts_requested BETWEEN 1 AND 5),
+    num_posts_requested INT DEFAULT 1 CHECK (num_posts_requested BETWEEN 1 AND 999),
     status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'generating', 'ready', 'archived')),
     created_by UUID DEFAULT auth.uid() REFERENCES public.profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
