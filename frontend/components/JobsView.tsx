@@ -456,7 +456,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const { data: skills = EMPTY_SKILLS, isLoading: loadingSkills } = useQuery<JobOpeningSkill[]>({
     queryKey: ["skills", selectedJobId],
     queryFn: () => apiRequest<JobOpeningSkill[]>("GET", `/jobs/${selectedJobId}/skills`),
-    enabled: !!selectedJobId
+    enabled: !!selectedJobId,
+    refetchInterval: 3000 // Refetch every 3s to capture skills as they are populated by n8n callback
   });
 
   const { data: matchedCandidates = EMPTY_CANDIDATES, isLoading: loadingCandidates } = useQuery<JobCandidate[]>({
@@ -500,7 +501,6 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     mutationFn: (data: any) => apiRequest<JobOpening>("PATCH", `/jobs/${selectedJobId}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      alert("Job details saved successfully.");
     }
   });
 
@@ -570,7 +570,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     }
   });
 
-  const handleSaveJd = (e: React.FormEvent) => {
+  const handlePublishJob = (e: React.FormEvent) => {
     e.preventDefault();
     updateJobMutation.mutate({
       title: jdTitle,
@@ -578,6 +578,14 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       salary_range: jdSalary,
       responsibilities: jdResp,
       qualifications: jdQual
+    }, {
+      onSuccess: () => {
+        if (activeJob?.status === "draft") {
+          confirmJobMutation.mutate();
+        } else {
+          scanPublishMutation.mutate();
+        }
+      }
     });
   };
 
@@ -1272,7 +1280,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
 
       {/* Tab Contents */}
       {activeTab === "jd" && (
-        <form onSubmit={handleSaveJd} className="bg-neutral-white border border-neutral-200 rounded-sm p-6 space-y-4 shadow-sm font-sans text-xs">
+        <form onSubmit={handlePublishJob} className="bg-neutral-white border border-neutral-200 rounded-sm p-6 space-y-4 shadow-sm font-sans text-xs">
           <div className="space-y-1">
             <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Job Title</label>
             <input
@@ -1402,11 +1410,15 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           <div className="flex justify-end gap-2.5 pt-4 border-t border-neutral-100">
             <button
               type="submit"
-              disabled={updateJobMutation.isPending}
-              className="px-4 py-2 bg-primary hover:bg-primary/95 text-neutral-white font-medium rounded-sm cursor-pointer flex items-center gap-1.5"
+              disabled={updateJobMutation.isPending || confirmJobMutation.isPending || scanPublishMutation.isPending}
+              className="px-4 py-2 bg-primary hover:bg-primary/95 text-neutral-white font-medium rounded-sm cursor-pointer flex items-center gap-1.5 uppercase tracking-wider font-semibold text-[10px]"
             >
-              <Save className="w-4 h-4" />
-              Save Changes
+              {updateJobMutation.isPending || confirmJobMutation.isPending || scanPublishMutation.isPending ? (
+                <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Play className="w-3.5 h-3.5" />
+              )}
+              Publish Job Openings
             </button>
           </div>
         </form>
@@ -1414,7 +1426,25 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
 
       {activeTab === "skills" && (
         <div className="bg-neutral-white border border-neutral-200 rounded-sm p-6 space-y-4 shadow-sm text-xs font-sans">
-          <div className="space-y-1">
+          {activeJob?.processing_status === "skill_approval" && localSkills.length === 0 ? (
+            <div className="p-12 text-center max-w-md mx-auto space-y-4">
+              <div className="w-12 h-12 bg-primary/10 border border-primary/20 rounded-full flex items-center justify-center mx-auto text-primary">
+                <Sparkles className="w-6 h-6 animate-spin text-primary" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-tight font-bold text-sm text-neutral-850 uppercase tracking-wider">AI Skill Extraction Active</h4>
+                <p className="text-neutral-500 text-xs leading-relaxed">
+                  The n8n workflow is currently analyzing the job description to extract key skills and calculate search weights. This view will update automatically.
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-2 text-neutral-450 font-mono text-[9px]">
+                <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
+                <span>SYNCING WEIGHTED SKILLS</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-1">
             <div className="flex items-center justify-between">
               <h3 className="font-tight font-bold text-sm text-neutral-850 uppercase tracking-wider flex items-center gap-1.5">
                 <Sliders className="w-4 h-4 text-primary" />
@@ -1478,6 +1508,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               Approve and Rank Candidates
             </button>
           </div>
+          </>
+          )}
         </div>
       )}
 
