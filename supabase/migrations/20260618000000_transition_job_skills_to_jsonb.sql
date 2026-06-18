@@ -4,7 +4,8 @@
 
 -- 1. Drop existing validation triggers and functions
 DROP TRIGGER IF EXISTS trigger_validate_job_skills_weight ON public.job_openings;
-DROP FUNCTION IF EXISTS public.validate_job_skills_weight();
+DROP TRIGGER IF EXISTS trigger_job_skills_weight_check ON public.job_openings;
+DROP FUNCTION IF EXISTS public.validate_job_skills_weight() CASCADE;
 
 -- 2. Drop existing table Cascade (clears constraints/policies)
 DROP TABLE IF EXISTS public.job_opening_skills CASCADE;
