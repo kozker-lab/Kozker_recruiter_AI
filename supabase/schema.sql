@@ -172,6 +172,7 @@ CREATE TABLE public.job_candidates (
     skill_gaps TEXT[] DEFAULT '{}'::TEXT[],
     ai_reasoning TEXT,
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+    parsed_resume JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

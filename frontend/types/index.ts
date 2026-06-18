@@ -168,6 +168,10 @@ export interface JobCandidate {
   priority?: number;
   stage?: PipelineStageType;
   stage_status?: StageStatusType;
+  parsed_resume?: {
+    summary?: string;
+    raw_text?: string;
+  } | null;
 }
 
 export interface ScreeningQuestion {

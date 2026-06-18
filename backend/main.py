@@ -606,6 +606,10 @@ async def handle_scan_publish_dispatch(job: dict, jwt_token: str):
 async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
     try:
+        # Fetch job title
+        job_res = db.table("job_openings").select("title").eq("id", job_id).execute()
+        job_title = job_res.data[0].get("title", "") if job_res.data else ""
+
         # Fetch approved skills
         skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
         approved_skills = skills_res.data[0].get("skills", []) if skills_res.data else []
@@ -645,7 +649,10 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
             
         callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/candidate-matches"
         payload = {
-            "job_opening_id": job_id,
+            "job_opening": {
+                "job_opening_id": job_id,
+                "title": job_title
+            },
             "approved_skills": approved_skills,
             "candidates": candidates_payload_list,
             "callback_url": callback_url,
@@ -1142,7 +1149,8 @@ def match_candidates_background(job_id: str, jwt_token: str):
                     "fuzzy_score": matched_score,
                     "rank_order": 1,  # updated later
                     "strengths": strengths[:3],
-                    "skill_gaps": skill_gaps[:3]
+                    "skill_gaps": skill_gaps[:3],
+                    "parsed_resume": cand.get("parsed_resume_json")
                 })
         
         # Sort and rank
@@ -1179,7 +1187,8 @@ async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase))
             "strengths": row.get("strengths") or [],
             "skill_gaps": row.get("skill_gaps") or [],
             "stage": app_rec.get("stage") or "screening",
-            "stage_status": app_rec.get("stage_status") or "pending"
+            "stage_status": app_rec.get("stage_status") or "pending",
+            "parsed_resume": row.get("parsed_resume")
         })
     return formatted
 
@@ -1237,7 +1246,8 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
         "fuzzy_score": matched_score,
         "rank_order": rank,
         "strengths": strengths[:3],
-        "skill_gaps": skill_gaps[:3]
+        "skill_gaps": skill_gaps[:3],
+        "parsed_resume": cand.get("parsed_resume_json")
     }).execute()
     
     db.table("activity_log").insert({
@@ -2024,6 +2034,14 @@ async def callback_candidate_matches(payload: CandidateMatchesCallback):
     # Clear existing job candidates
     db.table("job_candidates").delete().eq("job_opening_id", payload.job_opening_id).execute()
     
+    # Fetch candidates' parsed_resume_json
+    cand_ids = [match.candidate_id for match in payload.matches]
+    cand_resumes = {}
+    if cand_ids:
+        cands_res = db.table("candidates").select("id, parsed_resume_json").in_("id", cand_ids).execute()
+        if cands_res.data:
+            cand_resumes = {c["id"]: c.get("parsed_resume_json") for c in cands_res.data}
+            
     scored_candidates = []
     for idx, match in enumerate(payload.matches):
         # Upsert application
@@ -2046,7 +2064,8 @@ async def callback_candidate_matches(payload: CandidateMatchesCallback):
                 "fuzzy_score": match.fuzzy_score,
                 "rank_order": 1, # updated later
                 "strengths": match.strengths[:3],
-                "skill_gaps": match.skill_gaps[:3]
+                "skill_gaps": match.skill_gaps[:3],
+                "parsed_resume": cand_resumes.get(match.candidate_id)
             })
             
     # Sort and rank
