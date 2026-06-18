@@ -529,6 +529,9 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["skills", selectedJobId] });
       setActiveTab("skills");
+    },
+    onError: (err: any) => {
+      alert(err.message || "Failed to trigger skill extraction webhook.");
     }
   });
 
@@ -580,11 +583,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       qualifications: jdQual
     }, {
       onSuccess: () => {
-        if (activeJob?.status === "draft") {
-          confirmJobMutation.mutate();
-        } else {
-          scanPublishMutation.mutate();
-        }
+        scanPublishMutation.mutate();
       }
     });
   };
