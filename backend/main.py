@@ -975,11 +975,35 @@ async def handle_approve_skills_logic(job_id: str, skills_data: SkillsApprovalMo
             "id": skill.get("id") or f"sk-{idx + 1}-{int(time.time())}",
             "job_opening_id": job_id,
             "skill_name": skill["skill_name"],
-            "weight": skill["weight"],
+            "weight": float(skill.get("weight") or 0.0),
             "skill_order": idx + 1,
             "approved": True
         })
         
+    # Normalize weights so they sum to exactly 1.0 (to satisfy database trigger)
+    total_w = sum(s["weight"] for s in skills_list)
+    if total_w > 0:
+        running_w = 0.0
+        for idx, s in enumerate(skills_list):
+            if idx == len(skills_list) - 1:
+                s["weight"] = round(1.0 - running_w, 4)
+            else:
+                norm_w = round(s["weight"] / total_w, 4)
+                s["weight"] = norm_w
+                running_w += norm_w
+    else:
+        # If all weights are 0, distribute them equally
+        n = len(skills_list)
+        if n > 0:
+            running_w = 0.0
+            for idx, s in enumerate(skills_list):
+                if idx == n - 1:
+                    s["weight"] = round(1.0 - running_w, 4)
+                else:
+                    w = round(1.0 / n, 4)
+                    s["weight"] = w
+                    running_w += w
+
     db.table("job_opening_skills").upsert({
         "job_opening_id": job_id,
         "skills": skills_list

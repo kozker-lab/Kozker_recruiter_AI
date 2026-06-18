@@ -551,14 +551,33 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   });
 
   const saveSkillsMutation = useMutation({
-    mutationFn: (updatedSkills: JobOpeningSkill[]) => 
-      apiRequest<{ success: boolean }>("PUT", `/jobs/${selectedJobId}/skills`, { skills: updatedSkills }),
+    mutationFn: (updatedSkills: JobOpeningSkill[]) => {
+      const totalWeight = updatedSkills.reduce((sum, s) => sum + (s.weight || 0), 0);
+      let normalized = updatedSkills;
+      if (totalWeight > 0) {
+        let runningSum = 0;
+        normalized = updatedSkills.map((s, idx) => {
+          if (idx === updatedSkills.length - 1) {
+            return { ...s, weight: Number((1.0 - runningSum).toFixed(4)) };
+          } else {
+            const w = Number(((s.weight || 0) / totalWeight).toFixed(4));
+            runningSum += w;
+            return { ...s, weight: w };
+          }
+        });
+      }
+      return apiRequest<{ success: boolean }>("PUT", `/jobs/${selectedJobId}/skills`, { skills: normalized });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["skills", selectedJobId] });
       queryClient.invalidateQueries({ queryKey: ["job_candidates", selectedJobId] });
       queryClient.invalidateQueries({ queryKey: ["activity_log"] });
       setActiveTab("candidates");
+    },
+    onError: (err: any) => {
+      console.error("saveSkillsMutation failed:", err);
+      alert(err.message || "Failed to save skill weights and rank candidates.");
     }
   });
 
