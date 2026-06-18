@@ -615,39 +615,6 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
         skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
         approved_skills = skills_res.data[0].get("skills", []) if skills_res.data else []
         
-        # Fetch candidates
-        candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
-        candidates_pool = candidates_res.data or []
-        
-        # Construct candidates pool list with applications history
-        candidates_payload_list = []
-        for cand in candidates_pool:
-            cand_id = cand["id"]
-            # Fetch other applications for this candidate
-            other_apps_res = db.table("applications").select("*, job_openings(title)").eq("candidate_id", cand_id).neq("job_opening_id", job_id).execute()
-            other_apps = other_apps_res.data or []
-            
-            # Fetch interview stages for these other applications
-            other_app_ids = [oa["id"] for oa in other_apps]
-            other_stages = []
-            if other_app_ids:
-                stages_res = db.table("interview_stages").select("*").in_("application_id", other_app_ids).execute()
-                other_stages = stages_res.data or []
-                
-            # Combine application with its stages
-            apps_history = []
-            for app in other_apps:
-                app_stages = [stg for stg in other_stages if stg["application_id"] == app["id"]]
-                apps_history.append({
-                    **app,
-                    "stages": app_stages
-                })
-                
-            candidates_payload_list.append({
-                **cand,
-                "applications_history": apps_history
-            })
-            
         callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/candidate-matches"
         payload = {
             "job_opening": {
@@ -655,7 +622,6 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
                 "title": job_title
             },
             "approved_skills": approved_skills,
-            "candidates": candidates_payload_list,
             "callback_url": callback_url,
             "authorization": f"Bearer {CALLBACK_SECRET}",
             "auth_header": f"Bearer {CALLBACK_SECRET}"

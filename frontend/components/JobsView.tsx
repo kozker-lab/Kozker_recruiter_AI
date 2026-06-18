@@ -463,7 +463,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const { data: matchedCandidates = EMPTY_CANDIDATES, isLoading: loadingCandidates } = useQuery<JobCandidate[]>({
     queryKey: ["job_candidates", selectedJobId],
     queryFn: () => apiRequest<JobCandidate[]>("GET", `/jobs/${selectedJobId}/candidates`),
-    enabled: !!selectedJobId && activeJob?.processing_status === "ready"
+    enabled: !!selectedJobId && activeTab === "candidates",
+    refetchInterval: activeJob?.processing_status === "matching" ? 3000 : false
   });
 
   const { data: candidates = [] } = useQuery<Candidate[]>({
