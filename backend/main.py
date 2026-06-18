@@ -34,6 +34,7 @@ N8N_MATCH_CANDIDATES_URL = os.getenv("N8N_MATCH_CANDIDATES_URL", "")
 N8N_GENERATE_QUESTIONS_URL = os.getenv("N8N_GENERATE_QUESTIONS_URL", "")
 CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "kozker_callback_secret_token")
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
+MATCH_THRESHOLD = float(os.getenv("MATCH_THRESHOLD", "30.0"))
 
 
 # Initialize FastAPI
@@ -1166,16 +1167,17 @@ def match_candidates_background(job_id: str, jwt_token: str):
             }, on_conflict="candidate_id,job_opening_id").execute()
             
             if app_res.data:
-                scored_candidates.append({
-                    "job_opening_id": job_id,
-                    "candidate_id": cand["id"],
-                    "application_id": app_res.data[0]["id"],
-                    "fuzzy_score": matched_score,
-                    "rank_order": 1,  # updated later
-                    "strengths": strengths[:3],
-                    "skill_gaps": skill_gaps[:3],
-                    "parsed_resume": cand.get("parsed_resume_json")
-                })
+                if matched_score >= MATCH_THRESHOLD:
+                    scored_candidates.append({
+                        "job_opening_id": job_id,
+                        "candidate_id": cand["id"],
+                        "application_id": app_res.data[0]["id"],
+                        "fuzzy_score": matched_score,
+                        "rank_order": 1,  # updated later
+                        "strengths": strengths[:3],
+                        "skill_gaps": skill_gaps[:3],
+                        "parsed_resume": cand.get("parsed_resume_json")
+                    })
         
         # Sort and rank
         scored_candidates.sort(key=lambda x: x["fuzzy_score"], reverse=True)
@@ -2081,16 +2083,17 @@ async def callback_candidate_matches(payload: CandidateMatchesCallback):
         }, on_conflict="candidate_id,job_opening_id").execute()
         
         if app_res.data:
-            scored_candidates.append({
-                "job_opening_id": payload.job_opening_id,
-                "candidate_id": match.candidate_id,
-                "application_id": app_res.data[0]["id"],
-                "fuzzy_score": match.fuzzy_score,
-                "rank_order": 1, # updated later
-                "strengths": match.strengths[:3],
-                "skill_gaps": match.skill_gaps[:3],
-                "parsed_resume": cand_resumes.get(match.candidate_id)
-            })
+            if match.fuzzy_score >= MATCH_THRESHOLD:
+                scored_candidates.append({
+                    "job_opening_id": payload.job_opening_id,
+                    "candidate_id": match.candidate_id,
+                    "application_id": app_res.data[0]["id"],
+                    "fuzzy_score": match.fuzzy_score,
+                    "rank_order": 1, # updated later
+                    "strengths": match.strengths[:3],
+                    "skill_gaps": match.skill_gaps[:3],
+                    "parsed_resume": cand_resumes.get(match.candidate_id)
+                })
             
     # Sort and rank
     scored_candidates.sort(key=lambda x: x["fuzzy_score"], reverse=True)
