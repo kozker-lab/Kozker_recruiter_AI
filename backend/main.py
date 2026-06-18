@@ -15,6 +15,7 @@ from supabase import create_client, Client, ClientOptions
 from postgrest.exceptions import APIError
 import httpx
 import jwt
+import time
 
 # Load environment variables
 load_dotenv()
@@ -563,20 +564,23 @@ def run_local_scan_publish(job_id: str, jwt_token: str):
     while len(default_skills) < 5:
         default_skills.append(f"Required Skill {len(default_skills) + 1}")
         
-    weights = [30.0, 25.0, 15.0, 15.0, 15.0]
+    weights = [0.30, 0.25, 0.15, 0.15, 0.15]
     
-    # Clear previous skills
-    db.table("job_opening_skills").delete().eq("job_opening_id", job_id).execute()
-    
-    # Insert new skills
+    skills_list = []
     for idx, skill_name in enumerate(default_skills):
-        db.table("job_opening_skills").insert({
+        skills_list.append({
+            "id": f"sk-{idx + 1}-{int(time.time())}",
             "job_opening_id": job_id,
             "skill_name": skill_name,
             "weight": weights[idx],
             "skill_order": idx + 1,
             "approved": False
-        }).execute()
+        })
+        
+    db.table("job_opening_skills").upsert({
+        "job_opening_id": job_id,
+        "skills": skills_list
+    }, on_conflict="job_opening_id").execute()
         
     db.table("job_openings").update({"processing_status": "skill_approval"}).eq("id", job_id).execute()
 
@@ -603,8 +607,8 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
     try:
         # Fetch approved skills
-        skills_res = db.table("job_opening_skills").select("*").eq("job_opening_id", job_id).execute()
-        approved_skills = skills_res.data or []
+        skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
+        approved_skills = skills_res.data[0].get("skills", []) if skills_res.data else []
         
         # Fetch candidates
         candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
@@ -951,21 +955,28 @@ async def scan_and_publish_job(job_id: str, background_tasks: BackgroundTasks, r
 
 @app.get("/api/v1/jobs/{job_id}/skills")
 async def get_job_skills(job_id: str, db: Client = Depends(get_supabase)):
-    res = db.table("job_opening_skills").select("*").eq("job_opening_id", job_id).execute()
-    return res.data
+    res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
+    if res.data:
+        return res.data[0].get("skills", [])
+    return []
 
 async def handle_approve_skills_logic(job_id: str, skills_data: SkillsApprovalModel, background_tasks: BackgroundTasks, request: Request, db: Client):
-    # Save approved skills
-    db.table("job_opening_skills").delete().eq("job_opening_id", job_id).execute()
-    
+    # Format skills into a consolidated list
+    skills_list = []
     for idx, skill in enumerate(skills_data.skills):
-        db.table("job_opening_skills").insert({
+        skills_list.append({
+            "id": skill.get("id") or f"sk-{idx + 1}-{int(time.time())}",
             "job_opening_id": job_id,
             "skill_name": skill["skill_name"],
             "weight": skill["weight"],
             "skill_order": idx + 1,
             "approved": True
-        }).execute()
+        })
+        
+    db.table("job_opening_skills").upsert({
+        "job_opening_id": job_id,
+        "skills": skills_list
+    }, on_conflict="job_opening_id").execute()
         
     # Mark job status as published
     db.table("job_openings").update({
@@ -1084,7 +1095,7 @@ def match_candidates_background(job_id: str, jwt_token: str):
     try:
         # Fetch job and approved skills
         job_res = db.table("job_openings").select("*").eq("id", job_id).execute()
-        skills_res = db.table("job_opening_skills").select("*").eq("job_opening_id", job_id).execute()
+        skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
         candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
         
         if not job_res.data or not skills_res.data or not candidates_res.data:
@@ -1092,8 +1103,7 @@ def match_candidates_background(job_id: str, jwt_token: str):
             return
             
         job = job_res.data[0]
-        approved_skills = skills_res.data
-        candidates = candidates_res.data or []
+        approved_skills = skills_res.data[0].get("skills", []) if skills_res.data else []
         for cand in candidates:
             if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
                 if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
@@ -1180,7 +1190,7 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
         raise HTTPException(status_code=400, detail="Candidate is already linked to this job opening")
         
     cand_res = db.table("candidates").select("*").eq("id", cand_id).execute()
-    skills_res = db.table("job_opening_skills").select("*").eq("job_opening_id", job_id).execute()
+    skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
     
     if not cand_res.data:
         raise HTTPException(status_code=404, detail="Candidate not found")
@@ -1189,7 +1199,7 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
     if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
         if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
             cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
-    approved_skills = skills_res.data
+    approved_skills = skills_res.data[0].get("skills", []) if skills_res.data else []
     
     cand_skills = [s.lower() for s in (cand.get("skills") or [])]
     cand_raw_text = cand.get("raw_text") or ""
@@ -1986,18 +1996,21 @@ async def callback_job_skills(payload: JobSkillsCallback):
     logger.info(f"Received job skills callback for job {payload.job_opening_id}")
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
     
-    # Clear existing skills
-    db.table("job_opening_skills").delete().eq("job_opening_id", payload.job_opening_id).execute()
-    
-    # Save skills
+    skills_list = []
     for idx, sk in enumerate(payload.skills, 1):
-        db.table("job_opening_skills").insert({
+        skills_list.append({
+            "id": f"sk-{idx}-{int(time.time())}",
             "job_opening_id": payload.job_opening_id,
             "skill_name": sk.name,
             "weight": sk.weight,
             "skill_order": idx,
             "approved": False
-        }).execute()
+        })
+        
+    db.table("job_opening_skills").upsert({
+        "job_opening_id": payload.job_opening_id,
+        "skills": skills_list
+    }, on_conflict="job_opening_id").execute()
         
     # Set job processing_status to ready
     db.table("job_openings").update({"processing_status": "ready"}).eq("id", payload.job_opening_id).execute()

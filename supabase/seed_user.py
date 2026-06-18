@@ -145,18 +145,21 @@ def run_seeding(user_id):
     print("Job Openings seeded.")
 
     # 4. Seed Skills
-    skills = [
-        {"id": "b1111111-1111-1111-1111-111111111111", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "React", "weight": 30, "skill_order": 1, "approved": True},
-        {"id": "b2222222-2222-2222-2222-222222222222", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "Next.js", "weight": 25, "skill_order": 2, "approved": True},
-        {"id": "b3333333-3333-3333-3333-333333333333", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "Tailwind CSS", "weight": 15, "skill_order": 3, "approved": True},
-        {"id": "b4444444-4444-4444-4444-444444444444", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "TypeScript", "weight": 15, "skill_order": 4, "approved": True},
-        {"id": "b5555555-5555-5555-5555-555555555555", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "Web Performance", "weight": 15, "skill_order": 5, "approved": True}
+    skills_data = [
+        {"id": "b1111111-1111-1111-1111-111111111111", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "React", "weight": 0.30, "skill_order": 1, "approved": True},
+        {"id": "b2222222-2222-2222-2222-222222222222", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "Next.js", "weight": 0.25, "skill_order": 2, "approved": True},
+        {"id": "b3333333-3333-3333-3333-333333333333", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "Tailwind CSS", "weight": 0.15, "skill_order": 3, "approved": True},
+        {"id": "b4444444-4444-4444-4444-444444444444", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "TypeScript", "weight": 0.15, "skill_order": 4, "approved": True},
+        {"id": "b5555555-5555-5555-5555-555555555555", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "Web Performance", "weight": 0.15, "skill_order": 5, "approved": True}
     ]
-    for s in skills:
-        try:
-            client.table("job_opening_skills").upsert(s).execute()
-        except Exception as e:
-            print(f"Error seeding skill '{s['skill_name']}': {e}")
+    
+    try:
+        client.table("job_opening_skills").upsert({
+            "job_opening_id": "ab111111-1111-1111-1111-111111111111",
+            "skills": skills_data
+        }, on_conflict="job_opening_id").execute()
+    except Exception as e:
+        print(f"Error seeding skills: {e}")
     print("Skills seeded.")
 
     # 5. Seed Candidates

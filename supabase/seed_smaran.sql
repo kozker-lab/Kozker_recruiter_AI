@@ -202,14 +202,20 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- 5. Seed Job Opening Skills
-INSERT INTO public.job_opening_skills (id, job_opening_id, skill_name, weight, skill_order, approved)
+INSERT INTO public.job_opening_skills (job_opening_id, skills)
 VALUES 
-    ('b1111111-1111-1111-1111-111111111111', 'ab111111-1111-1111-1111-111111111111', 'React', 30, 1, TRUE),
-    ('b2222222-2222-2222-2222-222222222222', 'ab111111-1111-1111-1111-111111111111', 'Next.js', 25, 2, TRUE),
-    ('b3333333-3333-3333-3333-333333333333', 'ab111111-1111-1111-1111-111111111111', 'Tailwind CSS', 15, 3, TRUE),
-    ('b4444444-4444-4444-4444-444444444444', 'ab111111-1111-1111-1111-111111111111', 'TypeScript', 15, 4, TRUE),
-    ('b5555555-5555-5555-5555-555555555555', 'ab111111-1111-1111-1111-111111111111', 'Web Performance', 15, 5, TRUE)
-ON CONFLICT (id) DO NOTHING;
+    (
+        'ab111111-1111-1111-1111-111111111111', 
+        '[
+            {"id": "b1111111-1111-1111-1111-111111111111", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "React", "weight": 0.30, "skill_order": 1, "approved": true},
+            {"id": "b2222222-2222-2222-2222-222222222222", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "Next.js", "weight": 0.25, "skill_order": 2, "approved": true},
+            {"id": "b3333333-3333-3333-3333-333333333333", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "Tailwind CSS", "weight": 0.15, "skill_order": 3, "approved": true},
+            {"id": "b4444444-4444-4444-4444-444444444444", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "TypeScript", "weight": 0.15, "skill_order": 4, "approved": true},
+            {"id": "b5555555-5555-5555-5555-555555555555", "job_opening_id": "ab111111-1111-1111-1111-111111111111", "skill_name": "Web Performance", "weight": 0.15, "skill_order": 5, "approved": true}
+        ]'::jsonb
+    )
+ON CONFLICT (job_opening_id) DO NOTHING;
+
 
 -- 6. Seed Candidates
 INSERT INTO public.candidates (
