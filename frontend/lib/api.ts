@@ -1883,13 +1883,15 @@ async function handleMockRequest<T>(
           const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
           if (accessDenied) return reject(new Error("Access denied"));
 
+          const qs = mockDb.screeningQuestions ? mockDb.screeningQuestions.filter(q => q.application_id === id) : [];
           return resolve({
             ...app,
             candidate_name: cand?.full_name,
             candidate_email: cand?.email,
             candidate_experience: cand?.experience_years,
             candidate_skills: cand?.skills,
-            candidate_cv: cand?.raw_text || app.candidate_cv
+            candidate_cv: cand?.raw_text || app.candidate_cv,
+            screening_questions: qs
           } as unknown as T);
         }
 

@@ -45,7 +45,12 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
   const { data: questions = [], isLoading: loadingQuestions } = useQuery<ScreeningQuestion[]>({
     queryKey: ["questions", applicationId],
     queryFn: () => apiRequest<ScreeningQuestion[]>("GET", `/applications/${applicationId}/questions`),
-    enabled: !!applicationId
+    enabled: !!applicationId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      // If questions are empty, poll every 3000ms. Stop polling once they are generated.
+      return !data || data.length === 0 ? 3000 : false;
+    }
   });
 
   const { data: stages = [], isLoading: loadingStages } = useQuery<InterviewStage[]>({

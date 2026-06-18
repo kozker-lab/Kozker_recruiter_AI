@@ -15,9 +15,14 @@ export default function JobsPage() {
     setSelectedAppId(appId);
   };
 
-  if (selectedAppId) {
-    return <ReviewWorkspace applicationId={selectedAppId} onBack={() => setSelectedAppId(null)} />;
-  }
-
-  return <JobsView initialJobId={initialJobId} onNavigateToReview={handleNavigateToReview} />;
+  return (
+    <div className="relative w-full min-h-full">
+      <div className={selectedAppId ? "hidden" : ""}>
+        <JobsView initialJobId={initialJobId} onNavigateToReview={handleNavigateToReview} />
+      </div>
+      {selectedAppId && (
+        <ReviewWorkspace applicationId={selectedAppId} onBack={() => setSelectedAppId(null)} />
+      )}
+    </div>
+  );
 }

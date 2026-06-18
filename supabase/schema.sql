@@ -146,6 +146,7 @@ CREATE TABLE public.applications (
     strengths TEXT[] DEFAULT '{}'::TEXT[],
     skill_gaps TEXT[] DEFAULT '{}'::TEXT[],
     screening_status TEXT DEFAULT 'pending' CHECK (screening_status IN ('pending', 'accepted', 'rejected', 'shortlisted')),
+    screening_questions JSONB NOT NULL DEFAULT '[]'::jsonb,
     stage TEXT DEFAULT 'screening' CHECK (stage IN ('screening', 'technical', 'hr', 'final', 'hired', 'rejected')),
     stage_status TEXT DEFAULT 'pending' CHECK (stage_status IN ('pending', 'in_progress', 'passed', 'failed', 'on_hold')),
     stage_notes TEXT,
@@ -173,25 +174,6 @@ CREATE TABLE public.job_candidates (
     ai_reasoning TEXT,
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
     parsed_resume JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- ============================================================
--- 9. SCREENING QUESTIONS TABLE
--- ============================================================
-CREATE TABLE public.screening_questions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    application_id UUID NOT NULL REFERENCES public.applications(id) ON DELETE CASCADE,
-    job_candidate_id UUID REFERENCES public.job_candidates(id) ON DELETE SET NULL,
-    requirement_id UUID REFERENCES public.requirements(id) ON DELETE SET NULL,
-    job_opening_id UUID REFERENCES public.job_openings(id) ON DELETE SET NULL,
-    question TEXT NOT NULL,
-    difficulty TEXT DEFAULT 'medium' CHECK (difficulty IN ('easy', 'medium', 'hard')),
-    question_order INT DEFAULT 1,
-    ai_generated BOOLEAN DEFAULT TRUE,
-    modified BOOLEAN DEFAULT FALSE,
-    modified_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    modified_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -463,7 +445,6 @@ CREATE INDEX idx_applications_is_deleted ON public.applications(is_deleted);
 CREATE INDEX idx_job_candidates_opening ON public.job_candidates(job_opening_id);
 CREATE INDEX idx_job_candidates_fuzzy_score ON public.job_candidates(fuzzy_score DESC);
 CREATE INDEX idx_job_candidates_rank ON public.job_candidates(rank_order ASC);
-CREATE INDEX idx_questions_application ON public.screening_questions(application_id);
 CREATE INDEX idx_interview_stages_application ON public.interview_stages(application_id);
 CREATE INDEX idx_activity_log_entity ON public.activity_log(entity_type, entity_id);
 CREATE INDEX idx_activity_log_created ON public.activity_log(created_at DESC);
@@ -479,7 +460,6 @@ ALTER TABLE public.job_opening_skills ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.candidates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_candidates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.screening_questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.interview_stages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_log ENABLE ROW LEVEL SECURITY;
 
@@ -523,10 +503,6 @@ CREATE POLICY "Allow modify applications" ON public.applications FOR ALL TO auth
 CREATE POLICY "Allow view job candidates" ON public.job_candidates FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
 CREATE POLICY "Allow modify job candidates" ON public.job_candidates FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
 
--- 9. Screening Questions Policies
-CREATE POLICY "Allow view questions" ON public.screening_questions FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
-CREATE POLICY "Allow modify questions" ON public.screening_questions FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.job_openings j JOIN public.requirements r ON j.requirement_id = r.id WHERE j.id = job_opening_id AND r.created_by = auth.uid()) OR is_admin());
-
 -- 10. Interview Stages Policies
 CREATE POLICY "Allow view stages" ON public.interview_stages FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM public.applications a JOIN public.job_openings j ON a.job_opening_id = j.id JOIN public.requirements r ON j.requirement_id = r.id WHERE a.id = application_id AND r.created_by = auth.uid()) OR is_admin());
 CREATE POLICY "Allow modify stages" ON public.interview_stages FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.applications a JOIN public.job_openings j ON a.job_opening_id = j.id JOIN public.requirements r ON j.requirement_id = r.id WHERE a.id = application_id AND r.created_by = auth.uid()) OR is_admin());
@@ -541,7 +517,6 @@ CREATE POLICY "Allow insert log" ON public.activity_log FOR INSERT TO authentica
 -- Add tables to the supabase_realtime publication to enable subscriptions
 alter publication supabase_realtime add table public.job_openings;
 alter publication supabase_realtime add table public.job_candidates;
-alter publication supabase_realtime add table public.screening_questions;
 alter publication supabase_realtime add table public.interview_stages;
 alter publication supabase_realtime add table public.activity_log;
 

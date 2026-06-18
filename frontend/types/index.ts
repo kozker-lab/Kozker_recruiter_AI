@@ -149,6 +149,7 @@ export interface Application {
   candidate_email?: string;
   candidate_experience?: number;
   candidate_skills?: string[];
+  screening_questions?: ScreeningQuestion[];
 }
 
 export interface JobCandidate {

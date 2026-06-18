@@ -397,6 +397,8 @@ class GeneratedQuestion(BaseModel):
     question: str
     difficulty: str
     category: Optional[str] = None
+    order: Optional[int] = None
+    reason: Optional[str] = None
 
 class ScreeningQuestionsCallback(BaseModel):
     application_id: str
@@ -1102,6 +1104,7 @@ def match_candidates_background(job_id: str, jwt_token: str):
             
         job = job_res.data[0]
         approved_skills = skills_res.data[0].get("skills", []) if skills_res.data else []
+        candidates = candidates_res.data
         for cand in candidates:
             if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
                 if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
@@ -1110,8 +1113,12 @@ def match_candidates_background(job_id: str, jwt_token: str):
         # Clear existing job_candidates for this job
         db.table("job_candidates").delete().eq("job_opening_id", job_id).execute()
         
+        seen_candidate_ids = set()
         scored_candidates = []
         for idx, cand in enumerate(candidates):
+            if cand["id"] in seen_candidate_ids:
+                continue
+            seen_candidate_ids.add(cand["id"])
             cand_skills = [s.lower() for s in (cand.get("skills") or [])]
             cand_raw_text = cand.get("raw_text") or ""
             
@@ -1160,16 +1167,62 @@ def match_candidates_background(job_id: str, jwt_token: str):
 
 @app.get("/api/v1/jobs/{job_id}/candidates")
 async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase)):
-    res = db.table("job_candidates").select("*, candidates(*), applications(*)").eq("job_opening_id", job_id).order("fuzzy_score", desc=True).execute()
+    res = db.table("job_candidates").select("*, candidates(*), applications(*)").eq("job_opening_id", job_id).order("created_at", desc=True).execute()
     # Format to match frontend expected JobCandidate layout
     formatted = []
+    seen_candidate_ids = set()
     for row in res.data:
+        cand_id = row.get("candidate_id")
+        if cand_id in seen_candidate_ids:
+            continue
+        seen_candidate_ids.add(cand_id)
+        
         cand = row.get("candidates") or {}
         app_rec = row.get("applications") or {}
+        application_id = row.get("application_id")
+        
+        # Self-healing logic for application_id
+        if not application_id:
+            # 1. Query applications table to see if an application exists for that candidate and job opening
+            app_check = db.table("applications").select("*").eq("candidate_id", cand_id).eq("job_opening_id", job_id).execute()
+            if app_check.data:
+                app_rec = app_check.data[0]
+                application_id = app_rec["id"]
+                # Update the job_candidates entry
+                db.table("job_candidates").update({"application_id": application_id}).eq("id", row["id"]).execute()
+            else:
+                # 2. Insert new application row and update job_candidates reference
+                fuzzy_score = row.get("fuzzy_score") or 0.0
+                try:
+                    match_score = int(fuzzy_score)
+                except (ValueError, TypeError):
+                    match_score = 0
+                strengths = row.get("strengths") or []
+                skill_gaps = row.get("skill_gaps") or []
+                match_reason = f"Automatically matched candidate with score {fuzzy_score}"
+                
+                app_res = db.table("applications").upsert({
+                    "candidate_id": cand_id,
+                    "job_opening_id": job_id,
+                    "fuzzy_score": fuzzy_score,
+                    "match_score": match_score,
+                    "match_reason": match_reason,
+                    "strengths": strengths[:3] if isinstance(strengths, list) else [],
+                    "skill_gaps": skill_gaps[:3] if isinstance(skill_gaps, list) else [],
+                    "screening_status": "pending",
+                    "stage": "screening",
+                    "stage_status": "pending"
+                }, on_conflict="candidate_id,job_opening_id").execute()
+                
+                if app_res.data:
+                    app_rec = app_res.data[0]
+                    application_id = app_rec["id"]
+                    db.table("job_candidates").update({"application_id": application_id}).eq("id", row["id"]).execute()
+                    
         formatted.append({
             "id": row["id"],
             "job_opening_id": row["job_opening_id"],
-            "application_id": row["application_id"],
+            "application_id": application_id,
             "fuzzy_score": row["fuzzy_score"],
             "rank_order": row["rank_order"],
             "candidate_id": row["candidate_id"],
@@ -1182,14 +1235,16 @@ async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase))
             "stage_status": app_rec.get("stage_status") or "pending",
             "parsed_resume": row.get("parsed_resume")
         })
+        
+    # Sort by score descending and re-assign rank numbers
+    formatted.sort(key=lambda x: x["fuzzy_score"], reverse=True)
+    for idx, item in enumerate(formatted, 1):
+        item["rank_order"] = idx
+        
     return formatted
 
 @app.post("/api/v1/jobs/{job_id}/candidates/{cand_id}")
 async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(get_supabase)):
-    exists = db.table("applications").select("*").eq("candidate_id", cand_id).eq("job_opening_id", job_id).execute()
-    if exists.data:
-        raise HTTPException(status_code=400, detail="Candidate is already linked to this job opening")
-        
     cand_res = db.table("candidates").select("*").eq("id", cand_id).execute()
     skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
     
@@ -1210,7 +1265,7 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
         db, cand_id, job_id, approved_skills, cand_skills, cand_raw_text
     )
     
-    app_res = db.table("applications").insert({
+    app_res = db.table("applications").upsert({
         "candidate_id": cand_id,
         "job_opening_id": job_id,
         "fuzzy_score": matched_score,
@@ -1221,17 +1276,22 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
         "screening_status": "pending",
         "stage": "screening",
         "stage_status": "pending"
-    }).execute()
+    }, on_conflict="candidate_id,job_opening_id").execute()
     
     if not app_res.data:
         raise HTTPException(status_code=400, detail="Failed to link candidate")
         
     new_app = app_res.data[0]
     
-    existing_jc = db.table("job_candidates").select("*").eq("job_opening_id", job_id).execute()
-    rank = len(existing_jc.data) + 1
+    # Preserve existing rank_order if they were already mapped
+    existing_jc_cand = db.table("job_candidates").select("rank_order").eq("job_opening_id", job_id).eq("candidate_id", cand_id).execute()
+    if existing_jc_cand.data:
+        rank = existing_jc_cand.data[0]["rank_order"]
+    else:
+        existing_jc = db.table("job_candidates").select("*").eq("job_opening_id", job_id).execute()
+        rank = len(existing_jc.data) + 1
     
-    db.table("job_candidates").insert({
+    db.table("job_candidates").upsert({
         "job_opening_id": job_id,
         "candidate_id": cand_id,
         "application_id": new_app["id"],
@@ -1240,7 +1300,7 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
         "strengths": strengths[:3],
         "skill_gaps": skill_gaps[:3],
         "parsed_resume": cand.get("parsed_resume_json")
-    }).execute()
+    }, on_conflict="job_opening_id,candidate_id").execute()
     
     db.table("activity_log").insert({
         "action": "candidate_linked",
@@ -1676,20 +1736,22 @@ def generate_questions_background(app_id: str, candidate_name: str, skills: List
             {"question": "Describe a time you solved a challenging concurrency/state synchronization issue.", "difficulty": "hard"}
         ]
             
-        # Clear existing
-        db.table("screening_questions").delete().eq("application_id", app_id).execute()
-        
-        # Insert
+        import uuid
+        questions_array = []
         for idx, q in enumerate(questions):
-            db.table("screening_questions").insert({
-                "application_id": app_id,
+            questions_array.append({
+                "id": str(uuid.uuid4()),
                 "question": q["question"],
                 "difficulty": q["difficulty"],
-                "question_order": idx + 1
-            }).execute()
+                "question_order": idx + 1,
+                "ai_generated": True,
+                "modified": False
+            })
             
-        # Update application processing status to completed
-        db.table("job_openings").execute() # Trigger sync / state triggers if any
+        # Update applications table screening_questions column
+        db.table("applications").update({
+            "screening_questions": questions_array
+        }).eq("id", app_id).execute()
         
     except Exception as e:
         logger.error(f"Error generating screening questions: {e}")
@@ -1725,7 +1787,8 @@ async def get_application(app_id: str, db: Client = Depends(get_supabase)):
         "stage_status": app_record.get("stage_status") or "pending",
         "stage_notes": app_record.get("stage_notes") or "",
         "priority": app_record.get("priority") or 0,
-        "created_at": app_record.get("created_at")
+        "created_at": app_record.get("created_at"),
+        "screening_questions": app_record.get("screening_questions") or []
     }
 
 async def handle_accept_application_logic(app_id: str, background_tasks: BackgroundTasks, request: Request, db: Client):
@@ -1857,71 +1920,111 @@ class QuestionCreateModel(BaseModel):
 
 @app.post("/api/v1/applications/{app_id}/questions")
 async def add_screening_question(app_id: str, data: QuestionCreateModel, db: Client = Depends(get_supabase)):
-    # Fetch application to get job_opening_id, etc.
+    # Fetch application to get screening_questions array
     app_res = db.table("applications").select("*").eq("id", app_id).execute()
     if not app_res.data:
         raise HTTPException(status_code=404, detail="Application not found")
     app_rec = app_res.data[0]
     
-    # Fetch job_candidate to link if it exists
-    jc_res = db.table("job_candidates").select("id").eq("application_id", app_id).execute()
-    jc_id = jc_res.data[0]["id"] if jc_res.data else None
+    questions_list = app_rec.get("screening_questions") or []
+    max_order = max([q.get("question_order", 0) for q in questions_list]) if questions_list else 0
     
-    # Fetch job to get requirement_id
-    job_res = db.table("job_openings").select("requirement_id").eq("id", app_rec["job_opening_id"]).execute()
-    req_id = job_res.data[0]["requirement_id"] if job_res.data else None
-    
-    # Get current max question_order to append
-    q_count_res = db.table("screening_questions").select("question_order").eq("application_id", app_id).execute()
-    max_order = max([q["question_order"] for q in q_count_res.data]) if q_count_res.data else 0
-    
-    # Insert new question
-    new_q_res = db.table("screening_questions").insert({
-        "application_id": app_id,
-        "job_candidate_id": jc_id,
-        "job_opening_id": app_rec["job_opening_id"],
-        "requirement_id": req_id,
+    import uuid
+    new_q = {
+        "id": str(uuid.uuid4()),
         "question": data.question,
         "difficulty": data.difficulty,
         "question_order": max_order + 1,
         "ai_generated": False,
         "modified": False
-    }).execute()
+    }
+    questions_list.append(new_q)
     
-    return new_q_res.data[0] if new_q_res.data else {}
+    db.table("applications").update({
+        "screening_questions": questions_list
+    }).eq("id", app_id).execute()
+    
+    return new_q
 
 @app.get("/api/v1/applications/{app_id}/questions")
 async def get_questions(app_id: str, db: Client = Depends(get_supabase)):
-    res = db.table("screening_questions").select("*").eq("application_id", app_id).order("question_order", desc=False).execute()
-    return res.data
+    res = db.table("applications").select("screening_questions").eq("id", app_id).execute()
+    if not res.data:
+        return []
+    questions_list = res.data[0].get("screening_questions") or []
+    questions_list.sort(key=lambda x: x.get("question_order", 1))
+    
+    # Add application_id for frontend compatibility
+    for q in questions_list:
+        q["application_id"] = app_id
+    return questions_list
 
 @app.patch("/api/v1/questions/{q_id}")
 async def edit_question(q_id: str, data: Dict[str, Any], db: Client = Depends(get_supabase)):
-    res = db.table("screening_questions").update({
-        "question": data.get("question"),
-        "modified": True
-    }).eq("id", q_id).execute()
-    return res.data[0] if res.data else {}
+    # Find the application row containing this question ID in its screening_questions JSONB array
+    res = db.table("applications").select("id, screening_questions").filter("screening_questions", "cs", f'[{{"id": "{q_id}"}}]').execute()
+    if not res.data:
+        res = db.table("applications").select("id, screening_questions").execute()
+        
+    target_app = None
+    target_question = None
+    for row in res.data:
+        qs = row.get("screening_questions") or []
+        for q in qs:
+            if q.get("id") == q_id:
+                target_app = row
+                target_question = q
+                break
+        if target_app:
+            break
+            
+    if not target_app or not target_question:
+        raise HTTPException(status_code=404, detail="Question not found")
+        
+    target_question["question"] = data.get("question")
+    target_question["modified"] = True
+    
+    db.table("applications").update({
+        "screening_questions": target_app["screening_questions"]
+    }).eq("id", target_app["id"]).execute()
+    
+    target_question["application_id"] = target_app["id"]
+    return target_question
 
 @app.post("/api/v1/questions/{q_id}/ai-edit")
 async def ai_edit_question(q_id: str, data: Dict[str, str], db: Client = Depends(get_supabase)):
     instruction = data.get("instruction", "")
     
-    # Fetch question details
-    q_res = db.table("screening_questions").select("*").eq("id", q_id).execute()
-    if not q_res.data:
+    res = db.table("applications").select("id, screening_questions").filter("screening_questions", "cs", f'[{{"id": "{q_id}"}}]').execute()
+    if not res.data:
+        res = db.table("applications").select("id, screening_questions").execute()
+        
+    target_app = None
+    target_question = None
+    for row in res.data:
+        qs = row.get("screening_questions") or []
+        for q in qs:
+            if q.get("id") == q_id:
+                target_app = row
+                target_question = q
+                break
+        if target_app:
+            break
+            
+    if not target_app or not target_question:
         raise HTTPException(status_code=404, detail="Question not found")
         
-    old_question = q_res.data[0]["question"]
+    old_question = target_question["question"]
     new_question = f"{old_question} (AI instructions applied: {instruction})"
-        
-    # Update question
-    res = db.table("screening_questions").update({
-        "question": new_question,
-        "modified": True
-    }).eq("id", q_id).execute()
+    target_question["question"] = new_question
+    target_question["modified"] = True
     
-    return res.data[0] if res.data else {}
+    db.table("applications").update({
+        "screening_questions": target_app["screening_questions"]
+    }).eq("id", target_app["id"]).execute()
+    
+    target_question["application_id"] = target_app["id"]
+    return target_question
 
 # 7. Chatbot Endpoint
 @app.post("/api/v1/chatbot/message")
@@ -2034,8 +2137,13 @@ async def callback_candidate_matches(payload: CandidateMatchesCallback):
         if cands_res.data:
             cand_resumes = {c["id"]: c.get("parsed_resume_json") for c in cands_res.data}
             
+    seen_candidate_ids = set()
     scored_candidates = []
     for idx, match in enumerate(payload.matches):
+        if match.candidate_id in seen_candidate_ids:
+            continue
+        seen_candidate_ids.add(match.candidate_id)
+        
         # Upsert application
         app_res = db.table("applications").upsert({
             "candidate_id": match.candidate_id,
@@ -2076,34 +2184,27 @@ async def callback_screening_questions(payload: ScreeningQuestionsCallback):
     logger.info(f"Received screening questions callback for application {payload.application_id}")
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
     
-    # Fetch job opening / requirement IDs from application
-    app_res = db.table("applications").select("*, job_openings(*)").eq("id", payload.application_id).execute()
+    # Verify application exists
+    app_res = db.table("applications").select("id").eq("id", payload.application_id).execute()
     if not app_res.data:
         raise HTTPException(status_code=404, detail="Application not found")
         
-    app_record = app_res.data[0]
-    job_opening_id = app_record["job_opening_id"]
-    job = app_record.get("job_openings") or {}
-    requirement_id = job.get("requirement_id")
-    
-    # Fetch job candidate ID
-    jc_res = db.table("job_candidates").select("id").eq("job_opening_id", job_opening_id).eq("candidate_id", app_record["candidate_id"]).execute()
-    job_candidate_id = jc_res.data[0]["id"] if jc_res.data else None
-    
-    # Clear existing questions
-    db.table("screening_questions").delete().eq("application_id", payload.application_id).execute()
-    
-    # Insert
+    import uuid
+    questions_list = []
     for idx, q in enumerate(payload.questions, 1):
-        db.table("screening_questions").insert({
-            "application_id": payload.application_id,
-            "job_candidate_id": job_candidate_id,
-            "requirement_id": requirement_id,
-            "job_opening_id": job_opening_id,
+        questions_list.append({
+            "id": str(uuid.uuid4()),
             "question": q.question,
             "difficulty": q.difficulty,
-            "question_order": idx
-        }).execute()
+            "question_order": q.order if q.order is not None else idx,
+            "reason": q.reason,
+            "ai_generated": True,
+            "modified": False
+        })
+        
+    db.table("applications").update({
+        "screening_questions": questions_list
+    }).eq("id", payload.application_id).execute()
         
     return {"status": "success"}
 

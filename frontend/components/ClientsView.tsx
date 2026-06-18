@@ -288,6 +288,8 @@ export default function ClientsView() {
     if (editingReqId) {
       updateReqMutation.mutate({ id: editingReqId, data: payload });
     } else {
+      const confirmed = window.confirm("Are you sure you want to create this new requirement? AI will immediately begin generating draft JD posts.");
+      if (!confirmed) return;
       createReqMutation.mutate(payload);
     }
   };

@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/api";
-import ReviewWorkspace from "./ReviewWorkspace";
 import { JobOpening, JobOpeningSkill, JobCandidate, Candidate } from "../types";
 import { 
   Table, Briefcase, FileSignature, Sparkles, CheckSquare, 
@@ -346,9 +345,6 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const [isAddCandOpen, setIsAddCandOpen] = useState(false);
   const [selectedCandId, setSelectedCandId] = useState("");
 
-  // Review Workspace inline state
-  const [reviewApplicationId, setReviewApplicationId] = useState<string | null>(null);
-
   // Comparison visualizer state
   const [selectedCandidatesForCompare, setSelectedCandidatesForCompare] = useState<string[]>([]);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
@@ -463,7 +459,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const { data: matchedCandidates = EMPTY_CANDIDATES, isLoading: loadingCandidates } = useQuery<JobCandidate[]>({
     queryKey: ["job_candidates", selectedJobId],
     queryFn: () => apiRequest<JobCandidate[]>("GET", `/jobs/${selectedJobId}/candidates`),
-    enabled: !!selectedJobId && activeTab === "candidates",
+    enabled: !!selectedJobId,
     refetchInterval: activeJob?.processing_status === "matching" ? 3000 : false
   });
 
@@ -1148,15 +1144,9 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-neutral-200 pb-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => {
-              if (reviewApplicationId) {
-                setReviewApplicationId(null);
-              } else {
-                setSelectedJobId(null);
-              }
-            }}
+            onClick={() => setSelectedJobId(null)}
             className="p-1.5 hover:bg-neutral-200 border border-neutral-200 rounded-sm text-neutral-500 cursor-pointer"
-            title={reviewApplicationId ? "Back to Candidate Rankings" : "Back to Catalog"}
+            title="Back to Catalog"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -1219,6 +1209,12 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               {activeJob?.status === "published" ? "Open (Published)" : activeJob?.status === "closed" ? "Closed" : activeJob?.status}
             </span>
           </div>
+          {matchedCandidates.length > 0 && (
+            <div className="flex items-center gap-1 px-2.5 py-1 bg-success/10 border border-success/20 rounded-xs text-success font-mono text-[10px] font-bold uppercase select-none">
+              <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+              CANDIDATES RANKED ({matchedCandidates.length})
+            </div>
+          )}
         </div>
 
         {/* Status Actions */}
@@ -1305,13 +1301,13 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           Skills Weights Approval
         </button>
         <button
-          disabled={activeJob?.processing_status !== "ready"}
+          disabled={!activeJob || (activeJob.processing_status !== "ready" && activeJob.processing_status !== "matching" && matchedCandidates.length === 0)}
           onClick={() => setActiveTab("candidates")}
           className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider border-b-2 cursor-pointer transition-all disabled:opacity-40 ${
             activeTab === "candidates" ? "border-primary text-primary" : "border-transparent text-neutral-400 hover:text-neutral-600"
           }`}
         >
-          Matched Candidate Rankings
+          Matched Candidate Rankings {matchedCandidates.length > 0 && `(${matchedCandidates.length})`}
         </button>
       </div>
 
@@ -1551,56 +1547,65 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       )}
 
       {activeTab === "candidates" && (
-        reviewApplicationId ? (
-          <ReviewWorkspace 
-            applicationId={reviewApplicationId} 
-            onBack={() => setReviewApplicationId(null)} 
-          />
-        ) : (
-          <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm text-xs font-sans">
-            <div className="p-4 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
-              <div>
-                <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Matched Candidate Index</h3>
-                {selectedCandidatesForCompare.length > 0 && (
-                  <p className="text-[9px] text-neutral-400 font-mono mt-0.5">
-                    {selectedCandidatesForCompare.length} candidates selected for comparison
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
-                  disabled={selectedCandidatesForCompare.length < 2}
-                  onClick={() => setIsCompareOpen(true)}
-                  className={`px-2.5 py-1.5 rounded-sm font-semibold flex items-center gap-1.5 cursor-pointer text-[10px] uppercase transition-all duration-150 ${
-                    selectedCandidatesForCompare.length >= 2
-                      ? "bg-primary text-neutral-white hover:bg-primary/95"
-                      : "bg-neutral-100 border border-neutral-200 text-neutral-400 cursor-not-allowed opacity-60"
-                  }`}
-                >
-                  <Sliders className="w-3.5 h-3.5" />
-                  Compare Candidates ({selectedCandidatesForCompare.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsAddCandOpen(true)}
-                  className="px-2.5 py-1.5 border border-neutral-200 bg-neutral-white hover:bg-neutral-100 rounded-sm text-neutral-600 font-semibold flex items-center gap-1 cursor-pointer font-sans text-[10px]"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Candidate
-                </button>
+        <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm text-xs font-sans">
+          <div className="p-4 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
+            <div>
+              <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Matched Candidate Index</h3>
+              {selectedCandidatesForCompare.length > 0 && (
+                <p className="text-[9px] text-neutral-400 font-mono mt-0.5">
+                  {selectedCandidatesForCompare.length} candidates selected for comparison
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                disabled={selectedCandidatesForCompare.length < 2}
+                onClick={() => setIsCompareOpen(true)}
+                className={`px-2.5 py-1.5 rounded-sm font-semibold flex items-center gap-1.5 cursor-pointer text-[10px] uppercase transition-all duration-150 ${
+                  selectedCandidatesForCompare.length >= 2
+                    ? "bg-primary text-neutral-white hover:bg-primary/95"
+                    : "bg-neutral-100 border border-neutral-200 text-neutral-400 cursor-not-allowed opacity-60"
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                Compare Candidates ({selectedCandidatesForCompare.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAddCandOpen(true)}
+                className="px-2.5 py-1.5 border border-neutral-200 bg-neutral-white hover:bg-neutral-100 rounded-sm text-neutral-600 font-semibold flex items-center gap-1 cursor-pointer font-sans text-[10px]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Candidate
+              </button>
+              {activeJob?.processing_status === "matching" ? (
+                <span className="text-[10px] text-primary font-semibold flex items-center gap-1.5 font-mono animate-pulse">
+                  <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
+                  AI MATCHING IN PROGRESS...
+                </span>
+              ) : (
                 <span className="text-[10px] text-success font-semibold flex items-center gap-1 font-mono">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   FUZZY ALIGNED DATA
                 </span>
-              </div>
+              )}
             </div>
+          </div>
 
-            {loadingCandidates ? (
-              <div className="text-center py-12 text-xs text-neutral-400 font-mono">Scanning index and compiling ranks...</div>
-            ) : matchedCandidates.length === 0 ? (
-              <div className="text-center py-12 text-xs text-neutral-400">No candidates matched. Go to Skills weights to trigger matching scan.</div>
+          {loadingCandidates ? (
+            <div className="text-center py-12 text-xs text-neutral-400 font-mono">Scanning index and compiling ranks...</div>
+          ) : matchedCandidates.length === 0 ? (
+            activeJob?.processing_status === "matching" ? (
+              <div className="text-center py-12 text-xs text-neutral-400 font-mono flex flex-col items-center justify-center gap-2">
+                <RefreshCcw className="w-5 h-5 animate-spin text-primary mb-1" />
+                <span>AI Agent is matching and ranking candidates in the background...</span>
+                <span className="text-[10px] text-neutral-400">Please wait. Results will appear here automatically.</span>
+              </div>
             ) : (
+              <div className="text-center py-12 text-xs text-neutral-400">No candidates matched. Go to Skills weights to trigger matching scan.</div>
+            )
+          ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
@@ -1651,7 +1656,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                           <div className="flex items-center gap-2.5 flex-wrap">
                             {jc.application_id ? (
                               <button
-                                onClick={() => setReviewApplicationId(jc.application_id!)}
+                                onClick={() => onNavigateToReview(jc.application_id!)}
                                 className="hover:text-primary transition-colors cursor-pointer flex items-center gap-2 text-left font-semibold"
                               >
                                 <UserCircle className="w-5 h-5 text-neutral-400" />
@@ -1685,7 +1690,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                         <td className="p-4 font-mono font-bold text-sm">
                           {jc.application_id ? (
                             <button
-                              onClick={() => setReviewApplicationId(jc.application_id!)}
+                              onClick={() => onNavigateToReview(jc.application_id!)}
                               className={`hover:underline font-bold cursor-pointer px-2 py-0.5 rounded-sm text-[11px] ${
                                 jc.fuzzy_score >= 80 ? "bg-success/10 text-success border border-success/20" :
                                 jc.fuzzy_score >= 50 ? "bg-warning/10 text-warning border border-warning/20" :
@@ -1742,10 +1747,10 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                         <td className="p-4 text-right">
                           {jc.application_id && (
                             <button
-                              onClick={() => setReviewApplicationId(jc.application_id!)}
+                              onClick={() => onNavigateToReview(jc.application_id!)}
                               className="text-[10px] text-primary hover:underline font-semibold uppercase font-mono cursor-pointer flex items-center gap-0.5 ml-auto"
                             >
-                              Review Workspace
+                              Review
                               <ChevronRight className="w-3.5 h-3.5" />
                             </button>
                           )}
@@ -1757,7 +1762,6 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               </div>
             )}
           </div>
-        )
       )}
 
       {/* AI Edit JD Dialog */}
