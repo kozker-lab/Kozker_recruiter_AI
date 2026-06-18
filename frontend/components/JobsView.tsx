@@ -498,9 +498,19 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
 
   // Mutations
   const updateJobMutation = useMutation({
-    mutationFn: (data: any) => apiRequest<JobOpening>("PATCH", `/jobs/${selectedJobId}`, data),
-    onSuccess: () => {
+    mutationFn: (data: any) => {
+      console.log("updateJobMutation mutationFn called with data:", data);
+      return apiRequest<JobOpening>("PATCH", `/jobs/${selectedJobId}`, data);
+    },
+    onSuccess: (updatedJob) => {
+      console.log("updateJobMutation succeeded:", updatedJob);
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      console.log("Triggering scanPublishMutation...");
+      scanPublishMutation.mutate();
+    },
+    onError: (err: any) => {
+      console.error("updateJobMutation failed:", err);
+      alert(`Failed to save job opening: ${err.message || err}`);
     }
   });
 
@@ -524,13 +534,18 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   });
 
   const scanPublishMutation = useMutation({
-    mutationFn: () => apiRequest<JobOpening>("POST", `/jobs/${selectedJobId}/scan-and-publish`),
-    onSuccess: () => {
+    mutationFn: () => {
+      console.log("scanPublishMutation mutationFn called for job:", selectedJobId);
+      return apiRequest<JobOpening>("POST", `/jobs/${selectedJobId}/scan-and-publish`);
+    },
+    onSuccess: (result) => {
+      console.log("scanPublishMutation succeeded with result:", result);
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["skills", selectedJobId] });
       setActiveTab("skills");
     },
     onError: (err: any) => {
+      console.error("scanPublishMutation failed:", err);
       alert(err.message || "Failed to trigger skill extraction webhook.");
     }
   });
@@ -575,16 +590,19 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
 
   const handlePublishJob = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("handlePublishJob called. Form data:", {
+      title: jdTitle,
+      description: jdDesc,
+      salary_range: jdSalary,
+      responsibilities: jdResp,
+      qualifications: jdQual
+    });
     updateJobMutation.mutate({
       title: jdTitle,
       description: jdDesc,
       salary_range: jdSalary,
       responsibilities: jdResp,
       qualifications: jdQual
-    }, {
-      onSuccess: () => {
-        scanPublishMutation.mutate();
-      }
     });
   };
 
