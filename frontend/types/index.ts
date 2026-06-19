@@ -183,6 +183,9 @@ export interface ScreeningQuestion {
   question: string;
   difficulty: 'easy' | 'medium' | 'hard';
   question_order: number;
+  order?: number;
+  reason?: string;
+  reasoning?: string;
   modified: boolean;
   modified_by: string | null;
   modified_at: string | null;

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/api";
 import { Client, Requirement } from "../types";
@@ -564,10 +565,15 @@ export default function ClientsView() {
                           return (
                             <div key={job.id} className="space-y-3 p-3 bg-neutral-50/50 border border-neutral-150 rounded-sm">
                               <div className="flex items-center justify-between text-xs font-semibold text-neutral-800 border-b border-neutral-150 pb-1.5">
-                                <span className="flex items-center gap-1.5">
+                                <Link 
+                                  href={`/jobs?id=${job.id}`}
+                                  className="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer group"
+                                >
                                   <Activity className="w-3.5 h-3.5 text-primary/70 animate-pulse" />
-                                  Post #{job.post_index || 1}: {job.title}
-                                </span>
+                                  <span>
+                                    Post #{job.post_index || 1}: <span className="group-hover:underline">{job.title}</span>
+                                  </span>
+                                </Link>
                                 <span className="text-[10px] text-neutral-400 font-mono uppercase bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded-sm">
                                   {job.status}
                                 </span>

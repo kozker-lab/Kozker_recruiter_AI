@@ -23,6 +23,9 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
   // Local state for question editing
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [editQuestionText, setEditQuestionText] = useState("");
+  const [editQuestionDifficulty, setEditQuestionDifficulty] = useState<"easy" | "medium" | "hard">("medium");
+  const [editQuestionReason, setEditQuestionReason] = useState("");
+  const [editQuestionOrder, setEditQuestionOrder] = useState<number>(1);
   const [aiRefineText, setAiRefineText] = useState("");
   const [isRefineOpen, setIsRefineOpen] = useState<string | null>(null);
 
@@ -71,8 +74,14 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
 
   // Mutations
   const updateQuestionMutation = useMutation({
-    mutationFn: ({ id, text }: { id: string; text: string }) => 
-      apiRequest<ScreeningQuestion>("PATCH", `/questions/${id}`, { question: text }),
+    mutationFn: ({ id, text, difficulty, reason, order }: { id: string; text: string; difficulty: "easy" | "medium" | "hard"; reason: string; order: number }) => 
+      apiRequest<ScreeningQuestion>("PATCH", `/questions/${id}`, { 
+        question: text, 
+        difficulty, 
+        reason, 
+        order,
+        question_order: order
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["questions", applicationId] });
       setEditingQuestionId(null);
@@ -132,7 +141,13 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
 
   const handleSaveQuestion = (id: string) => {
     if (!editQuestionText.trim()) return;
-    updateQuestionMutation.mutate({ id, text: editQuestionText });
+    updateQuestionMutation.mutate({ 
+      id, 
+      text: editQuestionText, 
+      difficulty: editQuestionDifficulty, 
+      reason: editQuestionReason, 
+      order: editQuestionOrder 
+    });
   };
 
   const handleAiRefine = (id: string) => {
@@ -403,33 +418,86 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
                       </div>
 
                       {editingQuestionId === q.id ? (
-                        <div className="space-y-2">
-                          <textarea
-                            value={editQuestionText}
-                            onChange={(e) => setEditQuestionText(e.target.value)}
-                            rows={3}
-                            className="w-full px-3 py-1.5 border border-neutral-250 bg-neutral-white rounded-sm text-neutral-800"
-                          />
-                          <div className="flex gap-2 justify-end">
+                        <div className="space-y-3.5 border border-neutral-250 p-3.5 bg-neutral-50/50 rounded-sm">
+                          <div>
+                            <label className="text-[9px] uppercase tracking-wider font-semibold font-mono text-neutral-450 block mb-1">Question Prompt</label>
+                            <textarea
+                              value={editQuestionText}
+                              onChange={(e) => setEditQuestionText(e.target.value)}
+                              rows={3}
+                              className="w-full px-3 py-1.5 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-805 focus:outline-none focus:ring-1 focus:ring-primary"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                            <div>
+                              <label className="text-[9px] uppercase tracking-wider font-semibold font-mono text-neutral-450 block mb-1">Difficulty Level</label>
+                              <select
+                                value={editQuestionDifficulty}
+                                onChange={(e: any) => setEditQuestionDifficulty(e.target.value)}
+                                className="w-full px-2.5 py-1.5 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 focus:outline-none"
+                              >
+                                <option value="easy">Easy</option>
+                                <option value="medium">Medium</option>
+                                <option value="hard">Hard</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[9px] uppercase tracking-wider font-semibold font-mono text-neutral-450 block mb-1">Display Order</label>
+                              <input
+                                type="number"
+                                min={1}
+                                value={editQuestionOrder}
+                                onChange={(e) => setEditQuestionOrder(parseInt(e.target.value, 10) || 1)}
+                                className="w-full px-2.5 py-1.5 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] uppercase tracking-wider font-semibold font-mono text-neutral-455 block mb-1">Evaluation / Reasoning Context</label>
+                            <textarea
+                              value={editQuestionReason}
+                              onChange={(e) => setEditQuestionReason(e.target.value)}
+                              rows={2}
+                              className="w-full px-3 py-1.5 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-805 focus:outline-none focus:ring-1 focus:ring-primary"
+                              placeholder="Reason for asking this question..."
+                            />
+                          </div>
+
+                          <div className="flex gap-2 justify-end pt-1">
                             <button
+                              type="button"
                               onClick={() => setEditingQuestionId(null)}
-                              className="px-2 py-1 border border-neutral-200 hover:bg-neutral-100 rounded-sm cursor-pointer"
+                              className="px-2.5 py-1 border border-neutral-200 hover:bg-neutral-100 rounded-sm cursor-pointer font-medium text-neutral-600"
                             >
                               Cancel
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleSaveQuestion(q.id)}
-                              className="px-3 py-1 bg-primary text-neutral-white rounded-sm cursor-pointer flex items-center gap-1"
+                              className="px-3.5 py-1 bg-primary hover:bg-primary/95 text-neutral-white rounded-sm cursor-pointer flex items-center gap-1 font-semibold"
                             >
-                              <Save className="w-3 h-3" />
-                              Save
+                              <Save className="w-3.5 h-3.5" />
+                              Save Changes
                             </button>
                           </div>
                         </div>
                       ) : (
-                        <p className="text-neutral-700 leading-relaxed font-medium">
-                          {q.question}
-                        </p>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-neutral-400 font-mono text-[9px]">
+                            <span className="font-bold">Prompt #{q.question_order || q.order || 1}</span>
+                          </div>
+                          <p className="text-neutral-700 leading-relaxed font-medium">
+                            {q.question}
+                          </p>
+                          {(q.reason || q.reasoning) && (
+                            <div className="text-[10px] text-neutral-500 bg-neutral-100/70 border-l-2 border-primary/40 p-2.5 rounded-r-sm italic mt-1 leading-relaxed">
+                              <span className="font-semibold not-italic text-[9px] uppercase tracking-wider text-neutral-450 block font-mono mb-0.5">Evaluation Context:</span>
+                              {q.reason || q.reasoning}
+                            </div>
+                          )}
+                        </div>
                       )}
 
                       {/* AI Edit inline trigger */}
@@ -439,6 +507,9 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
                             onClick={() => {
                               setEditingQuestionId(q.id);
                               setEditQuestionText(q.question);
+                              setEditQuestionDifficulty(q.difficulty || "medium");
+                              setEditQuestionReason(q.reason || "");
+                              setEditQuestionOrder(q.question_order || q.order || 1);
                             }}
                             className="text-[9px] text-neutral-500 hover:text-primary flex items-center gap-0.5 cursor-pointer"
                           >

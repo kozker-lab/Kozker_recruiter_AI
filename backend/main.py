@@ -1483,7 +1483,7 @@ async def get_candidate_history(candidate_id: str, db: Client = Depends(get_supa
 
 @app.get("/api/v1/applications")
 async def get_all_applications(db: Client = Depends(get_supabase)):
-    res = db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(name)))").execute()
+    res = db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(id, name)))").execute()
     data = res.data or []
     for app_rec in data:
         cand = app_rec.get("candidates") or {}
@@ -1498,6 +1498,7 @@ async def get_all_applications(db: Client = Depends(get_supabase)):
             cli = req.get("clients") or {}
             job["clients"] = cli
             job["client_name"] = cli.get("name", "Generic Client")
+            job["client_id"] = req.get("client_id")
             # Remove nested requirements to keep payload clean
             if "requirements" in job:
                 del job["requirements"]
@@ -1971,7 +1972,17 @@ async def edit_question(q_id: str, data: Dict[str, Any], db: Client = Depends(ge
     if not target_app or not target_question:
         raise HTTPException(status_code=404, detail="Question not found")
         
-    target_question["question"] = data.get("question")
+    if "question" in data:
+        target_question["question"] = data["question"]
+    if "difficulty" in data:
+        target_question["difficulty"] = data["difficulty"]
+    if "reason" in data:
+        target_question["reason"] = data["reason"]
+    if "order" in data:
+        target_question["order"] = data["order"]
+    if "question_order" in data:
+        target_question["question_order"] = data["question_order"]
+        
     target_question["modified"] = True
     
     db.table("applications").update({

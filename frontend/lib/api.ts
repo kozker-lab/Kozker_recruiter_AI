@@ -1907,7 +1907,11 @@ async function handleMockRequest<T>(
           const accessDenied = !((cand && cand.uploaded_by === currentUserId) || (job && (job.created_by === currentUserId || mockDb.requirements.some(r => r.id === job.requirement_id && r.created_by === currentUserId))));
           if (accessDenied) return reject(new Error("Access denied"));
 
-          q.question = data.question;
+          if (data.question !== undefined) q.question = data.question;
+          if (data.difficulty !== undefined) q.difficulty = data.difficulty;
+          if (data.reason !== undefined) q.reason = data.reason;
+          if (data.order !== undefined) q.question_order = data.order;
+          if (data.question_order !== undefined) q.question_order = data.question_order;
           q.modified = true;
           q.modified_at = new Date().toISOString();
           q.modified_by = currentUserId;
