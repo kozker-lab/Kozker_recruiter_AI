@@ -537,21 +537,11 @@ async def handle_generate_jobs_dispatch(new_req: dict, jwt_token: str):
     }
     success = await dispatch_n8n_webhook(N8N_GENERATE_JOBS_URL, payload, "generate_jobs")
     if not success:
-        logger.warning("n8n dispatch failed for generate_jobs, falling back to local execution")
-        generate_job_openings_background(
-            new_req["id"],
-            new_req["client_id"],
-            new_req["title"],
-            new_req["description"],
-            new_req["skills"],
-            new_req["experience_min"],
-            new_req["experience_max"],
-            new_req["seniority"],
-            new_req["budget_min"],
-            new_req["budget_max"],
-            new_req["num_posts_requested"],
-            jwt_token
-        )
+        logger.warning("n8n dispatch failed for generate_jobs. Skipping local fallback as requested by user.")
+        try:
+            db.table("requirements").update({"status": "failed"}).eq("id", new_req["id"]).execute()
+        except Exception as e:
+            logger.error(f"Failed to update requirement status to failed: {e}")
 
 def run_local_scan_publish(job_id: str, jwt_token: str):
     logger.info(f"Running local scan and publish for job {job_id}")
