@@ -1747,6 +1747,28 @@ def generate_questions_background(app_id: str, candidate_name: str, skills: List
     except Exception as e:
         logger.error(f"Error generating screening questions: {e}")
 
+def ensure_questions_have_ids(questions_list: list, app_id: str, db: Client) -> list:
+    import uuid
+    modified = False
+    healed_list = []
+    for q in (questions_list or []):
+        if not isinstance(q, dict):
+            continue
+        if not q.get("id"):
+            q["id"] = str(uuid.uuid4())
+            modified = True
+        q["application_id"] = app_id
+        healed_list.append(q)
+        
+    if modified:
+        try:
+            db.table("applications").update({
+                "screening_questions": healed_list
+            }).eq("id", app_id).execute()
+        except Exception as e:
+            logger.error(f"Failed to save auto-healed screening question IDs: {e}")
+    return healed_list
+
 @app.get("/api/v1/applications/{app_id}")
 async def get_application(app_id: str, db: Client = Depends(get_supabase)):
     res = db.table("applications").select("*, candidates(*)").eq("id", app_id).execute()
@@ -1758,6 +1780,8 @@ async def get_application(app_id: str, db: Client = Depends(get_supabase)):
     if cand and "parsed_resume_json" in cand and cand["parsed_resume_json"]:
         if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
             cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
+    
+    healed_qs = ensure_questions_have_ids(app_record.get("screening_questions") or [], app_id, db)
     
     return {
         "id": app_record["id"],
@@ -1779,7 +1803,7 @@ async def get_application(app_id: str, db: Client = Depends(get_supabase)):
         "stage_notes": app_record.get("stage_notes") or "",
         "priority": app_record.get("priority") or 0,
         "created_at": app_record.get("created_at"),
-        "screening_questions": app_record.get("screening_questions") or []
+        "screening_questions": healed_qs
     }
 
 async def handle_accept_application_logic(app_id: str, background_tasks: BackgroundTasks, request: Request, db: Client):
@@ -1943,12 +1967,9 @@ async def get_questions(app_id: str, db: Client = Depends(get_supabase)):
     if not res.data:
         return []
     questions_list = res.data[0].get("screening_questions") or []
-    questions_list.sort(key=lambda x: x.get("question_order", 1))
-    
-    # Add application_id for frontend compatibility
-    for q in questions_list:
-        q["application_id"] = app_id
-    return questions_list
+    healed_qs = ensure_questions_have_ids(questions_list, app_id, db)
+    healed_qs.sort(key=lambda x: x.get("question_order", 1) or x.get("order", 1) or 1)
+    return healed_qs
 
 @app.patch("/api/v1/questions/{q_id}")
 async def edit_question(q_id: str, data: Dict[str, Any], db: Client = Depends(get_supabase)):
