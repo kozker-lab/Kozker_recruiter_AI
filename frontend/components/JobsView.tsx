@@ -330,6 +330,12 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const [selectedJobId, setSelectedJobId] = useState<string | null>(initialJobId || null);
   const [activeTab, setActiveTab] = useState<"jd" | "skills" | "candidates">("jd");
 
+  React.useEffect(() => {
+    if (initialJobId) {
+      setSelectedJobId(initialJobId);
+    }
+  }, [initialJobId]);
+
   // View mode and filtering states
   const [viewMode, setViewMode] = useState<"tree" | "accordion" | "table">("tree");
   const [searchQuery, setSearchQuery] = useState("");
@@ -603,7 +609,25 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       alert(err.message || "Failed to link candidate.");
     }
   });
+  const deleteJobMutation = useMutation({
+    mutationFn: () => apiRequest<{ success: boolean }>("DELETE", `/jobs/${selectedJobId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["activity_log"] });
+      setSelectedJobId(null);
+      alert("Job opening deleted successfully.");
+    },
+    onError: (err: any) => {
+      alert(err.message || "Failed to delete job opening.");
+    }
+  });
 
+  const handleDeleteJob = () => {
+    const confirmed = window.confirm("Are you sure you want to delete this job opening? This action cannot be undone.");
+    if (confirmed) {
+      deleteJobMutation.mutate();
+    }
+  };
   const handlePublishJob = (e: React.FormEvent) => {
     e.preventDefault();
     console.log("handlePublishJob called. Form data:", {
@@ -1192,6 +1216,16 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
             <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse" />
             AI Edit JD
           </button>
+
+          <button
+            onClick={handleDeleteJob}
+            disabled={deleteJobMutation.isPending}
+            className="px-3 py-1.5 border border-red-200 hover:bg-red-50 text-red-500 rounded-sm cursor-pointer flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            title="Delete Job Opening"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+            Delete Job
+          </button>
         </div>
       </div>
 
@@ -1292,7 +1326,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           Job Description Editor
         </button>
         <button
-          disabled={!skills || skills.length === 0}
+          disabled={!skills || skills.length === 0 || activeJob?.processing_status === "generating"}
           onClick={() => setActiveTab("skills")}
           className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider border-b-2 cursor-pointer transition-all disabled:opacity-40 ${
             activeTab === "skills" ? "border-primary text-primary" : "border-transparent text-neutral-400 hover:text-neutral-600"
@@ -1301,7 +1335,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           Skills Weights Approval
         </button>
         <button
-          disabled={!activeJob || (activeJob.processing_status !== "ready" && activeJob.processing_status !== "matching" && matchedCandidates.length === 0)}
+          disabled={!activeJob || activeJob.processing_status === "generating" || (activeJob.processing_status !== "ready" && activeJob.processing_status !== "matching" && matchedCandidates.length === 0)}
           onClick={() => setActiveTab("candidates")}
           className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider border-b-2 cursor-pointer transition-all disabled:opacity-40 ${
             activeTab === "candidates" ? "border-primary text-primary" : "border-transparent text-neutral-400 hover:text-neutral-600"
@@ -1313,7 +1347,25 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
 
       {/* Tab Contents */}
       {activeTab === "jd" && (
-        <form onSubmit={handlePublishJob} className="bg-neutral-white border border-neutral-200 rounded-sm p-6 space-y-4 shadow-sm font-sans text-xs">
+        activeJob?.processing_status === "generating" ? (
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm p-12 flex flex-col items-center justify-center text-center space-y-4 shadow-sm min-h-[400px] font-sans">
+            <div className="relative flex items-center justify-center">
+              <Sparkles className="w-12 h-12 text-primary animate-pulse" />
+              <div className="absolute -inset-3 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+            </div>
+            <div className="space-y-1.5 max-w-sm">
+              <h4 className="font-tight font-bold text-xs text-neutral-850 uppercase tracking-wider">AI JD Regeneration in Progress</h4>
+              <p className="text-neutral-500 text-[11px] leading-relaxed">
+                The AI Agent is rebuilding the job description requirements, responsibilities, and qualifications based on your refinement commands.
+              </p>
+            </div>
+            <div className="flex items-center gap-1 px-2.5 py-0.5 bg-primary/10 border border-primary/20 text-primary rounded-sm font-mono text-[9px] uppercase tracking-wider animate-bounce">
+              <RefreshCcw className="w-2.5 h-2.5 animate-spin" />
+              Updating schema details...
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handlePublishJob} className="bg-neutral-white border border-neutral-200 rounded-sm p-6 space-y-4 shadow-sm font-sans text-xs">
           <div className="space-y-1">
             <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Job Title</label>
             <input
@@ -1455,6 +1507,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
             </button>
           </div>
         </form>
+        )
       )}
 
       {activeTab === "skills" && (

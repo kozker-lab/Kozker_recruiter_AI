@@ -24,15 +24,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("backend")
 
 # Read config
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://covhcpsyliesrgkjxhai.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 USE_N8N = os.getenv("USE_N8N", "False").lower() in ("true", "1", "yes")
-N8N_GENERATE_JOBS_URL = os.getenv("N8N_GENERATE_JOBS_URL", "")
-N8N_EXTRACT_SKILLS_URL = os.getenv("N8N_EXTRACT_SKILLS_URL", "")
-N8N_MATCH_CANDIDATES_URL = os.getenv("N8N_MATCH_CANDIDATES_URL", "")
-N8N_GENERATE_QUESTIONS_URL = os.getenv("N8N_GENERATE_QUESTIONS_URL", "")
-CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "kozker_callback_secret_token")
+N8N_GENERATE_JOBS_URL = os.getenv("N8N_GENERATE_JOBS_URL")
+N8N_EXTRACT_SKILLS_URL = os.getenv("N8N_EXTRACT_SKILLS_URL")
+N8N_MATCH_CANDIDATES_URL = os.getenv("N8N_MATCH_CANDIDATES_URL")
+N8N_GENERATE_QUESTIONS_URL = os.getenv("N8N_GENERATE_QUESTIONS_URL")
+N8N_REGENERATE_JOBS_URL = os.getenv("N8N_REGENERATE_JOBS_URL")
+N8N_REFINE_QUESTION_URL = os.getenv("N8N_REFINE_QUESTION_URL")
+CALLBACK_SECRET = os.getenv("CALLBACK_SECRET")
+
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
 MATCH_THRESHOLD = float(os.getenv("MATCH_THRESHOLD", "30.0"))
 
@@ -141,6 +144,38 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> Optional
                 logger.error(f"Failed to decode JWT: {e}")
     return None
 
+def create_system_notification(db: Client, recruiter_id: str, title: str, message: str, type: str, metadata: dict = None):
+    if not recruiter_id:
+        logger.warning(f"Could not insert notification '{title}' because recruiter_id is empty")
+        return
+    try:
+        db.table("notifications").insert({
+            "recruiter_id": recruiter_id,
+            "title": title,
+            "message": message,
+            "type": type,
+            "metadata": metadata or {}
+        }).execute()
+        logger.info(f"System notification created: '{title}' for user {recruiter_id}")
+    except Exception as e:
+        logger.error(f"Failed to insert notification: {e}")
+
+def log_activity_event(db: Client, action: str, entity_type: str, entity_id: str, actor_name: str = "Recruiter", actor_id: str = None, metadata: dict = None):
+    try:
+        payload = {
+            "action": action,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "actor_name": actor_name,
+            "metadata": metadata or {}
+        }
+        if actor_id:
+            payload["actor_id"] = actor_id
+        db.table("activity_log").insert(payload).execute()
+        logger.info(f"Activity logged: {action} on {entity_type} {entity_id}")
+    except Exception as e:
+        logger.error(f"Failed to log activity: {e}")
+
 # Security Middleware: verify callback secret
 async def verify_callback_secret(authorization: Optional[str] = Header(None)):
     if not authorization:
@@ -206,6 +241,16 @@ def download_resumes_background(candidates_list: List[Dict[str, str]], jwt_token
         if not cand_id or not url:
             continue
             
+        cand_name = email
+        uploaded_by = None
+        try:
+            cand_res = db.table("candidates").select("full_name, uploaded_by").eq("id", cand_id).execute()
+            if cand_res.data:
+                cand_name = cand_res.data[0].get("full_name") or email
+                uploaded_by = cand_res.data[0].get("uploaded_by")
+        except Exception as resolve_err:
+            logger.error(f"Failed to resolve candidate details in download_resumes_background: {resolve_err}")
+            
         try:
             download_url = get_drive_download_url(url)
             logger.info(f"Downloading resume for {email} from: {download_url}")
@@ -214,6 +259,24 @@ def download_resumes_background(candidates_list: List[Dict[str, str]], jwt_token
                 res = client.get(download_url, timeout=30.0)
                 if res.status_code != 200:
                     logger.error(f"Failed to download GD resume for candidate {email}: status {res.status_code}")
+                    if uploaded_by:
+                        create_system_notification(
+                            db,
+                            uploaded_by,
+                            "GD Resume Download Failed",
+                            f"Failed to download Google Drive resume for candidate '{cand_name}' (HTTP {res.status_code}).",
+                            "error",
+                            {"candidate_id": cand_id, "candidate_name": cand_name, "status": "failed", "status_code": res.status_code}
+                        )
+                        log_activity_event(
+                            db,
+                            action="candidate_cv_download_failed",
+                            entity_type="candidates",
+                            entity_id=cand_id,
+                            actor_name="System",
+                            actor_id=uploaded_by,
+                            metadata={"candidate_name": cand_name, "error": f"HTTP status {res.status_code}"}
+                        )
                     continue
                 content = res.content
                 content_type = res.headers.get("content-type", "").lower()
@@ -237,11 +300,56 @@ def download_resumes_background(candidates_list: List[Dict[str, str]], jwt_token
                     "parsed_resume_json": {"raw_text": text}
                 }).eq("id", cand_id).execute()
                 logger.info(f"Successfully downloaded and parsed Google Drive resume for candidate {email}")
+                if uploaded_by:
+                    create_system_notification(
+                        db,
+                        uploaded_by,
+                        "GD Resume Download Completed",
+                        f"Successfully downloaded and parsed Google Drive resume for candidate '{cand_name}'.",
+                        "upload",
+                        {"candidate_id": cand_id, "candidate_name": cand_name, "status": "success"}
+                    )
+                    log_activity_event(
+                        db,
+                        action="candidate_cv_downloaded",
+                        entity_type="candidates",
+                        entity_id=cand_id,
+                        actor_name="System",
+                        actor_id=uploaded_by,
+                        metadata={"candidate_name": cand_name, "status": "success"}
+                    )
             else:
                 logger.warning(f"No text extracted from GD resume for candidate {email}")
+                if uploaded_by:
+                    create_system_notification(
+                        db,
+                        uploaded_by,
+                        "GD Resume Parsing Failed",
+                        f"Google Drive resume was downloaded but no text could be extracted for candidate '{cand_name}'.",
+                        "error",
+                        {"candidate_id": cand_id, "candidate_name": cand_name, "status": "empty"}
+                    )
                 
         except Exception as e:
             logger.error(f"Error downloading/parsing GD resume for candidate {email}: {e}")
+            if uploaded_by:
+                create_system_notification(
+                    db,
+                    uploaded_by,
+                    "GD Resume Download Failed",
+                    f"Error downloading/parsing Google Drive resume for candidate '{cand_name}': {e}",
+                    "error",
+                    {"candidate_id": cand_id, "candidate_name": cand_name, "status": "error", "error": str(e)}
+                )
+                log_activity_event(
+                    db,
+                    action="candidate_cv_download_failed",
+                    entity_type="candidates",
+                    entity_id=cand_id,
+                    actor_name="System",
+                    actor_id=uploaded_by,
+                    metadata={"candidate_name": cand_name, "error": str(e)}
+                )
 
 # Text extraction helper
 def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
@@ -405,6 +513,30 @@ class ScreeningQuestionsCallback(BaseModel):
     questions: List[GeneratedQuestion]
 
 
+class JobRegenerateModel(BaseModel):
+    instruction: str
+
+
+class JobRegenerateCallback(BaseModel):
+    job_opening_id: str
+    title: str
+    overview: str
+    responsibilities: List[str]
+    qualifications: List[str]
+    budget: str
+    seniority: str
+    keywords: List[str]
+
+
+class QuestionRefineCallback(BaseModel):
+    application_id: str
+    question_id: str
+    refined_question: str
+    difficulty: Optional[str] = None
+    reason: Optional[str] = None
+
+
+
 # ============================================================
 # API ENDPOINTS
 # ============================================================
@@ -540,8 +672,169 @@ async def handle_generate_jobs_dispatch(new_req: dict, jwt_token: str):
         logger.warning("n8n dispatch failed for generate_jobs. Skipping local fallback as requested by user.")
         try:
             db.table("requirements").update({"status": "failed"}).eq("id", new_req["id"]).execute()
+            create_system_notification(
+                db, 
+                new_req.get("created_by"), 
+                "Job Generation Failed", 
+                f"N8N workflow failed to generate jobs for requirement '{new_req.get('title')}'", 
+                "error", 
+                {"requirement_id": new_req["id"], "error_type": "n8n_dispatch_failed"}
+            )
+            log_activity_event(
+                db,
+                action="n8n_dispatch_failed",
+                entity_type="requirements",
+                entity_id=new_req["id"],
+                actor_name="System",
+                actor_id=new_req.get("created_by"),
+                metadata={"error_context": "generate_jobs", "req_title": new_req.get("title")}
+            )
         except Exception as e:
             logger.error(f"Failed to update requirement status to failed: {e}")
+
+async def handle_regenerate_job_dispatch(job: dict, instruction: str, jwt_token: str):
+    callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/job-openings/regenerate"
+    payload = {
+        "automation_type": "regenerate_job_opening",
+        "job_opening_id": job["id"],
+        "requirement_id": job.get("requirement_id"),
+        "instruction": instruction,
+        "callback_url": callback_url,
+        "auth_header": f"Bearer {CALLBACK_SECRET}",
+        "job_details": {
+            "title": job.get("title"),
+            "description": job.get("description"),
+            "responsibilities": job.get("responsibilities") or [],
+            "qualifications": job.get("qualifications") or [],
+            "salary_range": job.get("salary_range"),
+            "keywords": job.get("keywords") or [],
+            "status": job.get("status")
+        }
+    }
+    
+    success = await dispatch_n8n_webhook(N8N_REGENERATE_JOBS_URL, payload, "regenerate_job")
+    if not success:
+        logger.warning("n8n dispatch failed for regenerate_job, falling back to local fallback")
+        regenerate_job_background_local(job["id"], instruction, jwt_token)
+
+def regenerate_job_background_local(job_id: str, instruction: str, jwt_token: str):
+    logger.info(f"Running local fallback regeneration for job {job_id}")
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    job_res = db.table("job_openings").select("*").eq("id", job_id).execute()
+    if not job_res.data:
+        return
+    job = job_res.data[0]
+    
+    new_title = f"{job['title']} (Regenerated)" if "Regenerated" not in job.get('title', '') else job['title']
+    new_desc = f"{job['description']}\n\n[Regenerated with instruction: \"{instruction}\"]"
+    
+    db.table("job_openings").update({
+        "title": new_title,
+        "description": new_desc,
+        "processing_status": "ready"
+    }).eq("id", job_id).execute()
+    
+    recruiter_id = None
+    try:
+        req_res = db.table("requirements").select("created_by").eq("id", job.get("requirement_id")).execute()
+        if req_res.data:
+            recruiter_id = req_res.data[0].get("created_by")
+    except Exception as e:
+        logger.error(f"Failed to resolve recruiter_id in regenerate_job_background_local: {e}")
+        
+    if recruiter_id:
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Job Regenerated Successfully",
+            f"Job opening '{new_title}' has been successfully regenerated using instruction '{instruction}'.",
+            "job_generation",
+            {"job_opening_id": job_id, "job_title": new_title}
+        )
+        log_activity_event(
+            db,
+            action="job_regenerated",
+            entity_type="job_openings",
+            entity_id=job_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"job_title": new_title, "instruction": instruction}
+        )
+
+async def handle_refine_question_dispatch(app_id: str, question_id: str, question: dict, instruction: str, jwt_token: str):
+    callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/questions/refine"
+    payload = {
+        "automation_type": "refine_screening_question",
+        "application_id": app_id,
+        "question_id": question_id,
+        "instruction": instruction,
+        "callback_url": callback_url,
+        "auth_header": f"Bearer {CALLBACK_SECRET}",
+        "question_details": {
+            "question": question.get("question"),
+            "difficulty": question.get("difficulty"),
+            "reason": question.get("reason") or question.get("reasoning")
+        }
+    }
+    
+    success = await dispatch_n8n_webhook(N8N_REFINE_QUESTION_URL, payload, "refine_question")
+    if not success:
+        logger.warning("n8n dispatch failed for refine_question, falling back to local fallback")
+        refine_question_background_local(app_id, question_id, instruction, jwt_token)
+
+def refine_question_background_local(app_id: str, question_id: str, instruction: str, jwt_token: str):
+    logger.info(f"Running local fallback refinement for question {question_id} in application {app_id}")
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    res = db.table("applications").select("id, screening_questions, candidate_id, reviewed_by").eq("id", app_id).execute()
+    if not res.data:
+        return
+    app_record = res.data[0]
+    questions = app_record.get("screening_questions") or []
+    
+    found = False
+    cand_name = "Candidate"
+    for q in questions:
+        if q.get("id") == question_id:
+            old_question = q.get("question")
+            q["question"] = f"{old_question} (AI instructions applied: {instruction})"
+            q["modified"] = True
+            q["refining"] = False
+            found = True
+            break
+            
+    if not found:
+        return
+        
+    db.table("applications").update({
+        "screening_questions": questions
+    }).eq("id", app_id).execute()
+    
+    recruiter_id = app_record.get("reviewed_by")
+    try:
+        cand_res = db.table("candidates").select("full_name").eq("id", app_record["candidate_id"]).execute()
+        if cand_res.data:
+            cand_name = cand_res.data[0].get("full_name") or "Candidate"
+    except Exception as e:
+        logger.error(f"Failed to fetch candidate details in refine_question_background_local: {e}")
+        
+    if recruiter_id:
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Question Refined Successfully",
+            f"Screening question for candidate '{cand_name}' has been successfully refined by AI.",
+            "job_generation",
+            {"application_id": app_id, "question_id": question_id}
+        )
+        log_activity_event(
+            db,
+            action="screening_question_refined",
+            entity_type="applications",
+            entity_id=app_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"candidate_name": cand_name, "question_id": question_id}
+        )
 
 def run_local_scan_publish(job_id: str, jwt_token: str):
     logger.info(f"Running local scan and publish for job {job_id}")
@@ -576,6 +869,35 @@ def run_local_scan_publish(job_id: str, jwt_token: str):
     }, on_conflict="job_opening_id").execute()
         
     db.table("job_openings").update({"processing_status": "skill_approval"}).eq("id", job_id).execute()
+    
+    # Resolve recruiter_id and send notification/log
+    recruiter_id = None
+    job_title = job.get("title", "Unknown Job")
+    try:
+        req_res = db.table("requirements").select("created_by").eq("id", job.get("requirement_id")).execute()
+        if req_res.data:
+            recruiter_id = req_res.data[0].get("created_by")
+    except Exception as e:
+        logger.error(f"Failed to resolve recruiter_id in run_local_scan_publish: {e}")
+        
+    if recruiter_id:
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Skills Extraction Completed",
+            f"Mandate skills successfully extracted (local fallback) for job '{job_title}'. Core requirement weights are ready for review.",
+            "job_generation",
+            {"job_opening_id": job_id, "job_title": job_title}
+        )
+        log_activity_event(
+            db,
+            action="skills_extracted",
+            entity_type="job_openings",
+            entity_id=job_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"job_title": job_title}
+        )
 
 async def handle_scan_publish_dispatch(job: dict, jwt_token: str):
     callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/job-skills"
@@ -728,32 +1050,139 @@ def generate_job_openings_background(req_id: str, client_id: str, req_title: str
     db.table("requirements").update({"status": "ready"}).eq("id", req_id).execute()
     logger.info(f"Background job generation completed for requirement {req_id}")
 
+    # Resolve recruiter_id and req_title for system notification
+    recruiter_id = None
+    req_title = "Unknown Requirement"
+    try:
+        req_res = db.table("requirements").select("created_by, title").eq("id", req_id).execute()
+        if req_res.data:
+            recruiter_id = req_res.data[0].get("created_by")
+            req_title = req_res.data[0].get("title", "Unknown Requirement")
+    except Exception as e:
+        logger.error(f"Failed to resolve requirement details for notification in local generate: {e}")
+
+    if recruiter_id:
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Job Generation Completed",
+            f"Successfully generated {num_posts} job openings (local fallback) for mandate '{req_title}'.",
+            "job_generation",
+            {"requirement_id": req_id, "requirement_title": req_title, "job_openings_count": num_posts}
+        )
+        log_activity_event(
+            db,
+            action="job_generation_completed",
+            entity_type="requirements",
+            entity_id=req_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"req_title": req_title, "job_openings_count": num_posts}
+        )
+
 @app.get("/api/v1/requirements")
 async def get_requirements(db: Client = Depends(get_supabase)):
     res = db.table("requirements").select("*").eq("is_deleted", False).execute()
     return res.data
 
 @app.put("/api/v1/requirements/{req_id}")
-async def update_requirement(req_id: str, req: RequirementUpdateModel, db: Client = Depends(get_supabase)):
+async def update_requirement(req_id: str, req: RequirementUpdateModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
     update_data = {k: v for k, v in req.dict(exclude_unset=True).items() if v is not None}
-    if not update_data:
-        res = db.table("requirements").select("*").eq("id", req_id).execute()
-        if not res.data:
-            raise HTTPException(status_code=404, detail="Requirement not found")
-        return res.data[0]
     
+    # Fetch current requirement details first
+    curr_req_res = db.table("requirements").select("*").eq("id", req_id).execute()
+    if not curr_req_res.data:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    old_req = curr_req_res.data[0]
+    
+    if not update_data:
+        return old_req
+        
+    # Check status transitions and job existence
+    new_status = update_data.get("status")
+    trigger_generation = False
+    if new_status in ["generating", "ready"] and old_req.get("status") not in ["generating", "ready"]:
+        # Verify if job openings already exist
+        jobs_res = db.table("job_openings").select("id").eq("requirement_id", req_id).eq("is_deleted", False).execute()
+        if not jobs_res.data:
+            trigger_generation = True
+            update_data["status"] = "generating" # force to generating during process
+            
     res = db.table("requirements").update(update_data).eq("id", req_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Requirement not found")
+        
+    new_req = res.data[0]
         
     db.table("activity_log").insert({
         "action": "requirement_updated",
         "entity_type": "requirements",
         "entity_id": req_id,
         "actor_name": "Recruiter",
+        "metadata": {"req_title": new_req.get("title", "")}
+    }).execute()
+    
+    if trigger_generation:
+        auth_header = request.headers.get("Authorization", "")
+        jwt_token = ""
+        if auth_header:
+            if auth_header.startswith("Bearer "):
+                jwt_token = auth_header.split(" ")[1]
+            elif auth_header.startswith("eyJ"):
+                jwt_token = auth_header
+                
+        if USE_N8N:
+            background_tasks.add_task(
+                handle_generate_jobs_dispatch,
+                new_req,
+                jwt_token
+            )
+        else:
+            background_tasks.add_task(
+                generate_job_openings_background,
+                req_id,
+                new_req.get("client_id"),
+                new_req.get("title"),
+                new_req.get("description"),
+                new_req.get("skills") or [],
+                new_req.get("experience_min") or 0,
+                new_req.get("experience_max") or 0,
+                new_req.get("seniority"),
+                new_req.get("budget_min") or 0.0,
+                new_req.get("budget_max") or 0.0,
+                new_req.get("num_posts_requested") or 1,
+                jwt_token
+            )
+            
+    return new_req
+
+
+@app.delete("/api/v1/requirements/{req_id}")
+async def delete_requirement(req_id: str, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Soft delete requirement
+    res = db.table("requirements").update({"is_deleted": True}).eq("id", req_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+        
+    # Soft delete linked job openings
+    db.table("job_openings").update({"is_deleted": True}).eq("requirement_id", req_id).execute()
+    
+    # Log activity
+    db.table("activity_log").insert({
+        "action": "requirement_deleted",
+        "entity_type": "requirements",
+        "entity_id": req_id,
+        "actor_name": "Recruiter",
         "metadata": {"req_title": res.data[0].get("title", "")}
     }).execute()
-    return res.data[0]
+    
+    return {"status": "success"}
 
 @app.post("/api/v1/requirements")
 async def create_requirement(req: RequirementModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
@@ -831,6 +1260,42 @@ async def get_activity_log(db: Client = Depends(get_supabase)):
     return res.data
 
 
+@app.get("/api/v1/notifications")
+async def get_notifications(db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    res = db.table("notifications").select("*").eq("recruiter_id", user_id).order("created_at", desc=True).execute()
+    return res.data
+
+
+@app.post("/api/v1/notifications/{id}/read")
+async def mark_notification_read(id: str, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    res = db.table("notifications").update({"is_read": True}).eq("id", id).eq("recruiter_id", user_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"status": "success"}
+
+
+@app.post("/api/v1/notifications/read-all")
+async def mark_all_notifications_read(db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    db.table("notifications").update({"is_read": True}).eq("recruiter_id", user_id).execute()
+    return {"status": "success"}
+
+
+@app.delete("/api/v1/notifications/{id}")
+async def delete_notification(id: str, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    res = db.table("notifications").delete().eq("id", id).eq("recruiter_id", user_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"status": "success"}
+
+
 # 4. Job Openings endpoints
 @app.get("/api/v1/jobs")
 async def get_jobs(db: Client = Depends(get_supabase)):
@@ -844,6 +1309,57 @@ async def get_jobs(db: Client = Depends(get_supabase)):
             "client_name": cli.get("name") or "Generic Client"
         })
     return formatted
+
+
+@app.delete("/api/v1/jobs/{job_id}")
+async def delete_job(job_id: str, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    # Soft delete job opening
+    res = db.table("job_openings").update({"is_deleted": True}).eq("id", job_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Job opening not found")
+        
+    # Log activity
+    db.table("activity_log").insert({
+        "action": "job_deleted",
+        "entity_type": "job_openings",
+        "entity_id": job_id,
+        "actor_name": "Recruiter",
+        "metadata": {"job_title": res.data[0].get("title", "")}
+    }).execute()
+    
+    return {"status": "success"}
+
+
+@app.post("/api/v1/jobs/{job_id}/regenerate")
+async def regenerate_job(job_id: str, payload: JobRegenerateModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
+    job_res = db.table("job_openings").select("*").eq("id", job_id).execute()
+    if not job_res.data:
+        raise HTTPException(status_code=404, detail="Job opening not found")
+    job = job_res.data[0]
+    
+    db.table("job_openings").update({"processing_status": "generating"}).eq("id", job_id).execute()
+    
+    auth_header = request.headers.get("Authorization", "")
+    jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
+    
+    if USE_N8N:
+        background_tasks.add_task(
+            handle_regenerate_job_dispatch,
+            job,
+            payload.instruction,
+            jwt_token
+        )
+    else:
+        background_tasks.add_task(
+            regenerate_job_background_local,
+            job_id,
+            payload.instruction,
+            jwt_token
+        )
+        
+    return {"status": "generating"}
 
 @app.patch("/api/v1/jobs/{job_id}")
 async def patch_job(job_id: str, job_update: JobOpeningUpdateModel, db: Client = Depends(get_supabase)):
@@ -976,6 +1492,36 @@ async def handle_approve_skills_logic(job_id: str, skills_data: SkillsApprovalMo
     
     auth_header = request.headers.get("Authorization", "")
     jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
+    user_id = get_current_user_id(auth_header)
+    
+    # Send activity logs
+    job_title = "Job opening"
+    try:
+        job_res = db.table("job_openings").select("title").eq("id", job_id).execute()
+        if job_res.data:
+            job_title = job_res.data[0].get("title", "")
+    except Exception as e:
+        logger.error(f"Failed to fetch job title in handle_approve_skills_logic: {e}")
+        
+    log_activity_event(
+        db,
+        action="skills_approved",
+        entity_type="job_openings",
+        entity_id=job_id,
+        actor_name="Recruiter",
+        actor_id=user_id,
+        metadata={"job_title": job_title, "skills_count": len(skills_list)}
+    )
+    
+    log_activity_event(
+        db,
+        action="job_published",
+        entity_type="job_openings",
+        entity_id=job_id,
+        actor_name="Recruiter",
+        actor_id=user_id,
+        metadata={"job_title": job_title}
+    )
     
     # Trigger matching task in the background
     if USE_N8N:
@@ -1151,9 +1697,70 @@ def match_candidates_background(job_id: str, jwt_token: str):
         # Update job opening status
         db.table("job_openings").update({"processing_status": "ready"}).eq("id", job_id).execute()
         
+        # Send notification and log activity
+        recruiter_id = None
+        job_title = job.get("title", "Unknown Job") if 'job' in locals() else "Unknown Job"
+        try:
+            req_res = db.table("requirements").select("created_by").eq("id", job.get("requirement_id")).execute()
+            if req_res.data:
+                recruiter_id = req_res.data[0].get("created_by")
+        except Exception as resolve_err:
+            logger.error(f"Failed to resolve recruiter_id in match_candidates_background: {resolve_err}")
+            
+        if recruiter_id:
+            create_system_notification(
+                db,
+                recruiter_id,
+                "Candidate Matching Completed",
+                f"Candidate matching completed (local fallback) for job '{job_title}'. Found {len(scored_candidates)} matches.",
+                "candidate_matching",
+                {"job_opening_id": job_id, "job_title": job_title, "matches_count": len(scored_candidates)}
+            )
+            log_activity_event(
+                db,
+                action="candidate_matching_completed",
+                entity_type="job_openings",
+                entity_id=job_id,
+                actor_name="System",
+                actor_id=recruiter_id,
+                metadata={"job_title": job_title, "matches_count": len(scored_candidates)}
+            )
+        
     except Exception as e:
         logger.error(f"Error matching candidates: {e}")
         db.table("job_openings").update({"processing_status": "error", "error_message": str(e)}).eq("id", job_id).execute()
+        
+        # Resolve recruiter_id to notify of error
+        recruiter_id = None
+        job_title = "Unknown Job"
+        try:
+            job_res = db.table("job_openings").select("title, requirement_id").eq("id", job_id).execute()
+            if job_res.data:
+                job_title = job_res.data[0].get("title", "")
+                req_res = db.table("requirements").select("created_by").eq("id", job_res.data[0].get("requirement_id")).execute()
+                if req_res.data:
+                    recruiter_id = req_res.data[0].get("created_by")
+        except Exception as resolve_err:
+            logger.error(f"Failed to resolve recruiter_id for error matching candidates: {resolve_err}")
+            
+        if recruiter_id:
+            create_system_notification(
+                db,
+                recruiter_id,
+                "Candidate Matching Failed",
+                f"Candidate matching failed for job '{job_title}': {e}",
+                "error",
+                {"job_opening_id": job_id, "job_title": job_title, "error": str(e)}
+            )
+            log_activity_event(
+                db,
+                action="candidate_matching_failed",
+                entity_type="job_openings",
+                entity_id=job_id,
+                actor_name="System",
+                actor_id=recruiter_id,
+                metadata={"job_title": job_title, "error": str(e)}
+            )
 
 @app.get("/api/v1/jobs/{job_id}/candidates")
 async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase)):
@@ -1587,7 +2194,8 @@ async def upload_csv_candidates(
     payload: CSVUploadModel, 
     background_tasks: BackgroundTasks, 
     db: Client = Depends(get_supabase), 
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    user_id: Optional[str] = Depends(get_current_user_id)
 ):
     inserted = 0
     skipped = 0
@@ -1673,6 +2281,7 @@ async def upload_csv_candidates(
                 "resume_url": resume_url_val if resume_url_val else existing_cand.get("resume_url"),
                 "parsed_resume_json": parsed_resume_payload,
                 "source": "csv",
+                "uploaded_by": user_id or existing_cand.get("uploaded_by"),
                 "is_deleted": False  # Reactivate candidate if it was soft-deleted
             }).eq("email", email).execute()
         else:
@@ -1695,7 +2304,8 @@ async def upload_csv_candidates(
                 "working_or_not": working_bool,
                 "academic_details": academic_val,
                 "achievements": achievements_val,
-                "source": "csv"
+                "source": "csv",
+                "uploaded_by": user_id
             }).execute()
             
             if res.data:
@@ -1711,6 +2321,25 @@ async def upload_csv_candidates(
             
     if candidates_with_gd_resumes:
         background_tasks.add_task(download_resumes_background, candidates_with_gd_resumes, jwt_token)
+        
+    if user_id:
+        create_system_notification(
+            db,
+            user_id,
+            "Candidate Upload Completed",
+            f"Successfully parsed candidate CSV. Imported {inserted} new candidates and updated {skipped} existing ones.",
+            "upload",
+            {"inserted": inserted, "skipped": skipped}
+        )
+        log_activity_event(
+            db,
+            action="candidate_csv_imported",
+            entity_type="candidates",
+            entity_id=None,
+            actor_name="Recruiter",
+            actor_id=user_id,
+            metadata={"inserted": inserted, "skipped": skipped}
+        )
         
     return {"inserted": inserted, "skipped": skipped}
 
@@ -1822,10 +2451,21 @@ async def handle_accept_application_logic(app_id: str, background_tasks: Backgro
                 cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
         auth_header = request.headers.get("Authorization", "")
         jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
+        user_id = get_current_user_id(auth_header)
         
         # Fetch job and requirement details for the outbound payload
         job_res = db.table("job_openings").select("*").eq("id", app_record["job_opening_id"]).execute()
         job = job_res.data[0] if job_res.data else {}
+        
+        log_activity_event(
+            db,
+            action="application_accepted",
+            entity_type="applications",
+            entity_id=app_id,
+            actor_name="Recruiter",
+            actor_id=user_id,
+            metadata={"candidate_name": cand.get("full_name", ""), "job_title": job.get("title", "")}
+        )
         
         req_res = db.table("requirements").select("*").eq("id", job.get("requirement_id", "")).execute()
         req = req_res.data[0] if req_res.data else {}
@@ -1862,8 +2502,34 @@ async def accept_application_post(app_id: str, background_tasks: BackgroundTasks
 
 
 @app.patch("/api/v1/applications/{app_id}/reject")
-async def reject_application(app_id: str, db: Client = Depends(get_supabase)):
+async def reject_application(app_id: str, request: Request, db: Client = Depends(get_supabase)):
     res = db.table("applications").update({"screening_status": "rejected"}).eq("id", app_id).execute()
+    if res.data:
+        app_record = res.data[0]
+        auth_header = request.headers.get("Authorization", "")
+        user_id = get_current_user_id(auth_header)
+        
+        cand_name = "Candidate"
+        job_title = "Job opening"
+        try:
+            cand_res = db.table("candidates").select("full_name").eq("id", app_record["candidate_id"]).execute()
+            if cand_res.data:
+                cand_name = cand_res.data[0].get("full_name") or "Candidate"
+            job_res = db.table("job_openings").select("title").eq("id", app_record["job_opening_id"]).execute()
+            if job_res.data:
+                job_title = job_res.data[0].get("title") or "Job opening"
+        except Exception as e:
+            logger.error(f"Failed to fetch candidate/job details in reject_application: {e}")
+            
+        log_activity_event(
+            db,
+            action="application_rejected",
+            entity_type="applications",
+            entity_id=app_id,
+            actor_name="Recruiter",
+            actor_id=user_id,
+            metadata={"candidate_name": cand_name, "job_title": job_title}
+        )
     return res.data[0] if res.data else {}
 
 @app.get("/api/v1/applications/{app_id}/stages")
@@ -1934,7 +2600,7 @@ class QuestionCreateModel(BaseModel):
     difficulty: str = "medium"
 
 @app.post("/api/v1/applications/{app_id}/questions")
-async def add_screening_question(app_id: str, data: QuestionCreateModel, db: Client = Depends(get_supabase)):
+async def add_screening_question(app_id: str, data: QuestionCreateModel, request: Request, db: Client = Depends(get_supabase)):
     # Fetch application to get screening_questions array
     app_res = db.table("applications").select("*").eq("id", app_id).execute()
     if not app_res.data:
@@ -1959,6 +2625,28 @@ async def add_screening_question(app_id: str, data: QuestionCreateModel, db: Cli
         "screening_questions": questions_list
     }).eq("id", app_id).execute()
     
+    # Log activity
+    auth_header = request.headers.get("Authorization", "")
+    user_id = get_current_user_id(auth_header)
+    
+    cand_name = "Candidate"
+    try:
+        cand_res = db.table("candidates").select("full_name").eq("id", app_rec["candidate_id"]).execute()
+        if cand_res.data:
+            cand_name = cand_res.data[0].get("full_name") or "Candidate"
+    except Exception as e:
+        logger.error(f"Failed to fetch candidate details in add_screening_question: {e}")
+        
+    log_activity_event(
+        db,
+        action="screening_question_added",
+        entity_type="applications",
+        entity_id=app_id,
+        actor_name="Recruiter",
+        actor_id=user_id,
+        metadata={"candidate_name": cand_name, "question": data.question[:60] + "..." if len(data.question) > 60 else data.question}
+    )
+    
     return new_q
 
 @app.get("/api/v1/applications/{app_id}/questions")
@@ -1972,11 +2660,11 @@ async def get_questions(app_id: str, db: Client = Depends(get_supabase)):
     return healed_qs
 
 @app.patch("/api/v1/questions/{q_id}")
-async def edit_question(q_id: str, data: Dict[str, Any], db: Client = Depends(get_supabase)):
+async def edit_question(q_id: str, data: Dict[str, Any], request: Request, db: Client = Depends(get_supabase)):
     # Find the application row containing this question ID in its screening_questions JSONB array
-    res = db.table("applications").select("id, screening_questions").filter("screening_questions", "cs", f'[{{"id": "{q_id}"}}]').execute()
+    res = db.table("applications").select("*").filter("screening_questions", "cs", f'[{{"id": "{q_id}"}}]').execute()
     if not res.data:
-        res = db.table("applications").select("id, screening_questions").execute()
+        res = db.table("applications").select("*").execute()
         
     target_app = None
     target_question = None
@@ -2010,16 +2698,38 @@ async def edit_question(q_id: str, data: Dict[str, Any], db: Client = Depends(ge
         "screening_questions": target_app["screening_questions"]
     }).eq("id", target_app["id"]).execute()
     
+    # Log activity
+    auth_header = request.headers.get("Authorization", "")
+    user_id = get_current_user_id(auth_header)
+    
+    cand_name = "Candidate"
+    try:
+        cand_res = db.table("candidates").select("full_name").eq("id", target_app.get("candidate_id")).execute()
+        if cand_res.data:
+            cand_name = cand_res.data[0].get("full_name") or "Candidate"
+    except Exception as e:
+        logger.error(f"Failed to fetch candidate details in edit_question: {e}")
+        
+    log_activity_event(
+        db,
+        action="screening_question_updated",
+        entity_type="applications",
+        entity_id=target_app["id"],
+        actor_name="Recruiter",
+        actor_id=user_id,
+        metadata={"candidate_name": cand_name, "question": target_question["question"][:60] + "..." if len(target_question["question"]) > 60 else target_question["question"]}
+    )
+    
     target_question["application_id"] = target_app["id"]
     return target_question
 
 @app.post("/api/v1/questions/{q_id}/ai-edit")
-async def ai_edit_question(q_id: str, data: Dict[str, str], db: Client = Depends(get_supabase)):
+async def ai_edit_question(q_id: str, data: Dict[str, str], background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
     instruction = data.get("instruction", "")
     
-    res = db.table("applications").select("id, screening_questions").filter("screening_questions", "cs", f'[{{"id": "{q_id}"}}]').execute()
+    res = db.table("applications").select("id, screening_questions, candidate_id").filter("screening_questions", "cs", f'[{{"id": "{q_id}"}}]').execute()
     if not res.data:
-        res = db.table("applications").select("id, screening_questions").execute()
+        res = db.table("applications").select("id, screening_questions, candidate_id").execute()
         
     target_app = None
     target_question = None
@@ -2036,15 +2746,36 @@ async def ai_edit_question(q_id: str, data: Dict[str, str], db: Client = Depends
     if not target_app or not target_question:
         raise HTTPException(status_code=404, detail="Question not found")
         
-    old_question = target_question["question"]
-    new_question = f"{old_question} (AI instructions applied: {instruction})"
-    target_question["question"] = new_question
-    target_question["modified"] = True
+    auth_header = request.headers.get("Authorization", "")
+    jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
     
-    db.table("applications").update({
-        "screening_questions": target_app["screening_questions"]
-    }).eq("id", target_app["id"]).execute()
-    
+    if USE_N8N:
+        # Mark as refining in DB first
+        target_question["refining"] = True
+        db.table("applications").update({
+            "screening_questions": target_app["screening_questions"]
+        }).eq("id", target_app["id"]).execute()
+        
+        background_tasks.add_task(
+            handle_refine_question_dispatch,
+            target_app["id"],
+            q_id,
+            target_question,
+            instruction,
+            jwt_token
+        )
+    else:
+        # Instant local fallback
+        old_question = target_question["question"]
+        new_question = f"{old_question} (AI instructions applied: {instruction})"
+        target_question["question"] = new_question
+        target_question["modified"] = True
+        target_question["refining"] = False
+        
+        db.table("applications").update({
+            "screening_questions": target_app["screening_questions"]
+        }).eq("id", target_app["id"]).execute()
+        
     target_question["application_id"] = target_app["id"]
     return target_question
 
@@ -2116,6 +2847,29 @@ async def callback_job_openings(payload: JobOpeningsCallback):
         
     # Set requirement status to ready
     db.table("requirements").update({"status": "ready"}).eq("id", payload.requirement_id).execute()
+    
+    # Send notification and log activity
+    req_data = req_res.data[0]
+    recruiter_id = req_data.get("created_by")
+    req_title = req_data.get("title", "Unknown Requirement")
+    
+    create_system_notification(
+        db,
+        recruiter_id,
+        "Job Generation Completed",
+        f"Successfully generated {len(payload.job_openings)} job openings for mandate '{req_title}'.",
+        "job_generation",
+        {"requirement_id": payload.requirement_id, "requirement_title": req_title, "job_openings_count": len(payload.job_openings)}
+    )
+    log_activity_event(
+        db,
+        action="job_generation_completed",
+        entity_type="requirements",
+        entity_id=payload.requirement_id,
+        actor_name="System",
+        actor_id=recruiter_id,
+        metadata={"req_title": req_title, "job_openings_count": len(payload.job_openings)}
+    )
     return {"status": "success"}
 
 @app.post("/api/v1/callbacks/job-skills", dependencies=[Depends(verify_callback_secret)])
@@ -2141,6 +2895,83 @@ async def callback_job_skills(payload: JobSkillsCallback):
         
     # Set job processing_status to ready
     db.table("job_openings").update({"processing_status": "ready"}).eq("id", payload.job_opening_id).execute()
+    
+    # Resolve recruiter_id and send notification/log
+    recruiter_id = None
+    job_title = "Unknown Job"
+    try:
+        job_res = db.table("job_openings").select("title, requirement_id").eq("id", payload.job_opening_id).execute()
+        if job_res.data:
+            job_title = job_res.data[0].get("title", "")
+            req_res = db.table("requirements").select("created_by").eq("id", job_res.data[0].get("requirement_id")).execute()
+            if req_res.data:
+                recruiter_id = req_res.data[0].get("created_by")
+    except Exception as e:
+        logger.error(f"Failed to resolve recruiter_id in callback_job_skills: {e}")
+        
+    if recruiter_id:
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Skills Extraction Completed",
+            f"Mandate skills successfully extracted for job '{job_title}'. Core requirement weights are ready for review.",
+            "job_generation",
+            {"job_opening_id": payload.job_opening_id, "job_title": job_title}
+        )
+        log_activity_event(
+            db,
+            action="skills_extracted",
+            entity_type="job_openings",
+            entity_id=payload.job_opening_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"job_title": job_title}
+        )
+        
+    return {"status": "success"}
+
+
+@app.post("/api/v1/callbacks/job-openings/regenerate", dependencies=[Depends(verify_callback_secret)])
+async def callback_regenerate_job(payload: JobRegenerateCallback):
+    logger.info(f"Received job openings callback for requirement {payload.job_opening_id}")
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    job_res = db.table("job_openings").select("*").eq("id", payload.job_opening_id).execute()
+    if not job_res.data:
+        raise HTTPException(status_code=404, detail="Job opening not found")
+        
+    db.table("job_openings").update({
+        "title": payload.title,
+        "description": payload.overview,
+        "responsibilities": payload.responsibilities,
+        "qualifications": payload.qualifications,
+        "salary_range": payload.budget,
+        "keywords": payload.keywords,
+        "processing_status": "ready"
+    }).eq("id", payload.job_opening_id).execute()
+    
+    job_data = job_res.data[0]
+    req_res = db.table("requirements").select("created_by").eq("id", job_data.get("requirement_id")).execute()
+    recruiter_id = req_res.data[0].get("created_by") if req_res.data else None
+    
+    if recruiter_id:
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Job Regenerated Successfully",
+            f"Job opening '{payload.title}' has been successfully regenerated by n8n workflow.",
+            "job_generation",
+            {"job_opening_id": payload.job_opening_id, "job_title": payload.title}
+        )
+        log_activity_event(
+            db,
+            action="job_regenerated",
+            entity_type="job_openings",
+            entity_id=payload.job_opening_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"job_title": payload.title}
+        )
     return {"status": "success"}
 
 @app.post("/api/v1/callbacks/candidate-matches", dependencies=[Depends(verify_callback_secret)])
@@ -2199,6 +3030,39 @@ async def callback_candidate_matches(payload: CandidateMatchesCallback):
         
     # Set job status/processing_status
     db.table("job_openings").update({"processing_status": "ready"}).eq("id", payload.job_opening_id).execute()
+    
+    # Send notification and log activity
+    recruiter_id = None
+    job_title = "Unknown Job"
+    try:
+        job_res = db.table("job_openings").select("title, requirement_id").eq("id", payload.job_opening_id).execute()
+        if job_res.data:
+            job_title = job_res.data[0].get("title", "")
+            req_id = job_res.data[0].get("requirement_id")
+            req_res = db.table("requirements").select("created_by").eq("id", req_id).execute()
+            if req_res.data:
+                recruiter_id = req_res.data[0].get("created_by")
+    except Exception as e:
+        logger.error(f"Failed to resolve recruiter_id/job_title in callback_candidate_matches: {e}")
+        
+    if recruiter_id:
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Candidate Matching Completed",
+            f"Candidate matching completed for job '{job_title}'. Found {len(payload.matches)} matches.",
+            "candidate_matching",
+            {"job_opening_id": payload.job_opening_id, "job_title": job_title, "matches_count": len(payload.matches)}
+        )
+        log_activity_event(
+            db,
+            action="candidate_matching_completed",
+            entity_type="job_openings",
+            entity_id=payload.job_opening_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"job_title": job_title, "matches_count": len(payload.matches)}
+        )
     return {"status": "success"}
 
 @app.post("/api/v1/callbacks/screening-questions", dependencies=[Depends(verify_callback_secret)])
@@ -2207,9 +3071,28 @@ async def callback_screening_questions(payload: ScreeningQuestionsCallback):
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
     
     # Verify application exists
-    app_res = db.table("applications").select("id").eq("id", payload.application_id).execute()
+    app_res = db.table("applications").select("id, job_opening_id, candidate_id").eq("id", payload.application_id).execute()
     if not app_res.data:
         raise HTTPException(status_code=404, detail="Application not found")
+        
+    app_data = app_res.data[0]
+    recruiter_id = None
+    job_title = "Unknown Job"
+    candidate_name = "Unknown Candidate"
+    
+    try:
+        cand_res = db.table("candidates").select("full_name").eq("id", app_data["candidate_id"]).execute()
+        if cand_res.data:
+            candidate_name = cand_res.data[0].get("full_name") or "Unknown Candidate"
+            
+        job_res = db.table("job_openings").select("title, requirement_id").eq("id", app_data["job_opening_id"]).execute()
+        if job_res.data:
+            job_title = job_res.data[0].get("title", "")
+            req_res = db.table("requirements").select("created_by").eq("id", job_res.data[0].get("requirement_id")).execute()
+            if req_res.data:
+                recruiter_id = req_res.data[0].get("created_by")
+    except Exception as e:
+        logger.error(f"Failed to resolve details in callback_screening_questions: {e}")
         
     import uuid
     questions_list = []
@@ -2227,6 +3110,88 @@ async def callback_screening_questions(payload: ScreeningQuestionsCallback):
     db.table("applications").update({
         "screening_questions": questions_list
     }).eq("id", payload.application_id).execute()
+    
+    if recruiter_id:
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Screening Questions Generated",
+            f"Screening questions generated for candidate '{candidate_name}' applying for '{job_title}'.",
+            "screening_questions",
+            {"application_id": payload.application_id, "candidate_name": candidate_name, "job_title": job_title}
+        )
+        log_activity_event(
+            db,
+            action="screening_questions_generated",
+            entity_type="applications",
+            entity_id=payload.application_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"candidate_name": candidate_name, "job_title": job_title}
+        )
+    return {"status": "success"}
+
+@app.post("/api/v1/callbacks/questions/refine", dependencies=[Depends(verify_callback_secret)])
+async def callback_refine_question(payload: QuestionRefineCallback):
+    logger.info(f"Received question refinement callback for application {payload.application_id}, question {payload.question_id}")
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # Fetch application and screening_questions
+    app_res = db.table("applications").select("id, screening_questions, candidate_id, reviewed_by").eq("id", payload.application_id).execute()
+    if not app_res.data:
+        raise HTTPException(status_code=404, detail="Application not found")
+        
+    app_record = app_res.data[0]
+    questions = app_record.get("screening_questions") or []
+    
+    found = False
+    for q in questions:
+        if q.get("id") == payload.question_id:
+            q["question"] = payload.refined_question
+            if payload.difficulty:
+                q["difficulty"] = payload.difficulty
+            if payload.reason:
+                q["reason"] = payload.reason
+            q["modified"] = True
+            q["refining"] = False
+            found = True
+            break
+            
+    if not found:
+        raise HTTPException(status_code=404, detail="Question not found in application")
+        
+    db.table("applications").update({
+        "screening_questions": questions
+    }).eq("id", payload.application_id).execute()
+    
+    # Resolve candidate details for activity log and notification
+    cand_name = "Candidate"
+    recruiter_id = app_record.get("reviewed_by")
+    try:
+        cand_res = db.table("candidates").select("full_name").eq("id", app_record["candidate_id"]).execute()
+        if cand_res.data:
+            cand_name = cand_res.data[0].get("full_name") or "Candidate"
+    except Exception as e:
+        logger.error(f"Failed to fetch candidate details in callback_refine_question: {e}")
+        
+    if recruiter_id:
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Question Refined Successfully",
+            f"Screening question for candidate '{cand_name}' has been successfully refined by AI.",
+            "job_generation",
+            {"application_id": payload.application_id, "question_id": payload.question_id}
+        )
+        log_activity_event(
+            db,
+            action="screening_question_refined",
+            entity_type="applications",
+            entity_id=payload.application_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"candidate_name": cand_name, "question_id": payload.question_id}
+        )
         
     return {"status": "success"}
 

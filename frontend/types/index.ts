@@ -40,6 +40,7 @@ export interface Requirement {
   status: RequirementStatus;
   created_by: string | null;
   created_at: string;
+  is_deleted?: boolean;
   // Included items
   client_name?: string;
   job_openings?: JobOpening[];
@@ -73,6 +74,7 @@ export interface JobOpening {
   created_by: string | null;
   created_at: string;
   published_at: string | null;
+  is_deleted?: boolean;
   // Joined stats
   client_name?: string;
   requirement_title?: string;
@@ -187,6 +189,7 @@ export interface ScreeningQuestion {
   reason?: string;
   reasoning?: string;
   modified: boolean;
+  refining?: boolean;
   modified_by: string | null;
   modified_at: string | null;
   created_at: string;
@@ -220,4 +223,15 @@ export interface ActivityLog {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+export interface Notification {
+  id: string;
+  recruiter_id: string;
+  title: string;
+  message: string;
+  type: 'job_generation' | 'candidate_matching' | 'upload' | 'error' | 'screening_questions';
+  is_read: boolean;
+  metadata: Record<string, any>;
+  created_at: string;
 }

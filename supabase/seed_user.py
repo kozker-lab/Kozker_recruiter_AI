@@ -1,9 +1,20 @@
 import sys
 import os
 from supabase import create_client
+from dotenv import load_dotenv
 
-SUPABASE_URL = "https://covhcpsyliesrgkjxhai.supabase.co"
-SUPABASE_KEY = "sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b"
+# Try loading from the backend's env if it exists
+dotenv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "backend", ".env")
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path)
+else:
+    load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY in environment or .env file")
 
 # Initialize Client
 client = create_client(SUPABASE_URL, "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy.key")

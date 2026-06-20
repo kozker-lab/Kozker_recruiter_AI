@@ -9,8 +9,11 @@ import ChatbotPanel from "@/components/ChatbotPanel";
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
   Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
-  X, AlertCircle, Layers, Bell
+  X, AlertCircle, Layers, Bell, Clock, Check, Trash2
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/api";
+import type { Notification } from "@/types";
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const user = useCurrentUser();
@@ -38,6 +41,150 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [tourStep, setTourStep] = useState(0);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
+
+  // Notifications States & Queries
+  interface Toast {
+    id: string;
+    title: string;
+    message: string;
+    type: string;
+    metadata?: any;
+  }
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [notifiedIds, setNotifiedIds] = useState<Set<string>>(new Set());
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { data: notifications = [] } = useQuery<Notification[]>({
+    queryKey: ["notifications"],
+    queryFn: () => apiRequest<Notification[]>("GET", "/notifications"),
+    refetchInterval: 4000, // Poll every 4 seconds for snappy real-time feedback
+    enabled: !!user, // Only run if user is logged in
+  });
+
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/notifications/${id}/read`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/notifications/read-all"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  });
+
+  const deleteNotifMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/notifications/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  });
+
+  // Request browser desktop notification permissions on mount
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
+
+  // Sync notifiedIds and trigger real-time toasts / browser notifications
+  React.useEffect(() => {
+    if (notifications.length === 0) return;
+
+    // First load: initialize the seen Set with existing notifications
+    if (notifiedIds.size === 0) {
+      const ids = new Set(notifications.map(n => n.id));
+      setNotifiedIds(ids);
+      return;
+    }
+
+    // Subsequent loads: find new unread notifications that we haven't seen yet
+    const newNotifications = notifications.filter(
+      n => !n.is_read && !notifiedIds.has(n.id)
+    );
+
+    if (newNotifications.length > 0) {
+      const updatedIds = new Set(notifiedIds);
+
+      newNotifications.forEach(n => {
+        updatedIds.add(n.id);
+
+        // Slide in custom in-app glassmorphic toast alert
+        const toastId = `toast-${Date.now()}-${Math.random()}`;
+        setToasts(prev => [
+          ...prev,
+          { id: toastId, title: n.title, message: n.message, type: n.type, metadata: n.metadata }
+        ]);
+
+        // Auto-dismiss the toast after 5 seconds
+        setTimeout(() => {
+          setToasts(prev => prev.filter(t => t.id !== toastId));
+        }, 5000);
+
+        // Native Desktop notification if tab is in background / hidden
+        if (typeof window !== "undefined" && "Notification" in window) {
+          if (Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
+            new Notification(n.title, {
+              body: n.message,
+              icon: "/favicon.ico"
+            });
+          }
+        }
+      });
+
+      setNotifiedIds(updatedIds);
+    }
+  }, [notifications, notifiedIds]);
+
+  const handleNotificationClick = (notif: Notification) => {
+    if (!notif.is_read) {
+      markReadMutation.mutate(notif.id);
+    }
+    setIsNotificationsOpen(false);
+    navigateNotificationRoute(notif.type, notif.metadata);
+  };
+
+  const handleToastClick = (toast: Toast) => {
+    // Dismiss toast on click
+    setToasts(prev => prev.filter(t => t.id !== toast.id));
+    navigateNotificationRoute(toast.type, toast.metadata);
+  };
+
+  const navigateNotificationRoute = (type: string, metadata?: any) => {
+    const meta = metadata || {};
+    if (type === "job_generation") {
+      if (meta.job_opening_id) {
+        router.push(`/jobs?id=${meta.job_opening_id}`);
+      } else if (meta.requirement_id) {
+        router.push(`/clients?id=${meta.requirement_id}`);
+      } else {
+        router.push("/jobs");
+      }
+    } else if (type === "candidate_matching") {
+      if (meta.job_opening_id) {
+        router.push(`/jobs?id=${meta.job_opening_id}`);
+      } else {
+        router.push("/jobs");
+      }
+    } else if (type === "screening_questions") {
+      if (meta.application_id && meta.job_opening_id) {
+        router.push(`/jobs?id=${meta.job_opening_id}&appId=${meta.application_id}`);
+      } else if (meta.job_opening_id) {
+        router.push(`/jobs?id=${meta.job_opening_id}`);
+      } else {
+        router.push("/jobs");
+      }
+    } else if (type === "upload") {
+      router.push("/pool");
+    } else {
+      router.push("/dashboard");
+    }
+  };
 
   const tourSteps = [
     {
@@ -498,15 +645,128 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              id="header-notifications-toggle"
-              className="p-2 border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors text-neutral-550 bg-neutral-white relative"
-              title="System Notifications"
-              onClick={() => alert("System Status: All pipeline agents are active. No unread notifications.")}
-            >
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-success rounded-full"></span>
-            </button>
+            <div className="relative">
+              <button
+                id="header-notifications-toggle"
+                className="p-2 border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors text-neutral-550 bg-neutral-white relative flex items-center justify-center"
+                title="System Notifications"
+                aria-haspopup="true"
+                aria-expanded={isNotificationsOpen}
+                aria-label={`System Notifications - ${notifications.filter(n => !n.is_read).length} unread`}
+                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setIsNotificationsOpen(false);
+                  }
+                }}
+              >
+                <Bell className="w-4 h-4" />
+                {notifications.some(n => !n.is_read) && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white font-bold text-[8px] rounded-full w-4 h-4 flex items-center justify-center border border-white animate-pulse">
+                    {notifications.filter(n => !n.is_read).length}
+                  </span>
+                )}
+              </button>
+              
+              {isNotificationsOpen && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-30 cursor-default" 
+                    onClick={() => setIsNotificationsOpen(false)}
+                  />
+                  <div 
+                    className="absolute right-0 mt-2 w-80 bg-white border border-neutral-200 rounded-sm shadow-lg z-40 animate-fade-in text-neutral-700 max-h-96 flex flex-col"
+                    role="dialog"
+                    aria-label="Notifications Panel"
+                  >
+                    <div className="p-3 border-b border-neutral-250 flex justify-between items-center bg-neutral-50 shrink-0">
+                      <span className="font-tight font-extrabold text-[10px] uppercase tracking-wider text-neutral-800">Alerts & Notifications</span>
+                      {notifications.some(n => !n.is_read) && (
+                        <button
+                          onClick={() => markAllReadMutation.mutate()}
+                          className="text-[9px] text-primary hover:underline font-mono font-bold uppercase tracking-wider cursor-pointer"
+                        >
+                          Mark all as read
+                        </button>
+                      )}
+                    </div>
+                    <div className="overflow-y-auto divide-y divide-neutral-150 scrollbar-thin flex-1 max-h-80">
+                      {notifications.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-neutral-400">No alerts or notifications.</div>
+                      ) : (
+                        notifications.map((notif) => {
+                          let Icon = Bell;
+                          let iconColor = "text-neutral-400 bg-neutral-50 border-neutral-250";
+                          if (notif.type === "job_generation") {
+                            Icon = Briefcase;
+                            iconColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
+                          } else if (notif.type === "candidate_matching") {
+                            Icon = Sparkles;
+                            iconColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
+                          } else if (notif.type === "upload") {
+                            Icon = Upload;
+                            iconColor = "text-blue-600 bg-blue-50 border-blue-100";
+                          } else if (notif.type === "error") {
+                            Icon = AlertCircle;
+                            iconColor = "text-rose-600 bg-rose-50 border-rose-100";
+                          } else if (notif.type === "screening_questions") {
+                            Icon = Layers;
+                            iconColor = "text-amber-600 bg-amber-50 border-amber-100";
+                          }
+
+                          return (
+                            <div 
+                              key={notif.id} 
+                              onClick={() => handleNotificationClick(notif)}
+                              className={`p-3 text-xs flex gap-3 transition-colors hover:bg-neutral-50 relative cursor-pointer ${notif.is_read ? '' : 'bg-primary/[0.02]'}`}
+                            >
+                              <div className={`w-7 h-7 rounded-sm border flex items-center justify-center shrink-0 ${iconColor}`}>
+                                <Icon className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="space-y-0.5 flex-1 pr-8">
+                                <div className="flex justify-between items-baseline gap-1.5">
+                                  <span className={`font-bold text-[11px] leading-tight ${!notif.is_read ? 'text-neutral-900' : 'text-neutral-600'}`}>{notif.title}</span>
+                                  <span className="text-[8px] text-neutral-400 font-mono shrink-0">
+                                    {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <p className="text-neutral-500 text-[10px] leading-snug">{notif.message}</p>
+                              </div>
+                              <div className="absolute right-2 top-2 flex items-center gap-1">
+                                {!notif.is_read && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      markReadMutation.mutate(notif.id);
+                                    }}
+                                    className="p-0.5 text-neutral-450 hover:text-success cursor-pointer transition-colors"
+                                    title="Mark as read"
+                                    aria-label="Mark notification as read"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteNotifMutation.mutate(notif.id);
+                                  }}
+                                  className="p-0.5 text-neutral-450 hover:text-red-500 cursor-pointer transition-colors"
+                                  title="Delete notification"
+                                  aria-label="Delete notification"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             <button
               id="header-chatbot-toggle"
               onClick={() => setIsChatOpen(!isChatOpen)}
@@ -725,6 +985,59 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           </div>
         );
       })()}
+
+      {/* Toast Notifications Container Overlay */}
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none select-none">
+        {toasts.map((toast) => {
+          let ToastIcon = Bell;
+          let iconColor = "text-neutral-500 bg-neutral-100 border-neutral-200";
+          if (toast.type === "job_generation") {
+            ToastIcon = Briefcase;
+            iconColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
+          } else if (toast.type === "candidate_matching") {
+            ToastIcon = Sparkles;
+            iconColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
+          } else if (toast.type === "upload") {
+            ToastIcon = Upload;
+            iconColor = "text-blue-600 bg-blue-50 border-blue-100";
+          } else if (toast.type === "error") {
+            ToastIcon = AlertCircle;
+            iconColor = "text-rose-600 bg-rose-50 border-rose-100";
+          } else if (toast.type === "screening_questions") {
+            ToastIcon = Layers;
+            iconColor = "text-amber-600 bg-amber-50 border-amber-100";
+          }
+
+          return (
+            <div
+              key={toast.id}
+              onClick={() => handleToastClick(toast)}
+              className="pointer-events-auto cursor-pointer bg-white/90 backdrop-blur-md border border-neutral-200 shadow-md rounded-sm p-3.5 flex gap-3 text-xs text-neutral-800 transition-all duration-300 hover:bg-neutral-50 hover:shadow-lg animate-slide-in relative font-sans group"
+            >
+              <div className={`w-8 h-8 rounded-sm border flex items-center justify-center shrink-0 ${iconColor}`}>
+                <ToastIcon className="w-4 h-4" />
+              </div>
+              <div className="flex-1 space-y-0.5 pr-4">
+                <p className="font-bold text-[11px] leading-tight text-neutral-900 group-hover:text-primary transition-colors flex items-center gap-1.5">
+                  {toast.title}
+                </p>
+                <p className="text-neutral-500 text-[10px] leading-snug">{toast.message}</p>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setToasts(prev => prev.filter(t => t.id !== toast.id));
+                }}
+                className="absolute right-2 top-2 text-neutral-450 hover:text-neutral-700 cursor-pointer p-0.5 rounded-xs hover:bg-neutral-100 transition-colors"
+                title="Dismiss alert"
+                aria-label="Dismiss alert"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

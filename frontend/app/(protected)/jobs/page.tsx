@@ -8,8 +8,17 @@ import { useSearchParams } from "next/navigation";
 export default function JobsPage() {
   const searchParams = useSearchParams();
   const initialJobId = searchParams.get("id");
+  const initialAppId = searchParams.get("appId");
   
-  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(initialAppId || null);
+
+  React.useEffect(() => {
+    if (initialAppId) {
+      setSelectedAppId(initialAppId);
+    } else {
+      setSelectedAppId(null);
+    }
+  }, [initialAppId]);
 
   const handleNavigateToReview = (appId: string) => {
     setSelectedAppId(appId);

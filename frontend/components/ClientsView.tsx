@@ -206,6 +206,26 @@ export default function ClientsView() {
     }
   });
 
+  const deleteReqMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/requirements/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["requirements"] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["activity_log"] });
+      alert("Hiring mandate requirement and associated job openings deleted successfully.");
+    },
+    onError: (err: any) => {
+      alert(err.message || "Failed to delete requirement.");
+    }
+  });
+
+  const handleDeleteRequirement = (id: string) => {
+    const confirmed = window.confirm("Are you sure you want to delete this hiring mandate? This will also soft-delete all generated job openings.");
+    if (confirmed) {
+      deleteReqMutation.mutate(id);
+    }
+  };
+
   const resetRequirementForm = () => {
     setReqTitle("");
     setReqDesc("");
@@ -491,6 +511,15 @@ export default function ClientsView() {
                       title="Edit Requirement"
                     >
                       <Edit className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Delete button */}
+                    <button
+                      onClick={() => handleDeleteRequirement(r.id)}
+                      className="p-1 hover:bg-red-50 text-neutral-400 hover:text-red-650 rounded-sm border border-neutral-200 hover:border-red-200 transition-colors cursor-pointer"
+                      title="Delete Requirement"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-neutral-450 hover:text-red-500" />
                     </button>
 
                     {/* Chevron Toggle Button */}

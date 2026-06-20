@@ -573,37 +573,90 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
             ) : (
               <div className="p-4 space-y-4">
                 <div className="relative border-l border-neutral-200 ml-2.5 pl-5 space-y-5 text-xs">
-                  {logs.slice(0, 8).map((log) => (
-                    <div key={log.id} className="relative group">
-                      {/* Timeline dot */}
-                      <span className="absolute -left-7.5 top-0.5 w-3.5 h-3.5 bg-neutral-white border-2 border-neutral-300 rounded-full group-hover:border-primary transition-colors flex items-center justify-center">
-                        <span className="w-1 h-1 bg-neutral-400 group-hover:bg-primary rounded-full"></span>
-                      </span>
-                      
-                      {/* Event Details */}
-                      <div className="space-y-0.5">
-                        <div className="flex items-center justify-between text-neutral-400 font-mono text-[9px]">
-                          <span className="font-semibold text-neutral-600">{log.actor_name || "System"}</span>
-                          <span className="flex items-center gap-0.5">
-                            <Clock className="w-2.5 h-2.5" />
-                            {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                  {logs.slice(0, 8).map((log) => {
+                    // Resolve icons and colors based on action type
+                    let dotColor = "border-neutral-300 bg-neutral-100";
+                    let innerDot = "bg-neutral-400 group-hover:bg-primary";
+                    
+                    if (log.action === "client_created" || log.action === "client_updated") {
+                      dotColor = "border-blue-300 bg-blue-50";
+                      innerDot = "bg-blue-500";
+                    } else if (log.action === "requirement_created" || log.action === "requirement_updated") {
+                      dotColor = "border-violet-300 bg-violet-50";
+                      innerDot = "bg-violet-500";
+                    } else if (log.action === "job_confirmed") {
+                      dotColor = "border-indigo-300 bg-indigo-50";
+                      innerDot = "bg-indigo-500";
+                    } else if (log.action === "job_published" || log.action === "skills_approved") {
+                      dotColor = "border-primary/30 bg-primary/5";
+                      innerDot = "bg-primary";
+                    } else if (log.action.includes("imported") || log.action.includes("downloaded") || log.action.includes("success")) {
+                      dotColor = "border-emerald-300 bg-emerald-50";
+                      innerDot = "bg-emerald-500";
+                    } else if (log.action.includes("failed") || log.action.includes("error")) {
+                      dotColor = "border-rose-300 bg-rose-50";
+                      innerDot = "bg-rose-500";
+                    } else if (log.action === "application_accepted") {
+                      dotColor = "border-teal-300 bg-teal-50";
+                      innerDot = "bg-teal-500";
+                    } else if (log.action === "application_rejected") {
+                      dotColor = "border-red-300 bg-red-50";
+                      innerDot = "bg-red-500";
+                    } else if (log.action === "stage_updated") {
+                      dotColor = "border-amber-300 bg-amber-50";
+                      innerDot = "bg-amber-500";
+                    } else if (log.action === "screening_questions_generated" || log.action === "screening_question_added" || log.action === "screening_question_updated") {
+                      dotColor = "border-sky-300 bg-sky-50";
+                      innerDot = "bg-sky-500";
+                    }
+
+                    return (
+                      <div key={log.id} className="relative group">
+                        {/* Timeline dot */}
+                        <span className={`absolute -left-7.5 top-0.5 w-3.5 h-3.5 rounded-full border transition-colors flex items-center justify-center ${dotColor}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${innerDot}`}></span>
+                        </span>
+                        
+                        {/* Event Details */}
+                        <div className="space-y-0.5">
+                          <div className="flex items-center justify-between text-neutral-400 font-mono text-[9px]">
+                            <span className="font-semibold text-neutral-600">{log.actor_name || "System"}</span>
+                            <span className="flex items-center gap-0.5">
+                              <Clock className="w-2.5 h-2.5" />
+                              {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-neutral-700">
+                            <span className="font-bold text-neutral-800 uppercase tracking-wider text-[8px] mr-1">
+                              {log.action?.replace("_", " ")}:
+                            </span>{" "}
+                            {log.metadata?.job_title || log.metadata?.candidate_name || log.metadata?.req_title || log.metadata?.client_name || ""}
+                          </p>
+                          {log.metadata?.inserted !== undefined && (
+                            <p className="text-[10px] text-emerald-600 font-mono">
+                              Imported {log.metadata.inserted} new profiles, updated {log.metadata.skipped}
+                            </p>
+                          )}
+                          {log.metadata?.skills_count !== undefined && (
+                            <p className="text-[10px] text-primary font-mono">
+                              Approved {log.metadata.skills_count} core job requirements
+                            </p>
+                          )}
+                          {log.metadata?.matches_count !== undefined && (
+                            <p className="text-[10px] text-emerald-600 font-mono">
+                              Identified {log.metadata.matches_count} matching candidates
+                            </p>
+                          )}
+                          {log.metadata?.count && (
+                            <p className="text-[10px] text-success font-mono">Matched {log.metadata.count} candidates in index</p>
+                          )}
+                          {log.metadata?.fuzzy_score && (
+                            <p className="text-[10px] text-primary font-mono">Fuzzy Index score: {log.metadata.fuzzy_score}%</p>
+                          )}
                         </div>
-                        <p className="text-neutral-700">
-                          <span className="font-medium text-neutral-850 lowercase italic">
-                            {log.action?.replace("_", " ")}:
-                          </span>{" "}
-                          {log.metadata?.job_title || log.metadata?.candidate_name || log.metadata?.req_title || log.metadata?.client_name || ""}
-                        </p>
-                        {log.metadata?.count && (
-                          <p className="text-[10px] text-success font-mono">Matched {log.metadata.count} candidates in index</p>
-                        )}
-                        {log.metadata?.fuzzy_score && (
-                          <p className="text-[10px] text-primary font-mono">Fuzzy Index score: {log.metadata.fuzzy_score}%</p>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

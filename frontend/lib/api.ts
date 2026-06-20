@@ -1,7 +1,7 @@
 import { 
   User, Client, Requirement, JobOpening, JobOpeningSkill, 
   Candidate, Application, ScreeningQuestion, InterviewStage, 
-  ActivityLog, ChatMessage, JobCandidate
+  ActivityLog, ChatMessage, JobCandidate, Notification
 } from "../types";
 import { createClient } from "./supabase/client";
 
@@ -11,6 +11,18 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost
 // Persistent memory-store for mock fallback
 // Serves as a local stateful database to make the UI completely interactive
 class MockDatabase {
+  notifications: Notification[] = [
+    {
+      id: "not-1",
+      recruiter_id: "usr-1",
+      title: "System Live",
+      message: "Welcome to Kozker Recruiter Operations Command Center! Dynamic pipeline monitoring and candidate matching agent is active.",
+      type: "upload",
+      is_read: false,
+      metadata: {},
+      created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+    }
+  ];
   users: User[] = [
     {
       id: "usr-1",
@@ -879,7 +891,7 @@ async function handleMockRequest<T>(
         // REQUIREMENTS
         if (path === "/requirements") {
           if (method === "GET") {
-            const list = mockDb.requirements.filter(r => r.created_by === currentUserId);
+            const list = mockDb.requirements.filter(r => r.created_by === currentUserId && !r.is_deleted);
             return resolve(list as unknown as T);
           }
           if (method === "POST") {
@@ -942,9 +954,20 @@ async function handleMockRequest<T>(
                 const liveJob = mockDb.jobOpenings.find(j => j.id === draftJob.id);
                 if (liveJob) {
                   liveJob.processing_status = "ready";
+                  // Add unread notification
+                  mockDb.notifications.unshift({
+                    id: `not-${Date.now()}-${i}`,
+                    recruiter_id: currentUserId,
+                    title: "Job Generation Completed",
+                    message: `Successfully generated job opening option ${i} for mandate '${newReq.title}'.`,
+                    type: "job_generation",
+                    is_read: false,
+                    metadata: { requirement_id: newReq.id, job_opening_id: liveJob.id },
+                    created_at: new Date().toISOString()
+                  });
                   // Log to activity log
                   mockDb.activityLogs.unshift({
-                    id: `act-${Date.now()}`,
+                    id: `act-${Date.now()}-${i}`,
                     actor_id: currentUserId,
                     actor_name: currentUserFullName,
                     action: "job_draft_ready",
@@ -994,11 +1017,85 @@ async function handleMockRequest<T>(
           const index = mockDb.requirements.findIndex(r => r.id === id && r.created_by === currentUserId);
           if (index === -1) return reject(new Error("Not found"));
           
+          const oldStatus = mockDb.requirements[index].status;
+          const newStatus = data.status;
           mockDb.requirements[index] = {
             ...mockDb.requirements[index],
             ...data,
             updated_at: new Date().toISOString()
           };
+          
+          // Trigger job generation in mock mode if status is approved/generating
+          if ((newStatus === "generating" || newStatus === "ready") && oldStatus === "draft") {
+            const existingJobs = mockDb.jobOpenings.filter(j => j.requirement_id === id);
+            if (existingJobs.length === 0) {
+              const req = mockDb.requirements[index];
+              req.status = "generating";
+              
+              for (let i = 1; i <= (req.num_posts_requested || 1); i++) {
+                const draftJob: JobOpening = {
+                  id: `job-${Date.now()}-${i}`,
+                  requirement_id: req.id,
+                  client_id: req.client_id,
+                  client_name: req.client_name,
+                  requirement_title: req.title,
+                  post_index: i,
+                  title: `${req.title} - Option ${i}`,
+                  description: `AI-Generated draft option ${i} based on: ${req.description}`,
+                  responsibilities: [
+                    "Own key workflow modules and align layout structures.",
+                    "Collaborate with internal design squads to build performant widgets.",
+                    "Deliver clean, high-performance TypeScript components."
+                  ],
+                  qualifications: [
+                    "Relevant developer background in this engineering discipline.",
+                    "Competence with our core skill keywords."
+                  ],
+                  salary_range: `₹${(req.budget_min || 10)} - ${(req.budget_max || 20)} LPA`,
+                  keywords: req.skills,
+                  source: "ai",
+                  status: "draft",
+                  processing_status: "generating",
+                  error_message: null,
+                  created_by: currentUserId,
+                  created_at: new Date().toISOString(),
+                  published_at: null
+                };
+                
+                mockDb.jobOpenings.push(draftJob);
+                
+                setTimeout(() => {
+                  const liveJob = mockDb.jobOpenings.find(j => j.id === draftJob.id);
+                  if (liveJob) {
+                    liveJob.processing_status = "ready";
+                    req.status = "ready";
+                    
+                    mockDb.notifications.unshift({
+                      id: `not-${Date.now()}-${i}`,
+                      recruiter_id: currentUserId,
+                      title: "Job Generation Completed",
+                      message: `Successfully generated job opening option ${i} for mandate '${req.title}'.`,
+                      type: "job_generation",
+                      is_read: false,
+                      metadata: { requirement_id: req.id, job_opening_id: liveJob.id },
+                      created_at: new Date().toISOString()
+                    });
+                    
+                    mockDb.activityLogs.unshift({
+                      id: `act-${Date.now()}-${i}`,
+                      actor_id: currentUserId,
+                      actor_name: currentUserFullName,
+                      action: "job_draft_ready",
+                      entity_type: "job_openings",
+                      entity_id: liveJob.id,
+                      metadata: { job_title: liveJob.title },
+                      created_at: new Date().toISOString()
+                    });
+                  }
+                }, 4000);
+              }
+            }
+          }
           
           // log activity
           mockDb.activityLogs.unshift({
@@ -1014,13 +1111,41 @@ async function handleMockRequest<T>(
           
           return resolve(mockDb.requirements[index] as unknown as T);
         }
+        if (path.startsWith("/requirements/") && method === "DELETE") {
+          const id = path.split("/")[2];
+          const index = mockDb.requirements.findIndex(r => r.id === id && r.created_by === currentUserId);
+          if (index === -1) return reject(new Error("Not found"));
+          
+          mockDb.requirements[index].is_deleted = true;
+          
+          // Cascading delete job openings
+          mockDb.jobOpenings.forEach(j => {
+            if (j.requirement_id === id) {
+              j.is_deleted = true;
+            }
+          });
+          
+          // log activity
+          mockDb.activityLogs.unshift({
+            id: `act-${Date.now()}`,
+            actor_id: currentUserId,
+            actor_name: currentUserFullName,
+            action: "requirement_deleted",
+            entity_type: "requirements",
+            entity_id: id,
+            metadata: { req_title: mockDb.requirements[index].title },
+            created_at: new Date().toISOString()
+          });
+          
+          return resolve({ success: true } as unknown as T);
+        }
 
         // JOBS
         if (path === "/jobs") {
           if (method === "GET") {
             // Attach computed fields, filtering by user requirements/created jobs
             const list = mockDb.jobOpenings
-              .filter(j => j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId))
+              .filter(j => !j.is_deleted && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId && !r.is_deleted)))
               .map(j => {
                 const appList = mockDb.applications.filter(a => a.job_opening_id === j.id);
                 const top = appList.reduce((max, a) => (a.fuzzy_score || 0) > max ? (a.fuzzy_score || 0) : max, 0);
@@ -1253,6 +1378,26 @@ async function handleMockRequest<T>(
             ...data
           };
           return resolve(mockDb.jobOpenings[jobIndex] as unknown as T);
+        }
+        if (path.startsWith("/jobs/") && method === "DELETE") {
+          const id = path.split("/")[2];
+          const index = mockDb.jobOpenings.findIndex(j => j.id === id);
+          if (index !== -1) {
+            mockDb.jobOpenings[index].is_deleted = true;
+            // log activity
+            mockDb.activityLogs.unshift({
+              id: `act-${Date.now()}`,
+              actor_id: currentUserId,
+              actor_name: currentUserFullName,
+              action: "job_deleted",
+              entity_type: "job_openings",
+              entity_id: id,
+              metadata: { job_title: mockDb.jobOpenings[index].title },
+              created_at: new Date().toISOString()
+            });
+            return resolve({ success: true } as unknown as T);
+          }
+          return reject(new Error("Job not found"));
         }
         if (path.startsWith("/jobs/") && path.endsWith("/regenerate") && method === "POST") {
           const id = path.split("/")[2];
@@ -1959,6 +2104,39 @@ async function handleMockRequest<T>(
             role: "assistant",
             content: reply
           } as unknown as T);
+        }
+
+        // NOTIFICATIONS
+        if (path === "/notifications" && method === "GET") {
+          const list = mockDb.notifications.filter(n => n.recruiter_id === currentUserId);
+          return resolve(list as unknown as T);
+        }
+
+        if (path === "/notifications/read-all" && method === "POST") {
+          mockDb.notifications.forEach(n => {
+            if (n.recruiter_id === currentUserId) {
+              n.is_read = true;
+            }
+          });
+          return resolve({ success: true } as unknown as T);
+        }
+
+        if (path.startsWith("/notifications/") && path.endsWith("/read") && method === "POST") {
+          const id = path.split("/")[2];
+          const notif = mockDb.notifications.find(n => n.id === id);
+          if (notif) {
+            notif.is_read = true;
+          }
+          return resolve({ success: true } as unknown as T);
+        }
+        if (path.startsWith("/notifications/") && method === "DELETE") {
+          const id = path.split("/")[2];
+          const index = mockDb.notifications.findIndex(n => n.id === id);
+          if (index !== -1) {
+            mockDb.notifications.splice(index, 1);
+            return resolve({ success: true } as unknown as T);
+          }
+          return reject(new Error("Notification not found"));
         }
 
         // ACTIVITY LOG

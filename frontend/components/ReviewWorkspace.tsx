@@ -51,8 +51,10 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
     enabled: !!applicationId,
     refetchInterval: (query) => {
       const data = query.state.data;
-      // If questions are empty, poll every 3000ms. Stop polling once they are generated.
-      return !data || data.length === 0 ? 3000 : false;
+      if (!data || data.length === 0) return 3000;
+      // Poll every 3000ms if any question is currently in refining state
+      const isAnyRefining = data.some((q) => q.refining);
+      return isAnyRefining ? 3000 : false;
     }
   });
 
@@ -112,6 +114,10 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
 
   const acceptApplicationMutation = useMutation({
     mutationFn: () => apiRequest<Application>("PATCH", `/applications/${applicationId}/accept`),
+    onMutate: () => {
+      // Auto-switch to questions tab to show the generation progress
+      setActiveTab("questions");
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["application", applicationId] });
       queryClient.invalidateQueries({ queryKey: ["questions", applicationId] });
@@ -212,11 +218,16 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
             {app.screening_status === "pending" ? (
               <>
                 <button
+                  disabled={acceptApplicationMutation.isPending}
                   onClick={() => acceptApplicationMutation.mutate()}
-                  className="px-2.5 py-1 bg-success text-neutral-white hover:bg-success/95 rounded-sm text-[10px] uppercase font-semibold flex items-center gap-1 cursor-pointer"
+                  className="px-2.5 py-1 bg-success text-neutral-white hover:bg-success/95 rounded-sm text-[10px] uppercase font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-60"
                 >
-                  <ThumbsUp className="w-3.5 h-3.5" />
-                  Accept Sourcing
+                  {acceptApplicationMutation.isPending ? (
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <ThumbsUp className="w-3.5 h-3.5" />
+                  )}
+                  {acceptApplicationMutation.isPending ? "Accepting..." : "Accept Sourcing"}
                 </button>
                 <button
                   onClick={() => {
@@ -399,12 +410,32 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
                 </span>
               </div>
 
-              {questions.length === 0 ? (
+              {acceptApplicationMutation.isPending || (app.screening_status === "accepted" && questions.length === 0) ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center space-y-4 bg-neutral-50/50 rounded-sm border border-dashed border-neutral-205 p-6">
+                  <div className="relative flex items-center justify-center">
+                    <BrainCircuit className="w-10 h-10 text-primary animate-pulse" />
+                    <div className="absolute -inset-2 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-xs text-neutral-850 font-bold block">AI Agent is generating screening questions...</span>
+                    <span className="text-[10px] text-neutral-400 font-mono block">Aligning requirement skills with candidate CV profile details.</span>
+                  </div>
+                  <span className="text-[9px] px-2 py-0.5 bg-primary/10 border border-primary/20 text-primary rounded-sm font-mono uppercase tracking-wider animate-bounce">
+                    Processing matching logic...
+                  </span>
+                </div>
+              ) : questions.length === 0 ? (
                 <div className="text-center py-8 text-neutral-400">No questions generated. Accept sourcing to auto-generate prompts.</div>
               ) : (
                 <div className="space-y-3">
                   {questions.map((q) => (
-                    <div key={q.id} className="border border-neutral-200 bg-neutral-50/30 rounded-sm p-3.5 space-y-2.5 relative">
+                    <div key={q.id} className={`border border-neutral-200 bg-neutral-50/30 rounded-sm p-3.5 space-y-2.5 relative transition-all duration-300 ${q.refining ? "opacity-75 pointer-events-none select-none" : ""}`}>
+                      {q.refining && (
+                        <div className="absolute inset-0 bg-neutral-white/70 flex items-center justify-center gap-2 z-10 rounded-sm select-none">
+                          <RefreshCw className="w-4 h-4 text-primary animate-spin" />
+                          <span className="text-[10px] font-mono font-bold text-neutral-600 uppercase tracking-wider">AI Refining Question...</span>
+                        </div>
+                      )}
                       <div className="flex items-start justify-between gap-4">
                         <span className="font-mono text-[9px] px-1.5 py-0.5 bg-neutral-200 text-neutral-600 rounded-sm font-semibold uppercase">
                           {q.difficulty}
