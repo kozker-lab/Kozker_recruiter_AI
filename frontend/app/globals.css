@@ -11,7 +11,9 @@
   --color-neutral-white: #FFFFFF;
   --color-neutral-50: #FAFAF9;
   --color-neutral-100: #F4F4F3;
+  --color-neutral-150: #EBEBEA;
   --color-neutral-200: #E7E5E4;
+  --color-neutral-250: #DFDDD8;
   --color-neutral-300: #D6D3D1;
   --color-neutral-400: #A8A29E;
   --color-neutral-500: #78716C;
@@ -305,6 +307,27 @@ html[data-mode="dark"] .border-l-2.border-primary p.text-neutral-800 {
 }
 
 /* Global border smoothing overrides in dark mode (replaces harsh white lines) */
-html[data-mode="dark"] [class*="border"]:not([class*="border-primary"]):not([class*="border-success"]):not([class*="border-error"]):not([class*="border-warning"]):not([class*="border-info"]) {
-  border-color: #292524 !important; /* Stone 800 */
+html[data-mode="dark"] .border-neutral-100,
+html[data-mode="dark"] .border-neutral-100\/50,
+html[data-mode="dark"] .border-neutral-150,
+html[data-mode="dark"] .border-neutral-150\/50,
+html[data-mode="dark"] .border-neutral-200,
+html[data-mode="dark"] .border-neutral-250,
+html[data-mode="dark"] .border-neutral-300,
+html[data-mode="dark"] .border,
+html[data-mode="dark"] .border-l,
+html[data-mode="dark"] .border-r,
+html[data-mode="dark"] .border-t,
+html[data-mode="dark"] .border-b,
+html[data-mode="dark"] [class*="border"]:not(input):not(select):not(textarea):not([class*="border-primary"]):not([class*="border-success"]):not([class*="border-error"]):not([class*="border-warning"]):not([class*="border-info"]),
+html[data-mode="dark"] .divide-neutral-150 > *,
+html[data-mode="dark"] .divide-neutral-200 > * {
+  border-color: transparent !important;
+}
+
+/* Ensure inputs, selects, and textareas keep their dark border in dark mode */
+html[data-mode="dark"] input[class*="border"],
+html[data-mode="dark"] select[class*="border"],
+html[data-mode="dark"] textarea[class*="border"] {
+  border-color: #44403c !important;
 }
