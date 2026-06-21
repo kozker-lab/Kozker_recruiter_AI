@@ -17,7 +17,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className="h-full" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `
+          try {
+            const theme = localStorage.getItem('kozker_pref_theme') || 'sunset';
+            document.documentElement.setAttribute('data-theme', theme);
+          } catch (e) {}
+        ` }} />
+      </head>
       <body className="min-h-full bg-neutral-50 text-neutral-800 font-sans selection:bg-primary/20 antialiased flex flex-col">
         <QueryProvider>
           <AuthProvider>

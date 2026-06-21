@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCurrentUser, useProfile, useLogout, useUpdateProfile } from "@/lib/hooks/useAuth";
 import ChatbotPanel from "@/components/ChatbotPanel";
+import UserAvatar from "@/components/UserAvatar";
 
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
@@ -432,7 +433,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     { id: "jobs", href: "/jobs", label: "Job Catalog", icon: Briefcase },
     { id: "pool", href: "/pool", label: "Sourcing Pool", icon: Users },
     { id: "rounds", href: "/rounds", label: "Interview Rounds", icon: Layers },
-    { id: "settings", href: "/settings", label: "Settings", icon: Settings },
+    { id: "settings", href: "/profile", label: "Settings", icon: Settings },
   ];
 
   if (isLoading || !profile) {
@@ -602,15 +603,18 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
         {/* User Account footer */}
         <div className="p-4 border-t border-neutral-200 bg-neutral-50/50 space-y-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-neutral-200 border border-neutral-300 rounded-sm flex items-center justify-center">
-              <User className="w-4 h-4 text-neutral-500" />
-            </div>
+          <Link href="/profile" className="flex items-center gap-2.5 hover:bg-neutral-100 p-1.5 rounded-sm transition-all cursor-pointer group">
+            <UserAvatar 
+              avatarUrl={profile.avatar_url} 
+              fullName={profile.full_name} 
+              email={user?.email} 
+              className="w-7 h-7"
+            />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold text-neutral-800 truncate">{profile.full_name || user?.email}</p>
+              <p className="text-[11px] font-semibold text-neutral-800 truncate group-hover:text-primary transition-colors">{profile.full_name || user?.email}</p>
               <p className="text-[9px] text-neutral-400 font-mono uppercase">{profile.role || "RECRUITER"}</p>
             </div>
-          </div>
+          </Link>
           <div className="flex gap-2">
             <button
               onClick={() => setIsChatOpen(!isChatOpen)}

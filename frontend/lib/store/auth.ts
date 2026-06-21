@@ -5,6 +5,7 @@ export interface Profile {
   id: string;
   email: string;
   full_name: string | null;
+  avatar_url?: string | null;
   role: string;
   is_onboarded: boolean;
   created_at?: string;

@@ -31,8 +31,37 @@
 }
 
 :root {
+  --color-primary: #FF6E30;
   --background: #FFFFFF;
   --foreground: #292524;
+}
+
+html[data-theme="sunset"] {
+  --color-primary: #FF6E30;
+}
+
+html[data-theme="ocean"] {
+  --color-primary: #0EA5E9;
+}
+
+html[data-theme="forest"] {
+  --color-primary: #10B981;
+}
+
+html[data-theme="cosmic"] {
+  --color-primary: #8B5CF6;
+}
+
+html[data-theme="rose"] {
+  --color-primary: #F43F5E;
+}
+
+html[data-theme="amber"] {
+  --color-primary: #F59E0B;
+}
+
+html[data-theme="midnight"] {
+  --color-primary: #6366F1;
 }
 
 body {
@@ -62,8 +91,8 @@ body {
 /* Linear-style focus rings */
 input:focus, textarea:focus, select:focus {
   outline: none;
-  border-color: #FF6E30 !important;
-  box-shadow: 0 0 0 1px #FF6E30 !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 1px var(--color-primary) !important;
 }
 
 /* Custom transitions */
