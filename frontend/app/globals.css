@@ -303,3 +303,8 @@ html[data-mode="dark"] .border-l-2.border-primary {
 html[data-mode="dark"] .border-l-2.border-primary p.text-neutral-800 {
   color: #f5f5f4 !important;
 }
+
+/* Global border smoothing overrides in dark mode (replaces harsh white lines) */
+html[data-mode="dark"] [class*="border"]:not([class*="border-primary"]):not([class*="border-success"]):not([class*="border-error"]):not([class*="border-warning"]):not([class*="border-info"]) {
+  border-color: #292524 !important; /* Stone 800 */
+}
