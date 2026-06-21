@@ -612,6 +612,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     { id: "jobs", href: "/jobs", label: "Job Catalog", icon: Briefcase },
     { id: "pool", href: "/pool", label: "Sourcing Pool", icon: Users },
     { id: "rounds", href: "/rounds", label: "Interview Rounds", icon: Layers },
+    { id: "notifications", href: "/notifications", label: "Notifications", icon: Bell },
     { id: "settings", href: "/profile", label: "Settings", icon: Settings },
   ];
 
@@ -863,7 +864,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                     aria-label="Notifications Panel"
                   >
                     <div className="p-3 border-b border-neutral-250 flex justify-between items-center bg-neutral-50 shrink-0">
-                      <span className="font-tight font-extrabold text-[10px] uppercase tracking-wider text-neutral-800">Alerts & Timeline</span>
+                      <span className="font-tight font-extrabold text-[10px] uppercase tracking-wider text-neutral-800">Important Alerts</span>
                       {notifications.some(n => !n.is_read) && (
                         <button
                           onClick={() => markAllReadMutation.mutate()}
@@ -873,83 +874,51 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                         </button>
                       )}
                     </div>
-                    
-                    <div className="flex border-b border-neutral-200 bg-neutral-50 shrink-0">
-                      <button
-                        onClick={() => setNotifTab("all")}
-                        className={`flex-1 py-2 text-[9px] font-mono uppercase tracking-wider text-center border-b-2 font-bold cursor-pointer transition-all ${
-                          notifTab === "all" ? "border-primary text-primary" : "border-transparent text-neutral-400 hover:text-neutral-600"
-                        }`}
-                      >
-                        All ({notifications.length + activityLogs.length})
-                      </button>
-                      <button
-                        onClick={() => setNotifTab("alerts")}
-                        className={`flex-1 py-2 text-[9px] font-mono uppercase tracking-wider text-center border-b-2 font-bold cursor-pointer transition-all ${
-                          notifTab === "alerts" ? "border-primary text-primary" : "border-transparent text-neutral-400 hover:text-neutral-600"
-                        }`}
-                      >
-                        Alerts ({notifications.length})
-                      </button>
-                      <button
-                        onClick={() => setNotifTab("activities")}
-                        className={`flex-1 py-2 text-[9px] font-mono uppercase tracking-wider text-center border-b-2 font-bold cursor-pointer transition-all ${
-                          notifTab === "activities" ? "border-primary text-primary" : "border-transparent text-neutral-400 hover:text-neutral-600"
-                        }`}
-                      >
-                        Activities ({activityLogs.length})
-                      </button>
-                    </div>
 
                     <div className="overflow-y-auto divide-y divide-neutral-150 scrollbar-thin flex-1 max-h-80">
-                      {formattedItems.length === 0 ? (
-                        <div className="p-8 text-center text-xs text-neutral-400">
-                          {notifTab === "all" ? "No activity or notifications." : notifTab === "alerts" ? "No alerts or notifications." : "No activities recorded."}
-                        </div>
+                      {notifications.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-neutral-400">No alerts or notifications.</div>
                       ) : (
-                        formattedItems.map((notif) => {
-                          let Icon = Bell;
-                          let iconColor = "text-neutral-400 bg-neutral-50 border-neutral-250";
-                          if (notif.type === "job_generation") {
-                            Icon = Briefcase;
-                            iconColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
-                          } else if (notif.type === "candidate_matching") {
-                            Icon = Sparkles;
-                            iconColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
-                          } else if (notif.type === "upload") {
-                            Icon = Upload;
-                            iconColor = "text-blue-600 bg-blue-50 border-blue-100";
-                          } else if (notif.type === "error") {
-                            Icon = AlertCircle;
-                            iconColor = "text-rose-600 bg-rose-50 border-rose-100";
-                          } else if (notif.type === "screening_questions") {
-                            Icon = Layers;
-                            iconColor = "text-amber-600 bg-amber-50 border-amber-100";
-                          } else if (notif.type === "recruiter_action") {
-                            Icon = User;
-                            iconColor = "text-purple-600 bg-purple-50 border-purple-100";
-                          }
+                        [...notifications]
+                          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                          .map((notif) => {
+                            let Icon = Bell;
+                            let iconColor = "text-neutral-400 bg-neutral-50 border-neutral-250";
+                            if (notif.type === "job_generation") {
+                              Icon = Briefcase;
+                              iconColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
+                            } else if (notif.type === "candidate_matching") {
+                              Icon = Sparkles;
+                              iconColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
+                            } else if (notif.type === "upload") {
+                              Icon = Upload;
+                              iconColor = "text-blue-600 bg-blue-50 border-blue-100";
+                            } else if (notif.type === "error") {
+                              Icon = AlertCircle;
+                              iconColor = "text-rose-600 bg-rose-50 border-rose-100";
+                            } else if (notif.type === "screening_questions") {
+                              Icon = Layers;
+                              iconColor = "text-amber-600 bg-amber-50 border-amber-100";
+                            }
 
-                          return (
-                            <div 
-                              key={notif.id} 
-                              onClick={() => handleNotificationClick(notif)}
-                              className={`p-3 text-xs flex gap-3 transition-colors hover:bg-neutral-50 relative cursor-pointer ${notif.is_read ? '' : 'bg-primary/[0.02]'}`}
-                            >
-                              <div className={`w-7 h-7 rounded-sm border flex items-center justify-center shrink-0 ${iconColor}`}>
-                                <Icon className="w-3.5 h-3.5" />
-                              </div>
-                              <div className="space-y-0.5 flex-1 pr-8">
-                                <div className="flex justify-between items-baseline gap-1.5">
-                                  <span className={`font-bold text-[11px] leading-tight ${!notif.is_read ? 'text-neutral-900' : 'text-neutral-600'}`}>{notif.title}</span>
-                                  <span className="text-[8px] text-neutral-400 font-mono shrink-0">
-                                    {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
+                            return (
+                              <div 
+                                key={notif.id} 
+                                onClick={() => handleNotificationClick(notif)}
+                                className={`p-3 text-xs flex gap-3 transition-colors hover:bg-neutral-50 relative cursor-pointer ${notif.is_read ? '' : 'bg-primary/[0.02]'}`}
+                              >
+                                <div className={`w-7 h-7 rounded-sm border flex items-center justify-center shrink-0 ${iconColor}`}>
+                                  <Icon className="w-3.5 h-3.5" />
                                 </div>
-                                <p className="text-neutral-500 text-[10px] leading-snug">{notif.message}</p>
-                              </div>
-                              
-                              {!notif.isActivity && (
+                                <div className="space-y-0.5 flex-1 pr-8">
+                                  <div className="flex justify-between items-baseline gap-1.5">
+                                    <span className={`font-bold text-[11px] leading-tight ${!notif.is_read ? 'text-neutral-900' : 'text-neutral-600'}`}>{notif.title}</span>
+                                    <span className="text-[8px] text-neutral-400 font-mono shrink-0">
+                                      {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                  <p className="text-neutral-500 text-[10px] leading-snug">{notif.message}</p>
+                                </div>
                                 <div className="absolute right-2 top-2 flex items-center gap-1">
                                   {!notif.is_read && (
                                     <button
@@ -976,10 +945,9 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })
+                              </div>
+                            );
+                          })
                       )}
                     </div>
                   </div>
