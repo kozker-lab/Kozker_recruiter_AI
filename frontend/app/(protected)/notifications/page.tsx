@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
-import type { Notification, ActivityLog } from "@/types";
+import type { Notification, ActivityLog, Client, Candidate } from "@/types";
 import { 
   Bell, Briefcase, Sparkles, Upload, AlertCircle, Layers, 
   User, Check, Trash2, Search, Calendar, Shield, Clock,
@@ -161,6 +161,11 @@ export default function NotificationsTimelinePage() {
   
   const [filterTab, setFilterTab] = useState<"all" | "alerts" | "activities">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [dateFilter, setDateFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [clientFilter, setClientFilter] = useState("all");
+  const [candidateFilter, setCandidateFilter] = useState("all");
+  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["notifications"],
@@ -172,6 +177,16 @@ export default function NotificationsTimelinePage() {
     queryKey: ["activityLogs"],
     queryFn: () => apiRequest<ActivityLog[]>("GET", "/activity_log"),
     refetchInterval: 4000,
+  });
+
+  const { data: clients = [] } = useQuery<Client[]>({
+    queryKey: ["clients"],
+    queryFn: () => apiRequest<Client[]>("GET", "/clients"),
+  });
+
+  const { data: candidates = [] } = useQuery<Candidate[]>({
+    queryKey: ["candidates"],
+    queryFn: () => apiRequest<Candidate[]>("GET", "/candidates"),
   });
 
   const markReadMutation = useMutation({
@@ -194,6 +209,14 @@ export default function NotificationsTimelinePage() {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }
   });
+
+  const handleResetFilters = () => {
+    setDateFilter("all");
+    setTypeFilter("all");
+    setClientFilter("all");
+    setCandidateFilter("all");
+    setSearchQuery("");
+  };
 
   const navigateNotificationRoute = (type: string, metadata?: any) => {
     const meta = metadata || {};
@@ -258,8 +281,67 @@ export default function NotificationsTimelinePage() {
       );
     }
 
+    // Date range filter
+    if (dateFilter !== "all") {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      combined = combined.filter(item => {
+        const itemDate = new Date(item.created_at);
+        if (dateFilter === "today") {
+          return itemDate >= startOfToday;
+        } else if (dateFilter === "yesterday") {
+          const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
+          return itemDate >= startOfYesterday && itemDate < startOfToday;
+        } else if (dateFilter === "week") {
+          const limit = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          return itemDate >= limit;
+        } else if (dateFilter === "month") {
+          const limit = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          return itemDate >= limit;
+        }
+        return true;
+      });
+    }
+
+    // Event type filter
+    if (typeFilter !== "all") {
+      combined = combined.filter(item => item.type === typeFilter);
+    }
+
+    // Client filter
+    if (clientFilter !== "all") {
+      const clientName = clientFilter.toLowerCase();
+      combined = combined.filter(item => {
+        const meta = item.metadata || {};
+        return (
+          item.message.toLowerCase().includes(clientName) ||
+          item.title.toLowerCase().includes(clientName) ||
+          (meta.client_name && meta.client_name.toLowerCase().includes(clientName)) ||
+          (meta.client_id === clientFilter) ||
+          (meta.job_title && meta.job_title.toLowerCase().includes(clientName)) ||
+          (meta.req_title && meta.req_title.toLowerCase().includes(clientName)) ||
+          (meta.requirement_title && meta.requirement_title.toLowerCase().includes(clientName))
+        );
+      });
+    }
+
+    // Candidate filter
+    if (candidateFilter !== "all") {
+      const candName = candidateFilter.toLowerCase();
+      combined = combined.filter(item => {
+        const meta = item.metadata || {};
+        return (
+          item.message.toLowerCase().includes(candName) ||
+          item.title.toLowerCase().includes(candName) ||
+          (meta.candidate_name && meta.candidate_name.toLowerCase().includes(candName)) ||
+          (meta.candidate_id === candidateFilter)
+        );
+      });
+    }
+
     return combined;
-  }, [notifications, activityLogs, filterTab, searchQuery]);
+  }, [notifications, activityLogs, filterTab, searchQuery, dateFilter, typeFilter, clientFilter, candidateFilter]);
 
   const stats = React.useMemo(() => {
     return {
@@ -279,7 +361,7 @@ export default function NotificationsTimelinePage() {
               <Shield className="w-5 h-5 text-primary" />
               Operations Timeline & Alerts
             </h2>
-            <p className="text-neutral-500 text-xs mt-1">
+            <p className="text-neutral-550 text-xs mt-1">
               Audit trail of background n8n automation status, recruiter actions, and system logs.
             </p>
           </div>
@@ -370,6 +452,99 @@ export default function NotificationsTimelinePage() {
               className="w-full pl-9 pr-4 py-2 border border-neutral-200 rounded-sm bg-white text-neutral-800 placeholder:text-neutral-450 transition-all text-xs outline-none focus:border-primary shadow-xs"
             />
           </div>
+        </div>
+
+        {/* Collapsible Filter Panel */}
+        <div className="mt-4 shrink-0">
+          <div className="flex justify-between items-center">
+            <button
+              onClick={() => setIsAdvancedFiltersOpen(!isAdvancedFiltersOpen)}
+              className="text-[10px] uppercase font-mono font-bold text-neutral-500 hover:text-neutral-850 flex items-center gap-1.5 cursor-pointer bg-white px-3 py-1.5 border border-neutral-250 hover:bg-neutral-50 transition-colors shadow-sm rounded-sm"
+            >
+              <Clock className="w-3.5 h-3.5 text-neutral-400" />
+              {isAdvancedFiltersOpen ? "Hide Advanced Filters" : "Show Advanced Filters"}
+              {(dateFilter !== "all" || typeFilter !== "all" || clientFilter !== "all" || candidateFilter !== "all") && (
+                <span className="w-2 h-2 rounded-full bg-primary inline-block"></span>
+              )}
+            </button>
+            
+            {(dateFilter !== "all" || typeFilter !== "all" || clientFilter !== "all" || candidateFilter !== "all" || searchQuery !== "") && (
+              <button
+                onClick={handleResetFilters}
+                className="text-[9px] uppercase font-mono font-bold text-primary hover:underline cursor-pointer"
+              >
+                Reset Filters
+              </button>
+            )}
+          </div>
+
+          {isAdvancedFiltersOpen && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-3 p-4 bg-white border border-neutral-200 rounded-sm shadow-xs animate-fade-in">
+              {/* Date Filter */}
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold font-mono text-neutral-450 uppercase tracking-wider block">Time Range</label>
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="w-full text-xs p-2 border border-neutral-200 rounded-sm bg-neutral-50 outline-none focus:border-primary focus:bg-white transition-colors"
+                >
+                  <option value="all">All Time</option>
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="week">Last 7 Days</option>
+                  <option value="month">Last 30 Days</option>
+                </select>
+              </div>
+
+              {/* Type Filter */}
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold font-mono text-neutral-450 uppercase tracking-wider block">Event Type</label>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  className="w-full text-xs p-2 border border-neutral-200 rounded-sm bg-neutral-50 outline-none focus:border-primary focus:bg-white transition-colors"
+                >
+                  <option value="all">All Types</option>
+                  <option value="job_generation">Job Generation</option>
+                  <option value="candidate_matching">Candidate Matching</option>
+                  <option value="upload">Resume Uploads</option>
+                  <option value="screening_questions">Screening Questions</option>
+                  <option value="error">System Errors</option>
+                  <option value="recruiter_action">Recruiter Actions</option>
+                </select>
+              </div>
+
+              {/* Client Filter */}
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold font-mono text-neutral-450 uppercase tracking-wider block">Client Mandate</label>
+                <select
+                  value={clientFilter}
+                  onChange={(e) => setClientFilter(e.target.value)}
+                  className="w-full text-xs p-2 border border-neutral-200 rounded-sm bg-neutral-50 outline-none focus:border-primary focus:bg-white transition-colors"
+                >
+                  <option value="all">All Clients</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Candidate Filter */}
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold font-mono text-neutral-450 uppercase tracking-wider block">Target Candidate</label>
+                <select
+                  value={candidateFilter}
+                  onChange={(e) => setCandidateFilter(e.target.value)}
+                  className="w-full text-xs p-2 border border-neutral-200 rounded-sm bg-neutral-50 outline-none focus:border-primary focus:bg-white transition-colors"
+                >
+                  <option value="all">All Candidates</option>
+                  {candidates.map(c => (
+                    <option key={c.id} value={c.full_name}>{c.full_name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
