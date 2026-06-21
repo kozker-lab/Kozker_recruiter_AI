@@ -162,6 +162,7 @@ export default function NotificationsTimelinePage() {
   const [filterTab, setFilterTab] = useState<"all" | "alerts" | "activities">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
+  const [customDate, setCustomDate] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [clientFilter, setClientFilter] = useState("all");
   const [candidateFilter, setCandidateFilter] = useState("all");
@@ -212,6 +213,7 @@ export default function NotificationsTimelinePage() {
 
   const handleResetFilters = () => {
     setDateFilter("all");
+    setCustomDate("");
     setTypeFilter("all");
     setClientFilter("all");
     setCandidateFilter("all");
@@ -299,6 +301,13 @@ export default function NotificationsTimelinePage() {
         } else if (dateFilter === "month") {
           const limit = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
           return itemDate >= limit;
+        } else if (dateFilter === "custom" && customDate) {
+          const selectedDate = new Date(customDate);
+          return (
+            itemDate.getFullYear() === selectedDate.getFullYear() &&
+            itemDate.getMonth() === selectedDate.getMonth() &&
+            itemDate.getDate() === selectedDate.getDate()
+          );
         }
         return true;
       });
@@ -341,7 +350,7 @@ export default function NotificationsTimelinePage() {
     }
 
     return combined;
-  }, [notifications, activityLogs, filterTab, searchQuery, dateFilter, typeFilter, clientFilter, candidateFilter]);
+  }, [notifications, activityLogs, filterTab, searchQuery, dateFilter, customDate, typeFilter, clientFilter, candidateFilter]);
 
   const stats = React.useMemo(() => {
     return {
@@ -493,7 +502,16 @@ export default function NotificationsTimelinePage() {
                   <option value="yesterday">Yesterday</option>
                   <option value="week">Last 7 Days</option>
                   <option value="month">Last 30 Days</option>
+                  <option value="custom">Custom Date</option>
                 </select>
+                {dateFilter === "custom" && (
+                  <input
+                    type="date"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    className="w-full text-xs p-1.5 border border-neutral-200 rounded-sm bg-neutral-50 outline-none focus:border-primary focus:bg-white transition-colors mt-1.5"
+                  />
+                )}
               </div>
 
               {/* Type Filter */}

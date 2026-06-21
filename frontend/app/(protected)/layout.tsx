@@ -10,7 +10,7 @@ import UserAvatar from "@/components/UserAvatar";
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
   Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
-  X, AlertCircle, Layers, Bell, Clock, Check, Trash2
+  X, AlertCircle, Layers, Bell, Clock, Check, Trash2, Sun, Moon
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
@@ -200,6 +200,22 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifTab, setNotifTab] = useState<"all" | "alerts" | "activities">("all");
   const queryClient = useQueryClient();
+
+  const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
+
+  React.useEffect(() => {
+    const savedMode = localStorage.getItem("kozker_pref_mode") as "light" | "dark" | null;
+    const initialMode = savedMode || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    setThemeMode(initialMode);
+    document.documentElement.setAttribute("data-mode", initialMode);
+  }, []);
+
+  const toggleThemeMode = () => {
+    const nextMode = themeMode === "dark" ? "light" : "dark";
+    setThemeMode(nextMode);
+    localStorage.setItem("kozker_pref_mode", nextMode);
+    document.documentElement.setAttribute("data-mode", nextMode);
+  };
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["notifications"],
@@ -829,6 +845,19 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={toggleThemeMode}
+              className="p-2 border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors text-neutral-550 bg-neutral-white flex items-center justify-center"
+              title={themeMode === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              aria-label="Toggle Theme Mode"
+            >
+              {themeMode === "dark" ? (
+                <Sun className="w-4 h-4 text-amber-500" />
+              ) : (
+                <Moon className="w-4 h-4 text-indigo-500" />
+              )}
+            </button>
+
             <div className="relative">
               <button
                 id="header-notifications-toggle"

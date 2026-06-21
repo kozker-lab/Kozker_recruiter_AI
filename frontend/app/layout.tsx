@@ -23,6 +23,8 @@ export default function RootLayout({
           try {
             const theme = localStorage.getItem('kozker_pref_theme') || 'sunset';
             document.documentElement.setAttribute('data-theme', theme);
+            const mode = localStorage.getItem('kozker_pref_mode') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-mode', mode);
           } catch (e) {}
         ` }} />
       </head>
