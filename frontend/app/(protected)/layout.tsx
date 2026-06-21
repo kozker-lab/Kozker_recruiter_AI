@@ -798,7 +798,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* User Account footer */}
-        <div className="p-4 border-t border-neutral-200 bg-neutral-50/50 space-y-3">
+        <div className="profile-footer-panel p-4 border-t border-neutral-200 bg-neutral-50/50 space-y-3">
           <Link href="/profile" className="flex items-center gap-2.5 hover:bg-neutral-100 p-1.5 rounded-sm transition-all cursor-pointer group">
             <UserAvatar 
               avatarUrl={profile.avatar_url} 

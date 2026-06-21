@@ -88,11 +88,11 @@ body {
   background: #D6D3D1;
 }
 
-/* Linear-style focus rings */
+/* Linear-style focus rings with theme-colored outline */
 input:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: var(--color-primary) !important;
-  box-shadow: 0 0 0 1px var(--color-primary) !important;
+  outline: 2px solid var(--color-primary) !important;
+  outline-offset: 0px !important;
+  box-shadow: none !important;
 }
 
 /* Custom transitions */
@@ -113,6 +113,41 @@ input:focus, textarea:focus, select:focus {
 
 .animate-slide-in {
   animation: slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Theme-colored outline and outline-filling hover animation for interactable UI elements */
+button,
+input,
+select,
+textarea,
+[role="button"],
+.hover\:shadow-md,
+.hover\:shadow-lg,
+.hover\:border-primary\/50,
+aside nav a,
+.group\/avatar {
+  outline: 0px solid transparent;
+  outline-offset: -3px;
+  transition: outline-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              outline-offset 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              outline-width 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.2s ease,
+              box-shadow 0.2s ease !important;
+}
+
+button:hover,
+input:hover,
+select:hover,
+textarea:hover,
+[role="button"]:hover,
+.hover\:shadow-md:hover,
+.hover\:shadow-lg:hover,
+.hover\:border-primary\/50:hover,
+aside nav a:hover,
+.group\/avatar:hover {
+  outline: 2px solid var(--color-primary) !important;
+  outline-offset: 0px !important;
+  box-shadow: none !important; /* Disable light glow on hover */
 }
 
 /* Dark mode overrides */
@@ -190,5 +225,43 @@ html[data-mode="dark"] ::-webkit-scrollbar-thumb {
 }
 html[data-mode="dark"] ::-webkit-scrollbar-thumb:hover {
   background: #57534e;
+}
+
+/* Profile footer panel dark mode overrides */
+html[data-mode="dark"] .profile-footer-panel {
+  background-color: #0c0a09 !important; /* Stone 950 */
+  border-top-color: #292524 !important; /* Stone 800 */
+}
+
+/* Inactive button styles in dark mode */
+html[data-mode="dark"] .profile-footer-panel button:not(.bg-neutral-900) {
+  background-color: #1c1917 !important; /* Stone 900 */
+  border-color: #292524 !important;
+  color: #a8a29e !important;
+}
+
+html[data-mode="dark"] .profile-footer-panel button:not(.bg-neutral-900):hover {
+  background-color: #292524 !important; /* Stone 800 */
+  color: #f5f5f4 !important;
+}
+
+/* Active button style in dark mode */
+html[data-mode="dark"] .profile-footer-panel button.bg-neutral-900 {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: #ffffff !important;
+}
+
+html[data-mode="dark"] .profile-footer-panel button.bg-neutral-900:hover {
+  background-color: var(--color-primary) !important;
+  opacity: 0.9;
+}
+
+/* Profile footer card link in dark mode */
+html[data-mode="dark"] .profile-footer-panel .group {
+  background-color: transparent !important;
+}
+html[data-mode="dark"] .profile-footer-panel .group:hover {
+  background-color: #1c1917 !important; /* Stone 900 */
 }
 
