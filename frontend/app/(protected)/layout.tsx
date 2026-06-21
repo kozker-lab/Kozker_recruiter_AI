@@ -14,7 +14,151 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
-import type { Notification } from "@/types";
+import type { Notification, ActivityLog } from "@/types";
+
+interface DisplayItem {
+  id: string;
+  title: string;
+  message: string;
+  created_at: string;
+  type: string;
+  is_read?: boolean;
+  isActivity?: boolean;
+  actor_name?: string;
+  metadata?: any;
+}
+
+const formatActivityLog = (act: ActivityLog): DisplayItem => {
+  const actor = act.actor_name || "Recruiter";
+  const meta = act.metadata || {};
+  let title = "System Event";
+  let message = act.action;
+  let type = "recruiter_action";
+
+  switch (act.action) {
+    case "client_created":
+      title = "Client Registered";
+      message = `${actor} registered client "${meta.client_name || "New Client"}"`;
+      type = "upload";
+      break;
+    case "client_updated":
+      title = "Client Updated";
+      message = `${actor} updated client details for "${meta.client_name || "Client"}"`;
+      type = "upload";
+      break;
+    case "req_created":
+    case "requirement_created":
+      title = "Hiring Mandate Created";
+      message = `${actor} created hiring mandate "${meta.req_title || "New Mandate"}"`;
+      type = "job_generation";
+      break;
+    case "job_created":
+    case "job_created_manual":
+      title = "Job Opening Drafted";
+      message = `${actor} drafted job opening "${meta.job_title || "Job Option"}"`;
+      type = "job_generation";
+      break;
+    case "job_confirmed":
+      title = "Job Mandate Confirmed";
+      message = `${actor} confirmed job details for "${meta.job_title || "Job Opening"}"`;
+      type = "job_generation";
+      break;
+    case "skills_extracted":
+      title = "Skills Extracted";
+      message = `Mandate skills extracted for job "${meta.job_title || "Job"}"`;
+      type = "job_generation";
+      break;
+    case "skills_approved":
+      title = "Skills Approved";
+      message = `${actor} approved requirement skills for "${meta.job_title || "Job"}"`;
+      type = "job_generation";
+      break;
+    case "job_published":
+      title = "Job Opening Published";
+      message = `${actor} published job opening "${meta.job_title || "Job"}"`;
+      type = "job_generation";
+      break;
+    case "job_regenerated":
+      title = "Job Regenerated";
+      message = `Job opening "${meta.job_title || "Job"}" successfully regenerated.`;
+      type = "job_generation";
+      break;
+    case "candidate_matching_completed":
+      title = "AI Matching Completed";
+      message = `Candidate matching completed for "${meta.job_title || "Job"}". Found ${meta.matches_count || 0} matches.`;
+      type = "candidate_matching";
+      break;
+    case "candidate_matching_failed":
+      title = "AI Matching Failed";
+      message = `Failed matching candidates for "${meta.job_title || "Job"}": ${meta.error || "Unknown Error"}`;
+      type = "error";
+      break;
+    case "candidate_cv_downloaded":
+    case "candidate_uploaded":
+      title = "Resume Uploaded & Parsed";
+      message = `Successfully uploaded and parsed resume for candidate "${meta.candidate_name || "Candidate"}"`;
+      type = "upload";
+      break;
+    case "candidate_cv_download_failed":
+      title = "Resume Parsing Failed";
+      message = `Error downloading or parsing resume for candidate "${meta.candidate_name || "Candidate"}": ${meta.error || "Parsing error"}`;
+      type = "error";
+      break;
+    case "candidate_csv_imported":
+      title = "CSV Directory Imported";
+      message = `${actor} imported candidate list (${meta.candidates_count || 0} candidates)`;
+      type = "upload";
+      break;
+    case "application_accepted":
+      title = "Candidate Accepted";
+      message = `${actor} accepted candidate "${meta.candidate_name || "Candidate"}" for "${meta.job_title || "Job"}"`;
+      type = "candidate_matching";
+      break;
+    case "application_rejected":
+      title = "Candidate Rejected";
+      message = `${actor} rejected candidate "${meta.candidate_name || "Candidate"}" for "${meta.job_title || "Job"}"`;
+      type = "candidate_matching";
+      break;
+    case "screening_questions_generated":
+      title = "Screening Questions Ready";
+      message = `Screening questions generated for "${meta.candidate_name || "Candidate"}" applying for "${meta.job_title || "Job"}"`;
+      type = "screening_questions";
+      break;
+    case "screening_question_added":
+      title = "Screening Question Added";
+      message = `${actor} added custom screening question for "${meta.candidate_name || "Candidate"}"`;
+      type = "screening_questions";
+      break;
+    case "screening_question_updated":
+    case "screening_question_refined":
+      title = "Screening Question Refined";
+      message = `Screening question for "${meta.candidate_name || "Candidate"}" refined by AI.`;
+      type = "screening_questions";
+      break;
+    case "n8n_dispatch_failed":
+      title = "Automation Error";
+      message = `N8N workflow dispatch failed for mandate "${meta.req_title || "Mandate"}"`;
+      type = "error";
+      break;
+    default:
+      title = act.action.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      message = act.metadata?.message || `${actor} executed ${act.action}`;
+      type = "recruiter_action";
+      break;
+  }
+
+  return {
+    id: act.id,
+    title,
+    message,
+    created_at: act.created_at,
+    type,
+    is_read: true,
+    isActivity: true,
+    actor_name: actor,
+    metadata: meta,
+  };
+};
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const user = useCurrentUser();
@@ -54,6 +198,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [notifiedIds, setNotifiedIds] = useState<Set<string>>(new Set());
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notifTab, setNotifTab] = useState<"all" | "alerts" | "activities">("all");
   const queryClient = useQueryClient();
 
   const { data: notifications = [] } = useQuery<Notification[]>({
@@ -62,6 +207,40 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     refetchInterval: 4000, // Poll every 4 seconds for snappy real-time feedback
     enabled: !!user, // Only run if user is logged in
   });
+
+  const { data: activityLogs = [] } = useQuery<ActivityLog[]>({
+    queryKey: ["activityLogs"],
+    queryFn: () => apiRequest<ActivityLog[]>("GET", "/activity_log"),
+    refetchInterval: 4000,
+    enabled: !!user,
+  });
+
+  const formattedItems = React.useMemo(() => {
+    const formattedNotifs: DisplayItem[] = notifications.map(n => ({
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      created_at: n.created_at,
+      type: n.type,
+      is_read: n.is_read,
+      isActivity: false,
+      metadata: n.metadata
+    }));
+
+    const formattedActs: DisplayItem[] = activityLogs.map(formatActivityLog);
+
+    const combined = [...formattedNotifs, ...formattedActs].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    if (notifTab === "alerts") {
+      return combined.filter(item => !item.isActivity);
+    }
+    if (notifTab === "activities") {
+      return combined.filter(item => item.isActivity);
+    }
+    return combined;
+  }, [notifications, activityLogs, notifTab]);
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => apiRequest("POST", `/notifications/${id}/read`),
@@ -142,8 +321,8 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     }
   }, [notifications, notifiedIds]);
 
-  const handleNotificationClick = (notif: Notification) => {
-    if (!notif.is_read) {
+  const handleNotificationClick = (notif: DisplayItem) => {
+    if (!notif.isActivity && !notif.is_read) {
       markReadMutation.mutate(notif.id);
     }
     setIsNotificationsOpen(false);
@@ -684,7 +863,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                     aria-label="Notifications Panel"
                   >
                     <div className="p-3 border-b border-neutral-250 flex justify-between items-center bg-neutral-50 shrink-0">
-                      <span className="font-tight font-extrabold text-[10px] uppercase tracking-wider text-neutral-800">Alerts & Notifications</span>
+                      <span className="font-tight font-extrabold text-[10px] uppercase tracking-wider text-neutral-800">Alerts & Timeline</span>
                       {notifications.some(n => !n.is_read) && (
                         <button
                           onClick={() => markAllReadMutation.mutate()}
@@ -694,11 +873,41 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                         </button>
                       )}
                     </div>
+                    
+                    <div className="flex border-b border-neutral-200 bg-neutral-50 shrink-0">
+                      <button
+                        onClick={() => setNotifTab("all")}
+                        className={`flex-1 py-2 text-[9px] font-mono uppercase tracking-wider text-center border-b-2 font-bold cursor-pointer transition-all ${
+                          notifTab === "all" ? "border-primary text-primary" : "border-transparent text-neutral-400 hover:text-neutral-600"
+                        }`}
+                      >
+                        All ({notifications.length + activityLogs.length})
+                      </button>
+                      <button
+                        onClick={() => setNotifTab("alerts")}
+                        className={`flex-1 py-2 text-[9px] font-mono uppercase tracking-wider text-center border-b-2 font-bold cursor-pointer transition-all ${
+                          notifTab === "alerts" ? "border-primary text-primary" : "border-transparent text-neutral-400 hover:text-neutral-600"
+                        }`}
+                      >
+                        Alerts ({notifications.length})
+                      </button>
+                      <button
+                        onClick={() => setNotifTab("activities")}
+                        className={`flex-1 py-2 text-[9px] font-mono uppercase tracking-wider text-center border-b-2 font-bold cursor-pointer transition-all ${
+                          notifTab === "activities" ? "border-primary text-primary" : "border-transparent text-neutral-400 hover:text-neutral-600"
+                        }`}
+                      >
+                        Activities ({activityLogs.length})
+                      </button>
+                    </div>
+
                     <div className="overflow-y-auto divide-y divide-neutral-150 scrollbar-thin flex-1 max-h-80">
-                      {notifications.length === 0 ? (
-                        <div className="p-8 text-center text-xs text-neutral-400">No alerts or notifications.</div>
+                      {formattedItems.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-neutral-400">
+                          {notifTab === "all" ? "No activity or notifications." : notifTab === "alerts" ? "No alerts or notifications." : "No activities recorded."}
+                        </div>
                       ) : (
-                        notifications.map((notif) => {
+                        formattedItems.map((notif) => {
                           let Icon = Bell;
                           let iconColor = "text-neutral-400 bg-neutral-50 border-neutral-250";
                           if (notif.type === "job_generation") {
@@ -716,6 +925,9 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                           } else if (notif.type === "screening_questions") {
                             Icon = Layers;
                             iconColor = "text-amber-600 bg-amber-50 border-amber-100";
+                          } else if (notif.type === "recruiter_action") {
+                            Icon = User;
+                            iconColor = "text-purple-600 bg-purple-50 border-purple-100";
                           }
 
                           return (
@@ -736,32 +948,35 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                                 </div>
                                 <p className="text-neutral-500 text-[10px] leading-snug">{notif.message}</p>
                               </div>
-                              <div className="absolute right-2 top-2 flex items-center gap-1">
-                                {!notif.is_read && (
+                              
+                              {!notif.isActivity && (
+                                <div className="absolute right-2 top-2 flex items-center gap-1">
+                                  {!notif.is_read && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        markReadMutation.mutate(notif.id);
+                                      }}
+                                      className="p-0.5 text-neutral-450 hover:text-success cursor-pointer transition-colors"
+                                      title="Mark as read"
+                                      aria-label="Mark notification as read"
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      markReadMutation.mutate(notif.id);
+                                      deleteNotifMutation.mutate(notif.id);
                                     }}
-                                    className="p-0.5 text-neutral-450 hover:text-success cursor-pointer transition-colors"
-                                    title="Mark as read"
-                                    aria-label="Mark notification as read"
+                                    className="p-0.5 text-neutral-450 hover:text-red-500 cursor-pointer transition-colors"
+                                    title="Delete notification"
+                                    aria-label="Delete notification"
                                   >
-                                    <Check className="w-3.5 h-3.5" />
+                                    <Trash2 className="w-3.5 h-3.5" />
                                   </button>
-                                )}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteNotifMutation.mutate(notif.id);
-                                  }}
-                                  className="p-0.5 text-neutral-450 hover:text-red-500 cursor-pointer transition-colors"
-                                  title="Delete notification"
-                                  aria-label="Delete notification"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })
