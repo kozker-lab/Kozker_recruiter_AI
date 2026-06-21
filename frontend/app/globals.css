@@ -153,23 +153,37 @@ aside nav a:hover,
 /* Dark mode overrides */
 html[data-mode="dark"] {
   color-scheme: dark;
+
+  /* Redefine Tailwind v4 variables for dark mode using Stone color palette */
+  --color-neutral-white: #1c1917 !important; /* Stone 900 */
+  --color-neutral-50: #0c0a09 !important; /* Stone 955 */
+  --color-neutral-100: #1c1917 !important; /* Stone 900 */
+  --color-neutral-150: #141211 !important;
+  --color-neutral-200: #292524 !important; /* Stone 800 */
+  --color-neutral-250: #292524 !important;
+  --color-neutral-300: #44403c !important; /* Stone 700 */
+  --color-neutral-400: #57534e !important; /* Stone 600 */
+  --color-neutral-500: #78716c !important; /* Stone 500 */
+  --color-neutral-600: #a8a29e !important; /* Stone 400 */
+  --color-neutral-700: #d6d3d1 !important; /* Stone 300 */
+  --color-neutral-800: #e7e5e4 !important; /* Stone 200 */
+  --color-neutral-900: #f5f5f4 !important; /* Stone 100 */
+  --color-neutral-950: #fafaf9 !important; /* Stone 50 */
 }
 
 html[data-mode="dark"] body {
-  background-color: #0c0a09 !important; /* Stone 950 */
+  background-color: #0c0a09 !important; /* Stone 955 */
   color: #f5f5f4 !important; /* Stone 100 */
 }
 
-html[data-mode="dark"] .bg-white {
+/* Explicit class-level overrides in dark mode */
+html[data-mode="dark"] .bg-white,
+html[data-mode="dark"] .bg-neutral-white {
   background-color: #1c1917 !important; /* Stone 900 */
 }
 
-html[data-mode="dark"] .bg-neutral-white {
-  background-color: #1c1917 !important;
-}
-
 html[data-mode="dark"] .bg-neutral-50 {
-  background-color: #0c0a09 !important;
+  background-color: #0c0a09 !important; /* Stone 955 */
 }
 
 html[data-mode="dark"] .bg-neutral-100 {
@@ -229,7 +243,7 @@ html[data-mode="dark"] ::-webkit-scrollbar-thumb:hover {
 
 /* Profile footer panel dark mode overrides */
 html[data-mode="dark"] .profile-footer-panel {
-  background-color: #0c0a09 !important; /* Stone 950 */
+  background-color: #0c0a09 !important; /* Stone 955 */
   border-top-color: #292524 !important; /* Stone 800 */
 }
 
@@ -265,3 +279,19 @@ html[data-mode="dark"] .profile-footer-panel .group:hover {
   background-color: #1c1917 !important; /* Stone 900 */
 }
 
+/* Active workspace panel in dark mode */
+html[data-mode="dark"] .active-workspace-panel {
+  background-color: #0c0a09 !important; /* Stone 955 */
+  border-color: #292524 !important; /* Stone 800 */
+}
+html[data-mode="dark"] .active-workspace-panel .text-neutral-800 {
+  color: #f5f5f4 !important;
+}
+
+/* Selected client row overrides in dark mode */
+html[data-mode="dark"] .border-l-2.border-primary {
+  background-color: #0c0a09 !important; /* Stone 955 */
+}
+html[data-mode="dark"] .border-l-2.border-primary p.text-neutral-800 {
+  color: #f5f5f4 !important;
+}

@@ -766,7 +766,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             </span>
           </div>
 
-          <div className="mx-4 mt-4 p-3 bg-neutral-50 border border-neutral-150 rounded-sm font-mono text-[10px]">
+          <div className="active-workspace-panel mx-4 mt-4 p-3 bg-neutral-50 border border-neutral-150 rounded-sm font-mono text-[10px]">
             <p className="text-neutral-400 font-semibold uppercase tracking-wider">Active Workspace</p>
             <p className="font-bold text-neutral-800 mt-0.5 truncate">{"Enterprise recruiter"}</p>
             <p className="text-primary font-bold mt-1 text-[9px]">@{"default"}.kozker.ai</p>
