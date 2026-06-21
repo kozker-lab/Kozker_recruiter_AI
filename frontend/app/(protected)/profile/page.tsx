@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   User, Mail, Lock, Sparkles, Bell, Volume2, Cpu, Sliders, Layout, 
-  Save, Globe, Building2, Shield, Check, UserCheck, Settings, KeyRound, Palette
+  Save, Globe, Building2, Shield, Check, UserCheck, Settings, KeyRound, Palette,
+  Upload, X, ImageIcon, Camera
 } from "lucide-react";
 import { useCurrentUser, useProfile, useUpdateProfile } from "@/lib/hooks/useAuth";
 import { createClient } from "@/lib/supabase/client";
@@ -32,6 +33,10 @@ export default function ProfilePage() {
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [useInitials, setUseInitials] = useState(false);
+  const [uploadedPhotoUrl, setUploadedPhotoUrl] = useState<string | null>(null);
+  const [useUploadedPhoto, setUseUploadedPhoto] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedGradient, setSelectedGradient] = useState("gradient-1");
   const [selectedIcon, setSelectedIcon] = useState("user");
 
@@ -55,10 +60,17 @@ export default function ProfilePage() {
       // Parse avatar settings
       const avatarUrl = profile.avatar_url;
       if (avatarUrl) {
-        if (avatarUrl.startsWith("initials:")) {
+        if (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://") || avatarUrl.startsWith("/")) {
+          // It's an uploaded photo URL
+          setUploadedPhotoUrl(avatarUrl);
+          setUseUploadedPhoto(true);
+          setUseInitials(false);
+        } else if (avatarUrl.startsWith("initials:")) {
           setUseInitials(true);
+          setUseUploadedPhoto(false);
         } else if (avatarUrl.includes("|")) {
           setUseInitials(false);
+          setUseUploadedPhoto(false);
           const parts = avatarUrl.split("|");
           parts.forEach((part) => {
             if (part.startsWith("gradient:")) {
@@ -82,10 +94,75 @@ export default function ProfilePage() {
 
   // Compute live preview avatar string
   const getPreviewAvatarUrl = () => {
+    if (useUploadedPhoto && uploadedPhotoUrl) {
+      return uploadedPhotoUrl;
+    }
     if (useInitials) {
       return `initials:${fullName ? fullName.slice(0, 2) : "US"}`;
     }
     return `gradient:${selectedGradient}|icon:${selectedIcon}`;
+  };
+
+  // Handle profile picture upload via backend endpoint
+  const handlePhotoUpload = async (file: File) => {
+    if (!user) return;
+    
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowedTypes.includes(file.type)) {
+      setErrorMsg("Please upload a valid image file (JPEG, PNG, WebP, or GIF).");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMsg("Image must be under 5 MB.");
+      return;
+    }
+
+    setUploading(true);
+    setErrorMsg("");
+
+    try {
+      // Get auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("http://localhost:8000/upload-avatar", {
+        method: "POST",
+        headers: token ? { "Authorization": `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail || "Upload failed");
+      }
+
+      const { url } = await res.json();
+      setUploadedPhotoUrl(url);
+      setUseUploadedPhoto(true);
+      setUseInitials(false);
+
+      setSuccessMsg("Profile picture uploaded! Click 'Save Profile' to apply.");
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (err: any) {
+      console.error("Upload error:", err);
+      setErrorMsg(err.message || "Failed to upload profile picture.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setUploadedPhotoUrl(null);
+    setUseUploadedPhoto(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   // Save changes for Profile tab
@@ -239,32 +316,121 @@ export default function ProfilePage() {
               <span className="text-[10px] font-bold tracking-wider text-neutral-400 uppercase w-full text-center">Live Preview</span>
               
               {/* Giant Preview Avatar */}
-              <UserAvatar 
-                avatarUrl={getPreviewAvatarUrl()}
-                fullName={fullName}
-                email={user?.email}
-                className="w-20 h-20 text-3xl"
-                size={40}
-              />
+              <div className="relative group">
+                <UserAvatar 
+                  avatarUrl={getPreviewAvatarUrl()}
+                  fullName={fullName}
+                  email={user?.email}
+                  className="w-20 h-20 text-3xl"
+                  size={40}
+                />
+                {useUploadedPhoto && uploadedPhotoUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-error text-white rounded-full flex items-center justify-center cursor-pointer shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Remove uploaded photo"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
               
               <div className="text-center space-y-1">
                 <h4 className="text-xs font-bold text-neutral-800 truncate max-w-[180px]">{fullName || "Recruiter"}</h4>
                 <p className="text-[10px] text-neutral-400 font-mono uppercase">{profile?.role || "RECRUITER"}</p>
               </div>
 
-              {/* Avatar Type Toggle */}
-              <div className="w-full pt-4 border-t border-neutral-100 flex items-center justify-between">
-                <span className="text-xs text-neutral-500 font-medium">Use Name Initials</span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={useInitials}
-                    onChange={(e) => setUseInitials(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-neutral-250 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:height-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                </label>
+              {/* Upload Profile Picture Section */}
+              <div className="w-full pt-4 border-t border-neutral-100 space-y-3">
+                <span className="text-[10px] font-bold tracking-wider text-neutral-400 uppercase block">Profile Picture</span>
+                
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handlePhotoUpload(file);
+                  }}
+                />
+
+                {useUploadedPhoto && uploadedPhotoUrl ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-[10px] font-mono text-success">
+                      <Check className="w-3.5 h-3.5" />
+                      <span className="font-semibold uppercase">Photo Uploaded</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex-1 px-2 py-1.5 text-[10px] bg-neutral-100 hover:bg-neutral-200 border border-neutral-200 rounded-sm font-semibold uppercase tracking-wider text-neutral-600 cursor-pointer transition-colors flex items-center justify-center gap-1"
+                      >
+                        <Camera className="w-3 h-3" />
+                        Change
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="flex-1 px-2 py-1.5 text-[10px] bg-red-50 hover:bg-red-100 border border-red-200 rounded-sm font-semibold uppercase tracking-wider text-red-500 cursor-pointer transition-colors flex items-center justify-center gap-1"
+                      >
+                        <X className="w-3 h-3" />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) handlePhotoUpload(file);
+                    }}
+                    className="w-full flex flex-col items-center justify-center gap-2 p-4 border-2 border-dashed border-neutral-250 hover:border-primary/50 rounded-sm bg-neutral-50 hover:bg-primary/[0.02] transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {uploading ? (
+                      <>
+                        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        <span className="text-[10px] font-mono text-primary font-semibold uppercase">Uploading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 bg-neutral-100 border border-neutral-200 rounded-sm flex items-center justify-center">
+                          <ImageIcon className="w-4 h-4 text-neutral-400" />
+                        </div>
+                        <div className="text-center space-y-0.5">
+                          <span className="text-[10px] font-semibold text-neutral-600 block">Upload your own photo</span>
+                          <span className="text-[9px] text-neutral-400 block">Click or drag an image here</span>
+                          <span className="text-[8px] text-neutral-400 font-mono block">JPEG, PNG, WebP, GIF • Max 5 MB</span>
+                        </div>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
+
+              {/* Avatar Type Toggle — only visible when no photo is uploaded */}
+              {!useUploadedPhoto && (
+                <div className="w-full pt-4 border-t border-neutral-100 flex items-center justify-between">
+                  <span className="text-xs text-neutral-500 font-medium">Use Name Initials</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useInitials}
+                      onChange={(e) => setUseInitials(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-neutral-250 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:height-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+              )}
             </div>
 
             {/* General details display */}
@@ -326,7 +492,7 @@ export default function ProfilePage() {
               </div>
 
               {/* Custom Avatar Selector Grid */}
-              {!useInitials && (
+              {!useInitials && !useUploadedPhoto && (
                 <div className="space-y-4 pt-2 border-t border-neutral-100">
                   <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
                     <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-800">
