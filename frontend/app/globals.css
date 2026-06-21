@@ -115,49 +115,39 @@ input:focus, textarea:focus, select:focus {
   animation: slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Standardized hover effect: background highlight matching sidebar nav items */
+/* Theme-colored outline and outline-filling hover animation for interactable UI elements */
 button,
+input,
+select,
+textarea,
 [role="button"],
 .hover\:shadow-md,
 .hover\:shadow-lg,
 .hover\:border-primary\/50,
 aside nav a,
 .group\/avatar {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  outline: 0px solid transparent;
+  outline-offset: -3px;
+  transition: outline-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              outline-offset 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              outline-width 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.2s ease,
+              box-shadow 0.2s ease !important;
 }
 
 button:hover,
+input:hover,
+select:hover,
+textarea:hover,
 [role="button"]:hover,
 .hover\:shadow-md:hover,
 .hover\:shadow-lg:hover,
 .hover\:border-primary\/50:hover,
 aside nav a:hover,
 .group\/avatar:hover {
-  background-color: #f4f4f3 !important; /* Soft light grey in light mode */
-  color: #1c1917 !important;
-  box-shadow: none !important;
-}
-
-.hover\:bg-neutral-50\/50:hover {
-  background-color: #f4f4f3 !important;
-  color: #1c1917 !important;
-}
-
-html[data-mode="dark"] button:hover,
-html[data-mode="dark"] [role="button"]:hover,
-html[data-mode="dark"] .hover\:shadow-md:hover,
-html[data-mode="dark"] .hover\:shadow-lg:hover,
-html[data-mode="dark"] .hover\:border-primary\/50:hover,
-html[data-mode="dark"] aside nav a:hover,
-html[data-mode="dark"] .group\/avatar:hover {
-  background-color: #292524 !important; /* Stone 800 in dark mode */
-  color: #f5f5f4 !important;
-  box-shadow: none !important;
-}
-
-html[data-mode="dark"] .hover\:bg-neutral-50\/50:hover {
-  background-color: #292524 !important;
-  color: #f5f5f4 !important;
+  outline: 2px solid var(--color-primary) !important;
+  outline-offset: 0px !important;
+  box-shadow: none !important; /* Disable light glow on hover */
 }
 
 /* Dark mode overrides */
