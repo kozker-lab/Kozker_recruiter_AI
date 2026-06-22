@@ -5,12 +5,24 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
 import ReviewWorkspace from "@/components/ReviewWorkspace";
 import { 
-  Loader2, Layers, Search, TrendingUp, ChevronRight
+  Loader2, Layers, Search, ChevronRight,
+  Folder, FolderOpen, List, Table, Building2, ChevronDown, User, Users
 } from "lucide-react";
 
 export default function RoundsPage() {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // View toggle & expanded node states
+  const [viewMode, setViewMode] = useState<"tree" | "accordion" | "table">("tree");
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+
+  const toggleNode = (nodeKey: string) => {
+    setExpandedNodes(prev => ({
+      ...prev,
+      [nodeKey]: prev[nodeKey] === false ? true : false
+    }));
+  };
 
   // Filters State
   const [selectedClient, setSelectedClient] = useState("all");
@@ -144,20 +156,96 @@ export default function RoundsPage() {
     filteredApps = filteredApps.slice(0, limit);
   }
 
+  // Group applications hierarchically by Client -> Job Opening
+  const groupedApps = React.useMemo(() => {
+    const clientsMap: Record<string, {
+      client_name: string;
+      jobs: Record<string, {
+        job_title: string;
+        applications: any[];
+      }>;
+    }> = {};
+
+    filteredApps.forEach(app => {
+      const clientName = app.job_openings?.client_name || app.client_name || "Unassigned Clients";
+      const jobTitle = app.job_openings?.title || "General Application";
+      const jobId = app.job_opening_id || "unassigned-job";
+
+      if (!clientsMap[clientName]) {
+        clientsMap[clientName] = {
+          client_name: clientName,
+          jobs: {}
+        };
+      }
+
+      if (!clientsMap[clientName].jobs[jobId]) {
+        clientsMap[clientName].jobs[jobId] = {
+          job_title: jobTitle,
+          applications: []
+        };
+      }
+
+      clientsMap[clientName].jobs[jobId].applications.push(app);
+    });
+
+    return clientsMap;
+  }, [filteredApps]);
+
   return (
-    <div className="space-y-6 font-sans text-neutral-700 max-w-7xl mx-auto w-full select-none">
+    <div className="space-y-6 font-sans text-neutral-700 max-w-7xl mx-auto w-full select-none animate-fade-in">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-neutral-200 pb-4">
+      <div className="bg-neutral-white border border-neutral-200 rounded-sm p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-tight font-bold text-neutral-850 flex items-center gap-2">
             <Layers className="w-5 h-5 text-primary" />
-            Interview Rounds Monitoring Board
+            Stages Monitoring Board
           </h2>
-          <p className="text-[10px] text-neutral-400 font-mono mt-0.5">Horizontal pipeline matrix tracking dashboard</p>
+          <div className="flex items-center gap-2.5 mt-0.5">
+            <p className="text-[10px] text-neutral-400 font-mono">Horizontal pipeline matrix and candidate stage tracking</p>
+            <span className="text-[9px] font-mono text-neutral-500 bg-neutral-100 px-1.5 py-0.2 border border-neutral-200 rounded-sm font-semibold">
+              Active Pipelines: {applications.filter(a => a.stage !== 'hired' && a.stage !== 'rejected').length}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-3 font-mono text-[10px] text-neutral-500 bg-neutral-100 px-3 py-1 border border-neutral-250 rounded-sm">
-          <TrendingUp className="w-4 h-4 text-success animate-pulse" />
-          <span>Active Pipelines: {applications.filter(a => a.stage !== 'hired' && a.stage !== 'rejected').length} candidates</span>
+
+        {/* View Toggle Group */}
+        <div className="flex items-center self-start md:self-auto border border-neutral-200 rounded-sm overflow-hidden p-0.5 bg-neutral-50">
+          <button
+            onClick={() => setViewMode("tree")}
+            className={`px-3 py-1.5 rounded-xs text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              viewMode === "tree"
+                ? "bg-neutral-900 text-neutral-white shadow-xs"
+                : "text-neutral-500 hover:text-neutral-800"
+            }`}
+            title="File System View"
+          >
+            <Folder className="w-3.5 h-3.5" />
+            File System
+          </button>
+          <button
+            onClick={() => setViewMode("accordion")}
+            className={`px-3 py-1.5 rounded-xs text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              viewMode === "accordion"
+                ? "bg-neutral-900 text-neutral-white shadow-xs"
+                : "text-neutral-500 hover:text-neutral-800"
+            }`}
+            title="Accordion View"
+          >
+            <List className="w-3.5 h-3.5" />
+            Accordion
+          </button>
+          <button
+            onClick={() => setViewMode("table")}
+            className={`px-3 py-1.5 rounded-xs text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              viewMode === "table"
+                ? "bg-neutral-900 text-neutral-white shadow-xs"
+                : "text-neutral-500 hover:text-neutral-800"
+            }`}
+            title="Table View"
+          >
+            <Table className="w-3.5 h-3.5" />
+            Flat Table
+          </button>
         </div>
       </div>
 
@@ -231,15 +319,15 @@ export default function RoundsPage() {
           </select>
         </div>
 
-        {/* Round Filter */}
+        {/* Stage Filter */}
         <div className="space-y-1">
-          <label className="text-[9px] uppercase tracking-wider font-semibold font-mono text-neutral-400 block">Active Round</label>
+          <label className="text-[9px] uppercase tracking-wider font-semibold font-mono text-neutral-400 block">Active Stage</label>
           <select
             value={selectedRound}
             onChange={(e) => setSelectedRound(e.target.value)}
             className="w-full px-2.5 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-neutral-800 focus:outline-none"
           >
-            <option value="all">All Rounds</option>
+            <option value="all">All Stages</option>
             <option value="screening">Screening</option>
             <option value="technical">Technical Interview</option>
             <option value="hr">HR Round</option>
@@ -266,7 +354,7 @@ export default function RoundsPage() {
         </div>
       </div>
 
-      {/* Pipeline Grid Board Layout */}
+      {/* Main Content Layout */}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-24 text-neutral-400 font-mono text-xs gap-3">
           <Loader2 className="w-8 h-8 text-primary animate-spin" />
@@ -277,99 +365,359 @@ export default function RoundsPage() {
           No candidates found matching the selected filters.
         </div>
       ) : (
-        <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-neutral-50/50 border-b border-neutral-200 text-neutral-400 font-mono uppercase text-[9px] tracking-wider">
-                  <th className="p-4 font-semibold">Candidate</th>
-                  <th className="p-4 font-semibold">Client & Job Opening</th>
-                  <th className="p-4 font-semibold text-center">Screening</th>
-                  <th className="p-4 font-semibold text-center">Technical</th>
-                  <th className="p-4 font-semibold text-center">HR Round</th>
-                  <th className="p-4 font-semibold text-center">Final Round</th>
-                  <th className="p-4 font-semibold">Match</th>
-                  <th className="p-4 font-semibold">Decision Notes</th>
-                  <th className="p-4"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-150">
-                {filteredApps.map((app) => (
-                  <tr key={app.id} className="hover:bg-neutral-50/50 transition-colors">
-                    {/* Candidate Details */}
-                    <td className="p-4">
-                      <div className="font-semibold text-neutral-800 text-xs">{app.candidates?.full_name || "Unknown Candidate"}</div>
-                      <div className="text-[10px] text-neutral-400 font-mono mt-0.5">{app.candidates?.email}</div>
-                      <div className="text-[9px] text-neutral-400 font-mono">Exp: {app.candidates?.experience_years ?? 0} years</div>
-                    </td>
+        <div className="space-y-4">
+          {/* File Tree System View */}
+          {viewMode === "tree" && (
+            <div className="bg-neutral-white border border-neutral-200 rounded-sm shadow-sm p-4 space-y-2 select-none animate-fade-in">
+              {Object.entries(groupedApps).map(([clientName, clientData]) => {
+                const clientKey = `client:${clientName}`;
+                const isClientExpanded = expandedNodes[clientKey] !== false;
 
-                    {/* Job Details */}
-                    <td className="p-4">
-                      <div className="font-mono text-[9px] text-neutral-400 uppercase font-semibold">{app.job_openings?.client_name || app.client_name || "Generic"}</div>
-                      <div className="font-medium text-neutral-700 mt-0.5 truncate max-w-[150px]" title={app.job_openings?.title}>
-                        {app.job_openings?.title}
+                return (
+                  <div key={clientName} className="space-y-1">
+                    {/* Client Level Folder */}
+                    <div
+                      onClick={() => toggleNode(clientKey)}
+                      className="flex items-center justify-between p-2.5 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors border border-neutral-100 bg-neutral-50/30"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Building2 className="w-4 h-4 text-neutral-400" />
+                        {isClientExpanded ? (
+                          <FolderOpen className="w-4 h-4 text-primary/70" />
+                        ) : (
+                          <Folder className="w-4 h-4 text-primary/70" />
+                        )}
+                        <span className="font-semibold text-neutral-850 text-xs uppercase tracking-tight">
+                          {clientName}
+                        </span>
                       </div>
-                    </td>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-mono text-neutral-400 px-1.5 py-0.5 bg-neutral-100 border border-neutral-200 rounded-xs">
+                          {Object.keys(clientData.jobs).length} Active Job(s)
+                        </span>
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 text-neutral-450 transition-transform ${
+                            isClientExpanded ? "" : "-rotate-90"
+                          }`}
+                        />
+                      </div>
+                    </div>
 
-                    {/* Screening Stage */}
-                    <td className="p-4 text-center">
-                      <span className={`inline-block px-2.5 py-1 rounded-sm border text-[9px] font-mono font-semibold uppercase min-w-[95px] text-center ${getRoundStatus(app, "screening").style}`}>
-                        {getRoundStatus(app, "screening").label}
-                      </span>
-                    </td>
+                    {/* Job Level Subfolders */}
+                    {isClientExpanded && (
+                      <div className="pl-6 border-l border-neutral-150 ml-4.5 space-y-1 mt-1">
+                        {Object.entries(clientData.jobs).map(([jobId, jobData]) => {
+                          const jobKey = `job:${clientName}:${jobId}`;
+                          const isJobExpanded = expandedNodes[jobKey] !== false;
 
-                    {/* Technical Stage */}
-                    <td className="p-4 text-center">
-                      <span className={`inline-block px-2.5 py-1 rounded-sm border text-[9px] font-mono font-semibold uppercase min-w-[95px] text-center ${getRoundStatus(app, "technical").style}`}>
-                        {getRoundStatus(app, "technical").label}
-                      </span>
-                    </td>
+                          return (
+                            <div key={jobId} className="space-y-1">
+                              <div
+                                onClick={() => toggleNode(jobKey)}
+                                className="flex items-center justify-between p-2 hover:bg-neutral-50 rounded-sm cursor-pointer transition-colors border border-neutral-100/50 bg-neutral-50/10"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {isJobExpanded ? (
+                                    <FolderOpen className="w-3.5 h-3.5 text-neutral-450" />
+                                  ) : (
+                                    <Folder className="w-3.5 h-3.5 text-neutral-450" />
+                                  )}
+                                  <span className="font-medium text-neutral-800 text-xs">
+                                    {jobData.job_title}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] font-mono text-neutral-450 px-1.5 py-0.2 bg-neutral-100 border border-neutral-200 rounded-xs">
+                                    {jobData.applications.length} Candidate(s)
+                                  </span>
+                                  <ChevronDown
+                                    className={`w-3 h-3 text-neutral-400 transition-transform ${
+                                      isJobExpanded ? "" : "-rotate-90"
+                                    }`}
+                                  />
+                                </div>
+                              </div>
 
-                    {/* HR Stage */}
-                    <td className="p-4 text-center">
-                      <span className={`inline-block px-2.5 py-1 rounded-sm border text-[9px] font-mono font-semibold uppercase min-w-[95px] text-center ${getRoundStatus(app, "hr").style}`}>
-                        {getRoundStatus(app, "hr").label}
-                      </span>
-                    </td>
+                              {/* Candidate Files */}
+                              {isJobExpanded && (
+                                <div className="pl-6 border-l border-neutral-150 ml-3.5 space-y-1 mt-1">
+                                  <div className="bg-neutral-white border border-neutral-200/65 rounded-sm overflow-hidden">
+                                    <table className="w-full text-left border-collapse text-xs">
+                                      <thead>
+                                        <tr className="bg-neutral-50/50 border-b border-neutral-250 text-neutral-400 font-mono uppercase text-[8px] tracking-wider">
+                                          <th className="p-3 font-semibold">Candidate</th>
+                                          <th className="p-3 font-semibold text-center">Screening</th>
+                                          <th className="p-3 font-semibold text-center">Technical</th>
+                                          <th className="p-3 font-semibold text-center">HR</th>
+                                          <th className="p-3 font-semibold text-center">Final</th>
+                                          <th className="p-3 font-semibold">Match</th>
+                                          <th className="p-3 font-semibold">Notes</th>
+                                          <th className="p-3"></th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-neutral-150">
+                                        {jobData.applications.map((app) => (
+                                          <tr key={app.id} className="hover:bg-neutral-50/40 transition-colors">
+                                            <td className="p-3">
+                                              <div className="font-semibold text-neutral-800 text-xs flex items-center gap-1.5">
+                                                <User className="w-3.5 h-3.5 text-neutral-400" />
+                                                {app.candidates?.full_name || "Unknown"}
+                                              </div>
+                                              <div className="text-[9px] text-neutral-400 font-mono ml-5">{app.candidates?.email}</div>
+                                            </td>
+                                            <td className="p-3 text-center">
+                                              <span className={`inline-block px-2 py-0.5 rounded-sm border text-[8px] font-mono font-semibold uppercase min-w-[85px] text-center ${getRoundStatus(app, "screening").style}`}>
+                                                {getRoundStatus(app, "screening").label}
+                                              </span>
+                                            </td>
+                                            <td className="p-3 text-center">
+                                              <span className={`inline-block px-2 py-0.5 rounded-sm border text-[8px] font-mono font-semibold uppercase min-w-[85px] text-center ${getRoundStatus(app, "technical").style}`}>
+                                                {getRoundStatus(app, "technical").label}
+                                              </span>
+                                            </td>
+                                            <td className="p-3 text-center">
+                                              <span className={`inline-block px-2 py-0.5 rounded-sm border text-[8px] font-mono font-semibold uppercase min-w-[85px] text-center ${getRoundStatus(app, "hr").style}`}>
+                                                {getRoundStatus(app, "hr").label}
+                                              </span>
+                                            </td>
+                                            <td className="p-3 text-center">
+                                              <span className={`inline-block px-2 py-0.5 rounded-sm border text-[8px] font-mono font-semibold uppercase min-w-[85px] text-center ${getRoundStatus(app, "final").style}`}>
+                                                {getRoundStatus(app, "final").label}
+                                              </span>
+                                            </td>
+                                            <td className="p-3 font-mono font-bold text-neutral-800">
+                                              <span className={`px-1.5 py-0.2 rounded-xs border text-[9px] ${
+                                                app.fuzzy_score >= 80 ? "bg-success/10 border-success/20 text-success" :
+                                                app.fuzzy_score >= 50 ? "bg-warning/10 border-warning/20 text-warning" :
+                                                "bg-error/10 border-error/20 text-error"
+                                              }`}>
+                                                {app.fuzzy_score}%
+                                              </span>
+                                            </td>
+                                            <td className="p-3 text-neutral-500 max-w-[120px] truncate" title={app.stage_notes || ""}>
+                                              {app.stage_notes || "-"}
+                                            </td>
+                                            <td className="p-3 text-right">
+                                              <button
+                                                onClick={() => setSelectedAppId(app.id)}
+                                                className="text-[9px] text-primary hover:underline font-semibold uppercase font-mono cursor-pointer flex items-center gap-0.5 ml-auto"
+                                              >
+                                                Review
+                                                <ChevronRight className="w-3 h-3" />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-                    {/* Final Stage */}
-                    <td className="p-4 text-center">
-                      <span className={`inline-block px-2.5 py-1 rounded-sm border text-[9px] font-mono font-semibold uppercase min-w-[95px] text-center ${getRoundStatus(app, "final").style}`}>
-                        {getRoundStatus(app, "final").label}
-                      </span>
-                    </td>
+          {/* Accordion View */}
+          {viewMode === "accordion" && (
+            <div className="space-y-3 animate-fade-in">
+              {Object.entries(groupedApps).map(([clientName, clientData]) => {
+                const clientKey = `accordion:client:${clientName}`;
+                const isClientExpanded = expandedNodes[clientKey] !== false;
 
-                    {/* Match Score */}
-                    <td className="p-4 font-mono font-bold text-neutral-800">
-                      <span className={`px-2 py-0.5 rounded-sm border ${
-                        app.fuzzy_score >= 80 ? "bg-success/10 border-success/20 text-success" :
-                        app.fuzzy_score >= 50 ? "bg-warning/10 border-warning/20 text-warning" :
-                        "bg-error/10 border-error/20 text-error"
-                      }`}>
-                        {app.fuzzy_score}%
-                      </span>
-                    </td>
+                return (
+                  <div
+                    key={clientName}
+                    className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-xs"
+                  >
+                    <div
+                      onClick={() => toggleNode(clientKey)}
+                      className="p-4 bg-neutral-50 flex items-center justify-between cursor-pointer border-b border-neutral-150"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-neutral-405" />
+                        <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">
+                          {clientName}
+                        </h3>
+                      </div>
+                      <ChevronDown
+                        className={`w-4 h-4 text-neutral-400 transition-transform ${
+                          isClientExpanded ? "" : "-rotate-90"
+                        }`}
+                      />
+                    </div>
 
-                    {/* Decision Notes */}
-                    <td className="p-4 text-neutral-500 font-normal max-w-[150px] truncate" title={app.stage_notes || ""}>
-                      {app.stage_notes || "-"}
-                    </td>
+                    {isClientExpanded && (
+                      <div className="p-4 space-y-4 bg-neutral-50/10">
+                        {Object.entries(clientData.jobs).map(([jobId, jobData]) => (
+                          <div key={jobId} className="space-y-2">
+                            <h4 className="font-bold text-xs text-neutral-800 flex items-center gap-1.5 border-b border-neutral-100 pb-2">
+                              <span className="w-1.5 h-1.5 bg-primary rounded-xs"></span>
+                              {jobData.job_title}
+                            </h4>
+                            
+                            <div className="overflow-x-auto border border-neutral-200/80 rounded-sm">
+                              <table className="w-full text-left border-collapse text-xs">
+                                <thead>
+                                  <tr className="bg-neutral-50/50 border-b border-neutral-250 text-neutral-400 font-mono uppercase text-[8px] tracking-wider">
+                                    <th className="p-3 font-semibold">Candidate</th>
+                                    <th className="p-3 font-semibold text-center">Screening</th>
+                                    <th className="p-3 font-semibold text-center">Technical</th>
+                                    <th className="p-3 font-semibold text-center">HR</th>
+                                    <th className="p-3 font-semibold text-center">Final</th>
+                                    <th className="p-3 font-semibold">Match</th>
+                                    <th className="p-3"></th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-neutral-150 bg-neutral-white">
+                                  {jobData.applications.map((app) => (
+                                    <tr key={app.id} className="hover:bg-neutral-50/30 transition-colors">
+                                      <td className="p-3">
+                                        <div className="font-semibold text-neutral-800 text-xs flex items-center gap-1.5">
+                                          <User className="w-3.5 h-3.5 text-neutral-400" />
+                                          {app.candidates?.full_name || "Unknown"}
+                                        </div>
+                                        <div className="text-[9px] text-neutral-400 font-mono ml-5">{app.candidates?.email}</div>
+                                      </td>
+                                      <td className="p-3 text-center">
+                                        <span className={`inline-block px-2 py-0.5 rounded-sm border text-[8px] font-mono font-semibold uppercase min-w-[85px] text-center ${getRoundStatus(app, "screening").style}`}>
+                                          {getRoundStatus(app, "screening").label}
+                                        </span>
+                                      </td>
+                                      <td className="p-3 text-center">
+                                        <span className={`inline-block px-2 py-0.5 rounded-sm border text-[8px] font-mono font-semibold uppercase min-w-[85px] text-center ${getRoundStatus(app, "technical").style}`}>
+                                          {getRoundStatus(app, "technical").label}
+                                        </span>
+                                      </td>
+                                      <td className="p-3 text-center">
+                                        <span className={`inline-block px-2 py-0.5 rounded-sm border text-[8px] font-mono font-semibold uppercase min-w-[85px] text-center ${getRoundStatus(app, "hr").style}`}>
+                                          {getRoundStatus(app, "hr").label}
+                                        </span>
+                                      </td>
+                                      <td className="p-3 text-center">
+                                        <span className={`inline-block px-2 py-0.5 rounded-sm border text-[8px] font-mono font-semibold uppercase min-w-[85px] text-center ${getRoundStatus(app, "final").style}`}>
+                                          {getRoundStatus(app, "final").label}
+                                        </span>
+                                      </td>
+                                      <td className="p-3 font-mono font-bold text-neutral-800">
+                                        <span className={`px-1.5 py-0.2 rounded-xs border text-[9px] ${
+                                          app.fuzzy_score >= 80 ? "bg-success/10 border-success/20 text-success" :
+                                          app.fuzzy_score >= 50 ? "bg-warning/10 border-warning/20 text-warning" :
+                                          "bg-error/10 border-error/20 text-error"
+                                        }`}>
+                                          {app.fuzzy_score}%
+                                        </span>
+                                      </td>
+                                      <td className="p-3 text-right">
+                                        <button
+                                          onClick={() => setSelectedAppId(app.id)}
+                                          className="text-[9px] text-primary hover:underline font-semibold uppercase font-mono cursor-pointer flex items-center gap-0.5 ml-auto"
+                                        >
+                                          Review
+                                          <ChevronRight className="w-3.5 h-3.5" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-                    {/* Review Workspace Link */}
-                    <td className="p-4 text-right">
-                      <button
-                        onClick={() => setSelectedAppId(app.id)}
-                        className="text-[10px] text-primary hover:underline font-semibold uppercase font-mono cursor-pointer flex items-center gap-0.5 ml-auto"
-                      >
-                        Review
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {/* Flat Table View */}
+          {viewMode === "table" && (
+            <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm animate-fade-in">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-neutral-50/50 border-b border-neutral-200 text-neutral-400 font-mono uppercase text-[9px] tracking-wider">
+                      <th className="p-4 font-semibold">Candidate</th>
+                      <th className="p-4 font-semibold">Client & Job Opening</th>
+                      <th className="p-4 font-semibold text-center">Screening</th>
+                      <th className="p-4 font-semibold text-center">Technical</th>
+                      <th className="p-4 font-semibold text-center">HR Round</th>
+                      <th className="p-4 font-semibold text-center">Final Round</th>
+                      <th className="p-4 font-semibold">Match</th>
+                      <th className="p-4 font-semibold">Decision Notes</th>
+                      <th className="p-4"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-150">
+                    {filteredApps.map((app) => (
+                      <tr key={app.id} className="hover:bg-neutral-50/50 transition-colors">
+                        <td className="p-4">
+                          <div className="font-semibold text-neutral-800 text-xs">{app.candidates?.full_name || "Unknown Candidate"}</div>
+                          <div className="text-[10px] text-neutral-400 font-mono mt-0.5">{app.candidates?.email}</div>
+                          <div className="text-[9px] text-neutral-400 font-mono">Exp: {app.candidates?.experience_years ?? 0} years</div>
+                        </td>
+                        <td className="p-4">
+                          <div className="font-mono text-[9px] text-neutral-400 uppercase font-semibold">{app.job_openings?.client_name || app.client_name || "Generic"}</div>
+                          <div className="font-medium text-neutral-700 mt-0.5 truncate max-w-[150px]" title={app.job_openings?.title}>
+                            {app.job_openings?.title}
+                          </div>
+                        </td>
+                        <td className="p-4 text-center">
+                          <span className={`inline-block px-2.5 py-1 rounded-sm border text-[9px] font-mono font-semibold uppercase min-w-[95px] text-center ${getRoundStatus(app, "screening").style}`}>
+                            {getRoundStatus(app, "screening").label}
+                          </span>
+                        </td>
+                        <td className="p-4 text-center">
+                          <span className={`inline-block px-2.5 py-1 rounded-sm border text-[9px] font-mono font-semibold uppercase min-w-[95px] text-center ${getRoundStatus(app, "technical").style}`}>
+                            {getRoundStatus(app, "technical").label}
+                          </span>
+                        </td>
+                        <td className="p-4 text-center">
+                          <span className={`inline-block px-2.5 py-1 rounded-sm border text-[9px] font-mono font-semibold uppercase min-w-[95px] text-center ${getRoundStatus(app, "hr").style}`}>
+                            {getRoundStatus(app, "hr").label}
+                          </span>
+                        </td>
+                        <td className="p-4 text-center">
+                          <span className={`inline-block px-2.5 py-1 rounded-sm border text-[9px] font-mono font-semibold uppercase min-w-[95px] text-center ${getRoundStatus(app, "final").style}`}>
+                            {getRoundStatus(app, "final").label}
+                          </span>
+                        </td>
+                        <td className="p-4 font-mono font-bold text-neutral-800">
+                          <span className={`px-2 py-0.5 rounded-sm border ${
+                            app.fuzzy_score >= 80 ? "bg-success/10 border-success/20 text-success" :
+                            app.fuzzy_score >= 50 ? "bg-warning/10 border-warning/20 text-warning" :
+                            "bg-error/10 border-error/20 text-error"
+                          }`}>
+                            {app.fuzzy_score}%
+                          </span>
+                        </td>
+                        <td className="p-4 text-neutral-500 font-normal max-w-[150px] truncate" title={app.stage_notes || ""}>
+                          {app.stage_notes || "-"}
+                        </td>
+                        <td className="p-4 text-right">
+                          <button
+                            onClick={() => setSelectedAppId(app.id)}
+                            className="text-[10px] text-primary hover:underline font-semibold uppercase font-mono cursor-pointer flex items-center gap-0.5 ml-auto"
+                          >
+                            Review
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

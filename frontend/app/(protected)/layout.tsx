@@ -628,7 +628,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     { id: "clients", href: "/clients", label: "Clients & Mandates", icon: Building2 },
     { id: "jobs", href: "/jobs", label: "Job Catalog", icon: Briefcase },
     { id: "pool", href: "/pool", label: "Sourcing Pool", icon: Users },
-    { id: "rounds", href: "/rounds", label: "Interview Rounds", icon: Layers },
+    { id: "rounds", href: "/rounds", label: "Stages", icon: Layers },
     { id: "notifications", href: "/notifications", label: "Notifications", icon: Bell },
     { id: "settings", href: "/profile", label: "Settings", icon: Settings },
   ];
