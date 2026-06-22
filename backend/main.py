@@ -877,13 +877,19 @@ async def handle_refine_question_dispatch(app_id: str, question_id: str, questio
         "application_id": app_id,
         "question_id": question_id,
         "instruction": instruction,
+        "refine_prompt": instruction,
+        "refining_prompt": instruction,
+        "prompt": instruction,
         "callback_url": callback_url,
         "auth_header": f"Bearer {CALLBACK_SECRET}",
         "authorization": f"Bearer {CALLBACK_SECRET}",
         "question_details": {
             "question": question.get("question"),
             "difficulty": question.get("difficulty"),
-            "reason": question.get("reason") or question.get("reasoning")
+            "reason": question.get("reason") or question.get("reasoning"),
+            "refine_prompt": instruction,
+            "prompt": instruction,
+            "instruction": instruction
         },
         "candidate": {
             "id": cand.get("id"),
