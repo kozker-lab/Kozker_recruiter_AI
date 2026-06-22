@@ -16,6 +16,7 @@ export default function ClientsView() {
   const queryClient = useQueryClient();
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [expandedReqId, setExpandedReqId] = useState<string | null>(null);
+  const [clientSearchQuery, setClientSearchQuery] = useState("");
 
   const stages = [
     { id: "screening", label: "Screening", icon: UserCheck, color: "text-blue-600 bg-blue-50 border-blue-200" },
@@ -141,6 +142,11 @@ export default function ClientsView() {
     
     return true;
   });
+
+  const filteredClients = clients.filter(c => 
+    c.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
+    c.id.toLowerCase().includes(clientSearchQuery.toLowerCase())
+  );
 
   const activeClient = clients.find(c => c.id === selectedClientId);
 
@@ -352,13 +358,34 @@ export default function ClientsView() {
           </button>
         </div>
 
+        {/* Client Search Bar */}
+        <div className="p-2.5 bg-neutral-50/50 border-b border-neutral-150 flex items-center gap-2 text-xs select-none">
+          <div className="relative w-full">
+            <input
+              type="text"
+              placeholder="Search clients..."
+              value={clientSearchQuery}
+              onChange={(e) => setClientSearchQuery(e.target.value)}
+              className="w-full pl-3 pr-8 py-1.5 border border-neutral-200 rounded-sm text-neutral-700 bg-neutral-white placeholder:text-neutral-400 text-xs focus:ring-1 focus:ring-primary focus:outline-hidden"
+            />
+            {clientSearchQuery && (
+              <button
+                onClick={() => setClientSearchQuery("")}
+                className="absolute right-2.5 top-1.5 text-neutral-400 hover:text-neutral-600 font-bold"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto divide-y divide-neutral-100 text-xs">
           {loadingClients ? (
             <div className="p-4 text-center text-neutral-400 font-mono">Loading clients...</div>
-          ) : clients.length === 0 ? (
-            <div className="p-4 text-center text-neutral-400 font-mono">No clients added.</div>
+          ) : filteredClients.length === 0 ? (
+            <div className="p-4 text-center text-neutral-400 font-mono">No clients found.</div>
           ) : (
-            clients.map((c) => (
+            filteredClients.map((c) => (
               <div
                 key={c.id}
                 onClick={() => setSelectedClientId(c.id)}

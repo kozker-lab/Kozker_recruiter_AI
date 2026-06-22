@@ -249,6 +249,181 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
         </div>
       </div>
 
+
+      {/* 4. Main Split Panel: Job Feed & Audit Trail */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* Left Column: Job openings grouped by requirement */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="border border-neutral-200 bg-neutral-white rounded-sm overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+              <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Recent Job Posts & Pipelines</h3>
+              <button 
+                onClick={() => onNavigate("jobs")}
+                className="text-[10px] font-semibold text-primary hover:underline cursor-pointer flex items-center gap-0.5"
+              >
+                View Workspace
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {loadingJobs ? (
+              <div className="p-8 text-center text-xs text-neutral-400">Loading openings...</div>
+            ) : jobs.length === 0 ? (
+              <div className="p-8 text-center text-xs text-neutral-400">No active job posts. Create a requirement to begin.</div>
+            ) : (
+              <div className="divide-y divide-neutral-200 text-xs">
+                {jobs.slice(0, 5).map((j) => (
+                  <div key={j.id} className="p-4 hover:bg-neutral-50 transition-colors flex items-center justify-between">
+                    <div className="space-y-1.5 max-w-[70%]">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[9px] px-1.5 py-0.5 bg-neutral-100 border border-neutral-200 rounded-sm font-medium text-neutral-500 uppercase">
+                          {j.client_name}
+                        </span>
+                        <span className="font-tight font-bold text-neutral-850 hover:text-primary transition-colors cursor-pointer text-sm" onClick={() => onNavigate("jobs", j.id)}>
+                          {j.title}
+                        </span>
+                      </div>
+                      <p className="text-neutral-400 text-xs truncate max-w-md">
+                        {j.description || "No description generated yet."}
+                      </p>
+                      <div className="flex gap-2">
+                        {j.keywords?.slice(0, 3).map((kw, idx) => (
+                          <span key={idx} className="text-[9px] font-mono text-neutral-500 bg-neutral-50 px-1 py-0.5 border border-neutral-200/60 rounded-sm">
+                            {kw}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="text-right flex flex-col items-end gap-2 font-mono">
+                      <span className={`text-[9px] px-2 py-0.5 rounded-sm border uppercase font-semibold ${
+                        j.status === "published" ? "bg-success/10 border-success/20 text-success" :
+                        j.status === "confirmed" ? "bg-info/10 border-info/20 text-info" :
+                        "bg-neutral-100 border-neutral-200 text-neutral-400"
+                      }`}>
+                        {j.status}
+                      </span>
+                      <div className="text-[10px] text-neutral-400">
+                        {j.candidate_count || 0} candidates linked
+                      </div>
+                      {j.top_score && j.top_score > 0 ? (
+                        <div className="text-[10px] text-neutral-500">
+                          Top Match: <span className="text-primary font-bold">{j.top_score}%</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Visual Vertical Timeline Activity Feed */}
+        <div className="space-y-4">
+          <div className="border border-neutral-200 bg-neutral-white rounded-sm overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-neutral-200 bg-neutral-50">
+              <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">System Audit Trail</h3>
+            </div>
+
+            {loadingLogs ? (
+              <div className="p-8 text-center text-xs text-neutral-400">Loading trail logs...</div>
+            ) : logs.length === 0 ? (
+              <div className="p-8 text-center text-xs text-neutral-400">No events logged yet.</div>
+            ) : (
+              <div className="p-4 space-y-4">
+                <div className="relative border-l border-neutral-200 ml-2.5 pl-5 space-y-5 text-xs">
+                  {logs.slice(0, 8).map((log) => {
+                    // Resolve icons and colors based on action type
+                    let dotColor = "border-neutral-300 bg-neutral-100";
+                    let innerDot = "bg-neutral-400 group-hover:bg-primary";
+                    
+                    if (log.action === "client_created" || log.action === "client_updated") {
+                      dotColor = "border-blue-300 bg-blue-50";
+                      innerDot = "bg-blue-500";
+                    } else if (log.action === "requirement_created" || log.action === "requirement_updated") {
+                      dotColor = "border-violet-300 bg-violet-50";
+                      innerDot = "bg-violet-500";
+                    } else if (log.action === "job_confirmed") {
+                      dotColor = "border-indigo-300 bg-indigo-50";
+                      innerDot = "bg-indigo-500";
+                    } else if (log.action === "job_published" || log.action === "skills_approved") {
+                      dotColor = "border-primary/30 bg-primary/5";
+                      innerDot = "bg-primary";
+                    } else if (log.action.includes("imported") || log.action.includes("downloaded") || log.action.includes("success")) {
+                      dotColor = "border-emerald-300 bg-emerald-50";
+                      innerDot = "bg-emerald-500";
+                    } else if (log.action.includes("failed") || log.action.includes("error")) {
+                      dotColor = "border-rose-300 bg-rose-50";
+                      innerDot = "bg-rose-500";
+                    } else if (log.action === "application_accepted") {
+                      dotColor = "border-teal-300 bg-teal-50";
+                      innerDot = "bg-teal-500";
+                    } else if (log.action === "application_rejected") {
+                      dotColor = "border-red-300 bg-red-50";
+                      innerDot = "bg-red-500";
+                    } else if (log.action === "stage_updated") {
+                      dotColor = "border-amber-300 bg-amber-50";
+                      innerDot = "bg-amber-500";
+                    } else if (log.action === "screening_questions_generated" || log.action === "screening_question_added" || log.action === "screening_question_updated") {
+                      dotColor = "border-sky-300 bg-sky-50";
+                      innerDot = "bg-sky-500";
+                    }
+
+                    return (
+                      <div key={log.id} className="relative group">
+                        {/* Timeline dot */}
+                        <span className={`absolute -left-7.5 top-0.5 w-3.5 h-3.5 rounded-full border transition-colors flex items-center justify-center ${dotColor}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${innerDot}`}></span>
+                        </span>
+                        
+                        {/* Event Details */}
+                        <div className="space-y-0.5">
+                          <div className="flex items-center justify-between text-neutral-400 font-mono text-[9px]">
+                            <span className="font-semibold text-neutral-600">{log.actor_name || "System"}</span>
+                            <span className="flex items-center gap-0.5">
+                              <Clock className="w-2.5 h-2.5" />
+                              {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-neutral-700">
+                            <span className="font-bold text-neutral-800 uppercase tracking-wider text-[8px] mr-1">
+                              {log.action?.replace("_", " ")}:
+                            </span>{" "}
+                            {log.metadata?.job_title || log.metadata?.candidate_name || log.metadata?.req_title || log.metadata?.client_name || ""}
+                          </p>
+                          {log.metadata?.inserted !== undefined && (
+                            <p className="text-[10px] text-emerald-600 font-mono">
+                              Imported {log.metadata.inserted} new profiles, updated {log.metadata.skipped}
+                            </p>
+                          )}
+                          {log.metadata?.skills_count !== undefined && (
+                            <p className="text-[10px] text-primary font-mono">
+                              Approved {log.metadata.skills_count} core job requirements
+                            </p>
+                          )}
+                          {log.metadata?.matches_count !== undefined && (
+                            <p className="text-[10px] text-emerald-600 font-mono">
+                              Identified {log.metadata.matches_count} matching candidates
+                            </p>
+                          )}
+                          {log.metadata?.count && (
+                            <p className="text-[10px] text-success font-mono">Matched {log.metadata.count} candidates in index</p>
+                          )}
+                          {log.metadata?.fuzzy_score && (
+                            <p className="text-[10px] text-primary font-mono">Fuzzy Index score: {log.metadata.fuzzy_score}%</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* 3. Pending Candidate Reviews Section (Highly Engaging) */}
       <div className="border border-neutral-200 bg-neutral-white rounded-sm overflow-hidden shadow-sm">
         <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
@@ -488,180 +663,6 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
             })}
           </div>
         )}
-      </div>
-
-      {/* 4. Main Split Panel: Job Feed & Audit Trail */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Left Column: Job openings grouped by requirement */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="border border-neutral-200 bg-neutral-white rounded-sm overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
-              <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Recent Job Posts & Pipelines</h3>
-              <button 
-                onClick={() => onNavigate("jobs")}
-                className="text-[10px] font-semibold text-primary hover:underline cursor-pointer flex items-center gap-0.5"
-              >
-                View Workspace
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {loadingJobs ? (
-              <div className="p-8 text-center text-xs text-neutral-400">Loading openings...</div>
-            ) : jobs.length === 0 ? (
-              <div className="p-8 text-center text-xs text-neutral-400">No active job posts. Create a requirement to begin.</div>
-            ) : (
-              <div className="divide-y divide-neutral-200 text-xs">
-                {jobs.slice(0, 5).map((j) => (
-                  <div key={j.id} className="p-4 hover:bg-neutral-50 transition-colors flex items-center justify-between">
-                    <div className="space-y-1.5 max-w-[70%]">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[9px] px-1.5 py-0.5 bg-neutral-100 border border-neutral-200 rounded-sm font-medium text-neutral-500 uppercase">
-                          {j.client_name}
-                        </span>
-                        <span className="font-tight font-bold text-neutral-850 hover:text-primary transition-colors cursor-pointer text-sm" onClick={() => onNavigate("jobs", j.id)}>
-                          {j.title}
-                        </span>
-                      </div>
-                      <p className="text-neutral-400 text-xs truncate max-w-md">
-                        {j.description || "No description generated yet."}
-                      </p>
-                      <div className="flex gap-2">
-                        {j.keywords?.slice(0, 3).map((kw, idx) => (
-                          <span key={idx} className="text-[9px] font-mono text-neutral-500 bg-neutral-50 px-1 py-0.5 border border-neutral-200/60 rounded-sm">
-                            {kw}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="text-right flex flex-col items-end gap-2 font-mono">
-                      <span className={`text-[9px] px-2 py-0.5 rounded-sm border uppercase font-semibold ${
-                        j.status === "published" ? "bg-success/10 border-success/20 text-success" :
-                        j.status === "confirmed" ? "bg-info/10 border-info/20 text-info" :
-                        "bg-neutral-100 border-neutral-200 text-neutral-400"
-                      }`}>
-                        {j.status}
-                      </span>
-                      <div className="text-[10px] text-neutral-400">
-                        {j.candidate_count || 0} candidates linked
-                      </div>
-                      {j.top_score && j.top_score > 0 ? (
-                        <div className="text-[10px] text-neutral-500">
-                          Top Match: <span className="text-primary font-bold">{j.top_score}%</span>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right Column: Visual Vertical Timeline Activity Feed */}
-        <div className="space-y-4">
-          <div className="border border-neutral-200 bg-neutral-white rounded-sm overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-neutral-200 bg-neutral-50">
-              <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">System Audit Trail</h3>
-            </div>
-
-            {loadingLogs ? (
-              <div className="p-8 text-center text-xs text-neutral-400">Loading trail logs...</div>
-            ) : logs.length === 0 ? (
-              <div className="p-8 text-center text-xs text-neutral-400">No events logged yet.</div>
-            ) : (
-              <div className="p-4 space-y-4">
-                <div className="relative border-l border-neutral-200 ml-2.5 pl-5 space-y-5 text-xs">
-                  {logs.slice(0, 8).map((log) => {
-                    // Resolve icons and colors based on action type
-                    let dotColor = "border-neutral-300 bg-neutral-100";
-                    let innerDot = "bg-neutral-400 group-hover:bg-primary";
-                    
-                    if (log.action === "client_created" || log.action === "client_updated") {
-                      dotColor = "border-blue-300 bg-blue-50";
-                      innerDot = "bg-blue-500";
-                    } else if (log.action === "requirement_created" || log.action === "requirement_updated") {
-                      dotColor = "border-violet-300 bg-violet-50";
-                      innerDot = "bg-violet-500";
-                    } else if (log.action === "job_confirmed") {
-                      dotColor = "border-indigo-300 bg-indigo-50";
-                      innerDot = "bg-indigo-500";
-                    } else if (log.action === "job_published" || log.action === "skills_approved") {
-                      dotColor = "border-primary/30 bg-primary/5";
-                      innerDot = "bg-primary";
-                    } else if (log.action.includes("imported") || log.action.includes("downloaded") || log.action.includes("success")) {
-                      dotColor = "border-emerald-300 bg-emerald-50";
-                      innerDot = "bg-emerald-500";
-                    } else if (log.action.includes("failed") || log.action.includes("error")) {
-                      dotColor = "border-rose-300 bg-rose-50";
-                      innerDot = "bg-rose-500";
-                    } else if (log.action === "application_accepted") {
-                      dotColor = "border-teal-300 bg-teal-50";
-                      innerDot = "bg-teal-500";
-                    } else if (log.action === "application_rejected") {
-                      dotColor = "border-red-300 bg-red-50";
-                      innerDot = "bg-red-500";
-                    } else if (log.action === "stage_updated") {
-                      dotColor = "border-amber-300 bg-amber-50";
-                      innerDot = "bg-amber-500";
-                    } else if (log.action === "screening_questions_generated" || log.action === "screening_question_added" || log.action === "screening_question_updated") {
-                      dotColor = "border-sky-300 bg-sky-50";
-                      innerDot = "bg-sky-500";
-                    }
-
-                    return (
-                      <div key={log.id} className="relative group">
-                        {/* Timeline dot */}
-                        <span className={`absolute -left-7.5 top-0.5 w-3.5 h-3.5 rounded-full border transition-colors flex items-center justify-center ${dotColor}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${innerDot}`}></span>
-                        </span>
-                        
-                        {/* Event Details */}
-                        <div className="space-y-0.5">
-                          <div className="flex items-center justify-between text-neutral-400 font-mono text-[9px]">
-                            <span className="font-semibold text-neutral-600">{log.actor_name || "System"}</span>
-                            <span className="flex items-center gap-0.5">
-                              <Clock className="w-2.5 h-2.5" />
-                              {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                          <p className="text-neutral-700">
-                            <span className="font-bold text-neutral-800 uppercase tracking-wider text-[8px] mr-1">
-                              {log.action?.replace("_", " ")}:
-                            </span>{" "}
-                            {log.metadata?.job_title || log.metadata?.candidate_name || log.metadata?.req_title || log.metadata?.client_name || ""}
-                          </p>
-                          {log.metadata?.inserted !== undefined && (
-                            <p className="text-[10px] text-emerald-600 font-mono">
-                              Imported {log.metadata.inserted} new profiles, updated {log.metadata.skipped}
-                            </p>
-                          )}
-                          {log.metadata?.skills_count !== undefined && (
-                            <p className="text-[10px] text-primary font-mono">
-                              Approved {log.metadata.skills_count} core job requirements
-                            </p>
-                          )}
-                          {log.metadata?.matches_count !== undefined && (
-                            <p className="text-[10px] text-emerald-600 font-mono">
-                              Identified {log.metadata.matches_count} matching candidates
-                            </p>
-                          )}
-                          {log.metadata?.count && (
-                            <p className="text-[10px] text-success font-mono">Matched {log.metadata.count} candidates in index</p>
-                          )}
-                          {log.metadata?.fuzzy_score && (
-                            <p className="text-[10px] text-primary font-mono">Fuzzy Index score: {log.metadata.fuzzy_score}%</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Rejection Reason Modal */}

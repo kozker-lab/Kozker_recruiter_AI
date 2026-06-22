@@ -37,6 +37,8 @@ export default function RoundsPage() {
   const [isStageModalOpen, setIsStageModalOpen] = useState(false);
   const [stageManageJobId, setStageManageJobId] = useState<string>("all");
   const [customStagesList, setCustomStagesList] = useState<string[]>([]);
+  const [modalSelectedClient, setModalSelectedClient] = useState<string>("all");
+  const [modalSelectedRequirement, setModalSelectedRequirement] = useState<string>("all");
 
   // Queries
   const { data: clients = [] } = useQuery<any[]>({
@@ -60,17 +62,6 @@ export default function RoundsPage() {
     refetchInterval: 3000
   });
 
-  // Automatically sync custom stages list when selection changes
-  React.useEffect(() => {
-    if (stageManageJobId && stageManageJobId !== "all") {
-      const job = jobs.find(j => j.id === stageManageJobId);
-      if (job) {
-        setCustomStagesList(job.custom_stages || ['technical', 'hr', 'final']);
-      }
-    } else {
-      setCustomStagesList([]);
-    }
-  }, [stageManageJobId, jobs]);
 
   const updateJobStagesMutation = useMutation({
     mutationFn: (newStages: string[]) => 
@@ -87,18 +78,6 @@ export default function RoundsPage() {
       alert("Failed to update job stages: " + err.message);
     }
   });
-
-  if (selectedAppId) {
-    return (
-      <ReviewWorkspace 
-        applicationId={selectedAppId} 
-        onBack={() => {
-          setSelectedAppId(null);
-          refetch();
-        }} 
-      />
-    );
-  }
 
   const getJobStages = (job: any): string[] => {
     if (job?.custom_stages && job.custom_stages.length > 0) {
@@ -295,6 +274,18 @@ export default function RoundsPage() {
     return clientsMap;
   }, [filteredApps]);
 
+  if (selectedAppId) {
+    return (
+      <ReviewWorkspace 
+        applicationId={selectedAppId} 
+        onBack={() => {
+          setSelectedAppId(null);
+          refetch();
+        }} 
+      />
+    );
+  }
+
   return (
     <div className="space-y-6 font-sans text-neutral-700 max-w-7xl mx-auto w-full select-none animate-fade-in">
       {/* Page Header */}
@@ -317,7 +308,25 @@ export default function RoundsPage() {
           <button
             onClick={() => {
               if (jobs.length > 0) {
-                setStageManageJobId(jobs[0].id);
+                const initialJobId = jobs[0].id;
+                setStageManageJobId(initialJobId);
+                const job = jobs.find(j => j.id === initialJobId);
+                setCustomStagesList(job?.custom_stages || ['technical', 'hr', 'final']);
+                if (job) {
+                  const req = requirements.find(r => r.id === job.requirement_id);
+                  if (req) {
+                    setModalSelectedRequirement(req.id);
+                    setModalSelectedClient(req.client_id);
+                  } else {
+                    setModalSelectedRequirement("all");
+                    setModalSelectedClient("all");
+                  }
+                }
+              } else {
+                setStageManageJobId("all");
+                setCustomStagesList([]);
+                setModalSelectedClient("all");
+                setModalSelectedRequirement("all");
               }
               setIsStageModalOpen(true);
             }}
@@ -824,107 +833,186 @@ export default function RoundsPage() {
             </div>
 
             <div className="space-y-3.5">
+              {/* Client Filter */}
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase tracking-wider font-semibold font-mono text-neutral-400 block">Client</label>
+                <select
+                  value={modalSelectedClient}
+                  onChange={(e) => {
+                    const nextClient = e.target.value;
+                    setModalSelectedClient(nextClient);
+                    setModalSelectedRequirement("all");
+                    setStageManageJobId("all");
+                    setCustomStagesList([]);
+                  }}
+                  className="w-full px-2.5 py-2 bg-neutral-white border border-neutral-200 rounded-sm text-xs text-neutral-800 focus:outline-none"
+                >
+                  <option value="all">Select Client...</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Requirement Filter */}
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase tracking-wider font-semibold font-mono text-neutral-400 block">Requirement</label>
+                <select
+                  value={modalSelectedRequirement}
+                  onChange={(e) => {
+                    const nextReq = e.target.value;
+                    setModalSelectedRequirement(nextReq);
+                    setStageManageJobId("all");
+                    setCustomStagesList([]);
+                  }}
+                  className="w-full px-2.5 py-2 bg-neutral-white border border-neutral-200 rounded-sm text-xs text-neutral-800 focus:outline-none"
+                >
+                  <option value="all">Select Requirement...</option>
+                  {requirements
+                    .filter(r => modalSelectedClient === "all" || r.client_id === modalSelectedClient)
+                    .map(r => (
+                      <option key={r.id} value={r.id}>{r.title}</option>
+                    ))}
+                </select>
+              </div>
+
               {/* Job selector */}
               <div className="space-y-1">
                 <label className="text-[9px] uppercase tracking-wider font-semibold font-mono text-neutral-400 block">Select Job Opening</label>
                 <select
                   value={stageManageJobId}
-                  onChange={(e) => setStageManageJobId(e.target.value)}
+                  onChange={(e) => {
+                    const nextJobId = e.target.value;
+                    setStageManageJobId(nextJobId);
+                    if (nextJobId !== "all") {
+                      const job = jobs.find(j => j.id === nextJobId);
+                      setCustomStagesList(job?.custom_stages || ['technical', 'hr', 'final']);
+                      
+                      // Also automatically update Client & Requirement dropdowns to match the selected job if they weren't set
+                      if (job) {
+                        const req = requirements.find(r => r.id === job.requirement_id);
+                        if (req) {
+                          setModalSelectedRequirement(req.id);
+                          setModalSelectedClient(req.client_id);
+                        }
+                      }
+                    } else {
+                      setCustomStagesList([]);
+                    }
+                  }}
                   className="w-full px-2.5 py-2 bg-neutral-white border border-neutral-200 rounded-sm text-xs text-neutral-800 focus:outline-none"
                 >
-                  {jobs.map(j => (
-                    <option key={j.id} value={j.id}>{j.client_name || "Generic"} - {j.title}</option>
-                  ))}
+                  <option value="all">Select Job Opening...</option>
+                  {jobs
+                    .filter(j => {
+                      if (modalSelectedRequirement !== "all") {
+                        return j.requirement_id === modalSelectedRequirement;
+                      }
+                      if (modalSelectedClient !== "all") {
+                        const req = requirements.find(r => r.id === j.requirement_id);
+                        return req && req.client_id === modalSelectedClient;
+                      }
+                      return true;
+                    })
+                    .map(j => (
+                      <option key={j.id} value={j.id}>{j.title}</option>
+                    ))}
                 </select>
               </div>
 
               {/* Pipeline sequence list */}
-              <div className="space-y-3 pt-2">
-                <span className="text-[9px] uppercase font-bold text-neutral-400 font-mono block">Configure Stage Order</span>
-                <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
-                  {/* Locked Screening stage */}
-                  <div className="flex items-center gap-2 opacity-65 bg-neutral-50/50 p-1.5 border border-neutral-150 rounded-xs">
-                    <span className="text-[10px] font-mono text-neutral-400 font-bold min-w-[50px]">Stage 1:</span>
-                    <input
-                      type="text"
-                      value="Screening"
-                      disabled
-                      className="flex-1 px-3 py-1.5 bg-neutral-100 border border-neutral-200 rounded-sm text-xs text-neutral-500 font-semibold"
-                    />
-                    <span className="text-[8px] font-mono font-bold text-neutral-400 uppercase tracking-tight px-1.5">Mandatory</span>
-                  </div>
-
-                  {/* Editable subsequent stages */}
-                  {customStagesList.map((stage, index) => (
-                    <div key={index} className="flex items-center gap-2 p-1.5 border border-neutral-150 bg-neutral-50/10 rounded-xs">
-                      <span className="text-[10px] font-mono text-neutral-400 font-bold min-w-[50px]">Stage {index + 2}:</span>
+              {stageManageJobId === "all" ? (
+                <div className="text-center py-8 text-neutral-400 text-xs border border-dashed border-neutral-200 rounded-sm bg-neutral-50/50">
+                  Please select a specific Job Opening to configure stages.
+                </div>
+              ) : (
+                <div className="space-y-3 pt-2">
+                  <span className="text-[9px] uppercase font-bold text-neutral-400 font-mono block">Configure Stage Order</span>
+                  <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+                    {/* Locked Screening stage */}
+                    <div className="flex items-center gap-2 opacity-65 bg-neutral-50/50 p-1.5 border border-neutral-150 rounded-xs">
+                      <span className="text-[10px] font-mono text-neutral-400 font-bold min-w-[50px]">Stage 1:</span>
                       <input
                         type="text"
-                        value={stage}
-                        onChange={(e) => {
-                          const updated = [...customStagesList];
-                          updated[index] = e.target.value;
-                          setCustomStagesList(updated);
-                        }}
-                        className="flex-1 px-3 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-xs text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary"
-                        placeholder="Enter round name..."
+                        value="Screening"
+                        disabled
+                        className="flex-1 px-3 py-1.5 bg-neutral-100 border border-neutral-200 rounded-sm text-xs text-neutral-500 font-semibold"
                       />
-                      <div className="flex items-center gap-0.5">
-                        <button
-                          type="button"
-                          disabled={index === 0}
-                          onClick={() => {
-                            const updated = [...customStagesList];
-                            const temp = updated[index];
-                            updated[index] = updated[index - 1];
-                            updated[index - 1] = temp;
-                            setCustomStagesList(updated);
-                          }}
-                          className="p-1 hover:bg-neutral-100 rounded-xs disabled:opacity-30 cursor-pointer"
-                          title="Move Up"
-                        >
-                          <ArrowUp className="w-3 h-3 text-neutral-500" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={index === customStagesList.length - 1}
-                          onClick={() => {
-                            const updated = [...customStagesList];
-                            const temp = updated[index];
-                            updated[index] = updated[index + 1];
-                            updated[index + 1] = temp;
-                            setCustomStagesList(updated);
-                          }}
-                          className="p-1 hover:bg-neutral-100 rounded-xs disabled:opacity-30 cursor-pointer"
-                          title="Move Down"
-                        >
-                          <ArrowDown className="w-3 h-3 text-neutral-500" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = customStagesList.filter((_, i) => i !== index);
-                            setCustomStagesList(updated);
-                          }}
-                          className="p-1 hover:bg-error/10 text-error rounded-xs cursor-pointer"
-                          title="Delete Stage"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
+                      <span className="text-[8px] font-mono font-bold text-neutral-400 uppercase tracking-tight px-1.5">Mandatory</span>
                     </div>
-                  ))}
-                </div>
 
-                <button
-                  type="button"
-                  onClick={() => setCustomStagesList([...customStagesList, "New Interview Stage"])}
-                  className="w-full py-1.5 border border-dashed border-neutral-300 hover:border-primary hover:text-primary transition-colors text-[9px] uppercase font-semibold font-mono tracking-wider text-neutral-500 rounded-sm flex items-center justify-center gap-1 cursor-pointer bg-neutral-50/50 mt-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Custom Stage
-                </button>
-              </div>
+                    {/* Editable subsequent stages */}
+                    {customStagesList.map((stage, index) => (
+                      <div key={index} className="flex items-center gap-2 p-1.5 border border-neutral-150 bg-neutral-50/10 rounded-xs">
+                        <span className="text-[10px] font-mono text-neutral-400 font-bold min-w-[50px]">Stage {index + 2}:</span>
+                        <input
+                          type="text"
+                          value={stage}
+                          onChange={(e) => {
+                            const updated = [...customStagesList];
+                            updated[index] = e.target.value;
+                            setCustomStagesList(updated);
+                          }}
+                          className="flex-1 px-3 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-xs text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary"
+                          placeholder="Enter round name..."
+                        />
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            disabled={index === 0}
+                            onClick={() => {
+                              const updated = [...customStagesList];
+                              const temp = updated[index];
+                              updated[index] = updated[index - 1];
+                              updated[index - 1] = temp;
+                              setCustomStagesList(updated);
+                            }}
+                            className="p-1 hover:bg-neutral-100 rounded-xs disabled:opacity-30 cursor-pointer"
+                            title="Move Up"
+                          >
+                            <ArrowUp className="w-3 h-3 text-neutral-500" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={index === customStagesList.length - 1}
+                            onClick={() => {
+                              const updated = [...customStagesList];
+                              const temp = updated[index];
+                              updated[index] = updated[index + 1];
+                              updated[index + 1] = temp;
+                              setCustomStagesList(updated);
+                            }}
+                            className="p-1 hover:bg-neutral-100 rounded-xs disabled:opacity-30 cursor-pointer"
+                            title="Move Down"
+                          >
+                            <ArrowDown className="w-3 h-3 text-neutral-500" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = customStagesList.filter((_, i) => i !== index);
+                              setCustomStagesList(updated);
+                            }}
+                            className="p-1 hover:bg-error/10 text-error rounded-xs cursor-pointer"
+                            title="Delete Stage"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCustomStagesList([...customStagesList, "New Interview Stage"])}
+                    className="w-full py-1.5 border border-dashed border-neutral-300 hover:border-primary hover:text-primary transition-colors text-[9px] uppercase font-semibold font-mono tracking-wider text-neutral-500 rounded-sm flex items-center justify-center gap-1 cursor-pointer bg-neutral-50/50 mt-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Custom Stage
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-150 mt-3">
@@ -937,9 +1025,9 @@ export default function RoundsPage() {
               </button>
               <button
                 type="button"
-                disabled={updateJobStagesMutation.isPending}
+                disabled={stageManageJobId === "all" || updateJobStagesMutation.isPending}
                 onClick={() => updateJobStagesMutation.mutate(customStagesList)}
-                className="px-3.5 py-1.5 bg-primary hover:bg-primary/95 text-neutral-white font-semibold font-mono uppercase text-[9px] tracking-wider rounded-sm flex items-center justify-center gap-1 cursor-pointer"
+                className="px-3.5 py-1.5 bg-primary hover:bg-primary/95 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-white font-semibold font-mono uppercase text-[9px] tracking-wider rounded-sm flex items-center justify-center gap-1 cursor-pointer"
               >
                 {updateJobStagesMutation.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
                 Save Pipeline
