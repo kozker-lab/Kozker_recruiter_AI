@@ -100,6 +100,14 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
     }
   });
 
+  const deleteQuestionMutation = useMutation({
+    mutationFn: (id: string) => 
+      apiRequest<{ status: string; message: string }>("DELETE", `/questions/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["questions", applicationId] });
+    }
+  });
+
   const updateStageMutation = useMutation({
     mutationFn: (data: any) => apiRequest<Application>("PATCH", `/applications/${applicationId}/stage`, data),
     onSuccess: () => {
@@ -159,6 +167,12 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
   const handleAiRefine = (id: string) => {
     if (!aiRefineText.trim()) return;
     aiRefineQuestionMutation.mutate({ id, instruction: aiRefineText });
+  };
+
+  const handleDeleteQuestion = (id: string) => {
+    if (window.confirm("Are you sure you want to remove this screening question?")) {
+      deleteQuestionMutation.mutate(id);
+    }
   };
 
   const handleAdvanceStageSubmit = (e: React.FormEvent) => {
@@ -533,7 +547,7 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
 
                       {/* AI Edit inline trigger */}
                       {editingQuestionId !== q.id && (
-                        <div className="flex gap-2 justify-end font-mono">
+                        <div className="flex gap-4 justify-end font-mono">
                           <button
                             onClick={() => {
                               setEditingQuestionId(q.id);
@@ -553,6 +567,13 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
                           >
                             <Sparkles className="w-3 h-3 text-primary animate-pulse" />
                             AI Refine
+                          </button>
+                          <button
+                            onClick={() => handleDeleteQuestion(q.id)}
+                            className="text-[9px] text-error hover:text-error/80 flex items-center gap-0.5 cursor-pointer font-bold"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Remove
                           </button>
                         </div>
                       )}
