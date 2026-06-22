@@ -1,5 +1,5 @@
 import React from "react";
-import { Sparkles } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -9,8 +9,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-primary/10 rounded-full blur-[120px] pointer-events-none"></div>
         <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-success/5 rounded-full blur-[90px] pointer-events-none"></div>
         
-        <div className="flex items-center gap-2 relative z-10">
-          <span className="w-3.5 h-3.5 bg-primary rounded-sm animate-pulse"></span>
+        <div className="flex items-center gap-2.5 relative z-10">
+          <Logo className="w-6 h-6 text-primary" />
           <span className="font-tight font-bold text-lg tracking-wider text-neutral-white">KOZKER RECRUITER AI</span>
         </div>
         

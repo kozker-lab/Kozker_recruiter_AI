@@ -2,7 +2,8 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Building2, Briefcase, Users, MessageSquare, ArrowRight } from "lucide-react";
+import { Building2, Briefcase, Users, MessageSquare, ArrowRight } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export default function WelcomePage() {
   const router = useRouter();
@@ -30,8 +31,8 @@ export default function WelcomePage() {
         {/* Left Side: Brand Visuals (Sleek Dark Accent) */}
         <div className="bg-neutral-950 p-8 text-neutral-200 flex flex-col justify-between md:w-5/12 border-b md:border-b-0 md:border-r border-neutral-800">
           <div className="space-y-4">
-            <div className="w-10 h-10 bg-primary flex items-center justify-center rounded-sm shadow-[0_0_15px_rgba(255,110,48,0.3)]">
-              <Sparkles className="w-6 h-6 text-neutral-white animate-pulse" />
+            <div className="w-10 h-10 shadow-[0_0_15px_rgba(255,110,48,0.3)]">
+              <Logo className="w-10 h-10 text-primary animate-pulse" />
             </div>
             <div className="space-y-1">
               <h2 className="font-tight font-extrabold text-lg uppercase tracking-wider text-neutral-white">

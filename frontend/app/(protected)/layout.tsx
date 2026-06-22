@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCurrentUser, useProfile, useLogout, useUpdateProfile } from "@/lib/hooks/useAuth";
 import ChatbotPanel from "@/components/ChatbotPanel";
 import UserAvatar from "@/components/UserAvatar";
+import { Logo } from "@/components/Logo";
 
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
@@ -635,8 +636,8 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   if (isLoading || !profile) {
     return (
       <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-neutral-200">
-        <div className="w-12 h-12 border-2 border-primary border-t-transparent animate-spin rounded-full mb-4"></div>
-        <p className="font-tight text-sm tracking-wider text-neutral-400">LOADING KOZKER RECRUITER AI...</p>
+        <Logo className="w-14 h-14 text-primary animate-pulse mb-6" />
+        <p className="font-tight text-[10px] tracking-widest text-neutral-500 uppercase font-semibold">LOADING KOZKER RECRUITER AI...</p>
       </div>
     );
   }
@@ -753,10 +754,8 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       <aside id="sidebar-navigation" className="w-64 border-r border-neutral-200 bg-neutral-white flex flex-col justify-between h-full select-none z-30 shadow-xs">
         <div>
           <div className="p-5 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-5.5 h-5.5 bg-primary flex items-center justify-center rounded-sm">
-                <Sparkles className="w-3.5 h-3.5 text-neutral-white animate-pulse" />
-              </div>
+            <div className="flex items-center gap-2.5">
+              <Logo className="w-6 h-6 text-primary" />
               <span className="font-tight font-extrabold text-sm uppercase tracking-wider text-neutral-900">
                 Kozker <span className="text-primary font-light text-xs lowercase">recruiter</span>
               </span>
