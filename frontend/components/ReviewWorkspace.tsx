@@ -35,7 +35,7 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
   const [newQuestionDifficulty, setNewQuestionDifficulty] = useState<"easy" | "medium" | "hard">("medium");
 
   // Local state for advance stage form
-  const [nextStage, setNextStage] = useState<"screening" | "technical" | "hr" | "final" | "hired" | "rejected">("technical");
+  const [nextStage, setNextStage] = useState<string>("screening");
   const [stageStatus, setStageStatus] = useState<"pending" | "in_progress" | "passed" | "failed" | "on_hold">("passed");
   const [stageNotes, setStageNotes] = useState("");
 
@@ -44,6 +44,32 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
     queryKey: ["application", applicationId],
     queryFn: () => apiRequest<Application>("GET", `/applications/${applicationId}`)
   });
+
+  const { data: job } = useQuery<any>({
+    queryKey: ["job", app?.job_opening_id],
+    queryFn: () => apiRequest<any>("GET", `/jobs/${app?.job_opening_id}`),
+    enabled: !!app?.job_opening_id
+  });
+
+  const getJobStages = (job: any): string[] => {
+    if (job?.custom_stages && job.custom_stages.length > 0) {
+      return ["screening", ...job.custom_stages];
+    }
+    return ["screening", "technical", "hr", "final"];
+  };
+
+  // Sync next stage choice
+  React.useEffect(() => {
+    if (app && job) {
+      const stages = getJobStages(job);
+      const currentIdx = stages.indexOf(app.stage);
+      if (currentIdx !== -1 && currentIdx + 1 < stages.length) {
+        setNextStage(stages[currentIdx + 1]);
+      } else {
+        setNextStage("hired");
+      }
+    }
+  }, [app, job]);
 
   const { data: questions = [], isLoading: loadingQuestions } = useQuery<ScreeningQuestion[]>({
     queryKey: ["questions", applicationId],
@@ -620,10 +646,11 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
                       onChange={(e) => setNextStage(e.target.value as any)}
                       className="w-full px-2.5 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-neutral-800"
                     >
-                      <option value="screening">Screening</option>
-                      <option value="technical">Technical Interview</option>
-                      <option value="hr">HR Round</option>
-                      <option value="final">Final Presentation</option>
+                      {getJobStages(job).map((stage) => (
+                        <option key={stage} value={stage}>
+                          {stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                        </option>
+                      ))}
                       <option value="hired">Confirm Hire</option>
                       <option value="rejected">Mark Rejected / Fail</option>
                     </select>
@@ -672,7 +699,7 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
                   {stages.map((stg) => (
                     <div key={stg.id} className="flex items-center justify-between p-3 border border-neutral-200 rounded-sm bg-neutral-50/20 text-xs font-mono">
                       <div className="space-y-0.5">
-                        <p className="font-semibold text-neutral-800 capitalize">{stg.stage_name.replace("_", " ")}</p>
+                        <p className="font-semibold text-neutral-800 capitalize">{stg.stage_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</p>
                         <p className="text-[9px] text-neutral-400">{stg.scheduled_at ? new Date(stg.scheduled_at).toLocaleString() : ""}</p>
                       </div>
                       <div className="text-right flex items-center gap-2">

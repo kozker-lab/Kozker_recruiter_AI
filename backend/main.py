@@ -492,6 +492,7 @@ class JobOpeningUpdateModel(BaseModel):
     status: Optional[str] = None
     processing_status: Optional[str] = None
     error_message: Optional[str] = None
+    custom_stages: Optional[List[str]] = None
 
 class SkillsApprovalModel(BaseModel):
     skills: List[Dict[str, Any]]
@@ -1452,6 +1453,20 @@ async def get_jobs(db: Client = Depends(get_supabase)):
     return formatted
 
 
+@app.get("/api/v1/jobs/{job_id}")
+async def get_job(job_id: str, db: Client = Depends(get_supabase)):
+    res = db.table("job_openings").select("*, requirements(id, title, clients(name))").eq("id", job_id).eq("is_deleted", False).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Job opening not found")
+    row = res.data[0]
+    req = row.get("requirements") or {}
+    cli = req.get("clients") or {}
+    return {
+        **{k: v for k, v in row.items() if k != "requirements"},
+        "client_name": cli.get("name") or "Generic Client"
+    }
+
+
 @app.delete("/api/v1/jobs/{job_id}")
 async def delete_job(job_id: str, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
     if not user_id:
@@ -1529,6 +1544,8 @@ async def patch_job(job_id: str, job_update: JobOpeningUpdateModel, db: Client =
         update_data["processing_status"] = job_update.processing_status
     if job_update.error_message is not None:
         update_data["error_message"] = job_update.error_message
+    if job_update.custom_stages is not None:
+        update_data["custom_stages"] = job_update.custom_stages
 
     if update_data:
         res = db.table("job_openings").update(update_data).eq("id", job_id).execute()
@@ -2698,7 +2715,16 @@ async def update_application_stage(app_id: str, request: Request, db: Client = D
     app_record = res.data[0]
     
     # 2. Insert into interview_stages table if it's one of the valid stage_names
-    valid_stages = ['screening', 'technical', 'hr', 'final']
+    valid_stages = ['screening']
+    job_id = app_record.get("job_opening_id")
+    if job_id:
+        job_res = db.table("job_openings").select("custom_stages").eq("id", job_id).execute()
+        if job_res.data:
+            custom = job_res.data[0].get("custom_stages") or []
+            valid_stages.extend(custom)
+    else:
+        valid_stages.extend(['technical', 'hr', 'final'])
+
     if stage in valid_stages:
         existing = db.table("interview_stages").select("id").eq("application_id", app_id).execute()
         order = len(existing.data) + 1
