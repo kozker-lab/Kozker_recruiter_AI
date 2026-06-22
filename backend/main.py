@@ -827,6 +827,50 @@ def regenerate_job_background_local(job_id: str, instruction: str, jwt_token: st
         )
 
 async def handle_refine_question_dispatch(app_id: str, question_id: str, question: dict, instruction: str, jwt_token: str):
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    
+    # Fetch application details
+    app_record = {}
+    try:
+        app_res = db.table("applications").select("*").eq("id", app_id).execute()
+        if app_res.data:
+            app_record = app_res.data[0]
+    except Exception as e:
+        logger.error(f"Failed to fetch application in handle_refine_question_dispatch: {e}")
+        
+    # Fetch candidate details
+    cand = {}
+    try:
+        cand_id = app_record.get("candidate_id")
+        if cand_id:
+            cand_res = db.table("candidates").select("*").eq("id", cand_id).execute()
+            if cand_res.data:
+                cand = cand_res.data[0]
+    except Exception as e:
+        logger.error(f"Failed to fetch candidate details in handle_refine_question_dispatch: {e}")
+        
+    # Fetch job details
+    job = {}
+    try:
+        job_id = app_record.get("job_opening_id")
+        if job_id:
+            job_res = db.table("job_openings").select("*").eq("id", job_id).execute()
+            if job_res.data:
+                job = job_res.data[0]
+    except Exception as e:
+        logger.error(f"Failed to fetch job details in handle_refine_question_dispatch: {e}")
+        
+    # Fetch requirement details
+    req = {}
+    try:
+        req_id = job.get("requirement_id")
+        if req_id:
+            req_res = db.table("requirements").select("*").eq("id", req_id).execute()
+            if req_res.data:
+                req = req_res.data[0]
+    except Exception as e:
+        logger.error(f"Failed to fetch requirement details in handle_refine_question_dispatch: {e}")
+
     callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/questions/refine"
     payload = {
         "automation_type": "refine_screening_question",
@@ -835,14 +879,40 @@ async def handle_refine_question_dispatch(app_id: str, question_id: str, questio
         "instruction": instruction,
         "callback_url": callback_url,
         "auth_header": f"Bearer {CALLBACK_SECRET}",
+        "authorization": f"Bearer {CALLBACK_SECRET}",
         "question_details": {
             "question": question.get("question"),
             "difficulty": question.get("difficulty"),
             "reason": question.get("reason") or question.get("reasoning")
+        },
+        "candidate": {
+            "id": cand.get("id"),
+            "full_name": cand.get("full_name"),
+            "email": cand.get("email"),
+            "skills": cand.get("skills") or [],
+            "experience_years": cand.get("experience_years") or 0,
+            "raw_text": cand.get("raw_text") or ""
+        },
+        "job_details": {
+            "id": job.get("id"),
+            "title": job.get("title"),
+            "description": job.get("description"),
+            "responsibilities": job.get("responsibilities"),
+            "qualifications": job.get("qualifications"),
+            "keywords": job.get("keywords")
+        },
+        "requirement_details": {
+            "id": req.get("id"),
+            "title": req.get("title"),
+            "description": req.get("description"),
+            "skills": req.get("skills"),
+            "experience_min": req.get("experience_min"),
+            "experience_max": req.get("experience_max"),
+            "seniority": req.get("seniority")
         }
     }
     
-    success = await dispatch_n8n_webhook(N8N_REFINE_QUESTION_URL, payload, "refine_question")
+    success = await dispatch_n8n_webhook(N8N_GENERATE_QUESTIONS_URL, payload, "refine_question")
     if not success:
         logger.warning("n8n dispatch failed for refine_question, falling back to local fallback")
         refine_question_background_local(app_id, question_id, instruction, jwt_token)
