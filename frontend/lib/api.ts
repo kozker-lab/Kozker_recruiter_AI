@@ -5,7 +5,7 @@ import {
 } from "../types";
 import { createClient } from "./supabase/client";
 
-// Base Configuration
+// Base Configuration - Updated for Tunnel Support
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 // Persistent memory-store for mock fallback
@@ -1277,7 +1277,7 @@ async function handleMockRequest<T>(
             mockDb.jobCandidates = mockDb.jobCandidates.filter(jc => jc.job_opening_id !== id);
             
             // Score all candidates in the candidate list
-            mockDb.candidates.filter(c => c.uploaded_by === currentUserId).forEach((cand, cIdx) => {
+            mockDb.candidates.forEach((cand, cIdx) => {
               const matchResult = calculateMockFuzzyMatchScore(cand, id);
 
               // Check if application exists, else create
@@ -1416,19 +1416,18 @@ async function handleMockRequest<T>(
 
         // CANDIDATES
         if (path === "/candidates" && method === "GET") {
-          const list = mockDb.candidates.filter(c => c.uploaded_by === currentUserId);
-          return resolve(list as unknown as T);
+          return resolve(mockDb.candidates as unknown as T);
         }
         if (path.startsWith("/candidates/") && path.endsWith("/resume-url") && method === "GET") {
           const candidateId = path.split("/")[2];
-          const cand = mockDb.candidates.find(c => c.id === candidateId && c.uploaded_by === currentUserId);
+          const cand = mockDb.candidates.find(c => c.id === candidateId);
           if (!cand) return reject(new Error("Not found"));
           return resolve({ url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" } as unknown as T);
         }
         if (path.startsWith("/candidates/") && path.endsWith("/applications") && method === "GET") {
           const parts = path.split("/");
           const candidateId = parts[2];
-          const cand = mockDb.candidates.find(c => c.id === candidateId && c.uploaded_by === currentUserId);
+          const cand = mockDb.candidates.find(c => c.id === candidateId);
           if (!cand) return reject(new Error("Not found"));
           const candidateApps = mockDb.applications
             .filter(a => a.candidate_id === candidateId)
@@ -1445,7 +1444,7 @@ async function handleMockRequest<T>(
         if (path.startsWith("/candidates/") && path.endsWith("/history") && method === "GET") {
           const parts = path.split("/");
           const candidateId = parts[2];
-          const cand = mockDb.candidates.find(c => c.id === candidateId && c.uploaded_by === currentUserId);
+          const cand = mockDb.candidates.find(c => c.id === candidateId);
           if (!cand) return reject(new Error("Not found"));
           const candidateApps = mockDb.applications.filter(a => a.candidate_id === candidateId);
           
@@ -1477,7 +1476,7 @@ async function handleMockRequest<T>(
         }
         if (path.startsWith("/candidates/") && method === "GET") {
           const id = path.split("/")[2];
-          const cand = mockDb.candidates.find(c => c.id === id && c.uploaded_by === currentUserId);
+          const cand = mockDb.candidates.find(c => c.id === id);
           if (!cand) {
             const allCands = mockDb.candidates.map(c => `(id:${c.id}, owner:${c.uploaded_by})`).join(", ");
             return reject(new Error(`Candidate not found for GET. Requested ID: "${id}", currentUserId: "${currentUserId}". Existing: [${allCands}]`));
@@ -1486,7 +1485,7 @@ async function handleMockRequest<T>(
         }
         if (path.startsWith("/candidates/") && method === "PUT") {
           const id = path.split("/")[2];
-          const cand = mockDb.candidates.find(c => c.id === id && c.uploaded_by === currentUserId);
+          const cand = mockDb.candidates.find(c => c.id === id);
           if (!cand) {
             const allCands = mockDb.candidates.map(c => `(id:${c.id}, owner:${c.uploaded_by})`).join(", ");
             return reject(new Error(`Candidate not found for PUT. Requested ID: "${id}", currentUserId: "${currentUserId}". Existing: [${allCands}]`));
@@ -1523,7 +1522,7 @@ async function handleMockRequest<T>(
         }
         if (path.startsWith("/candidates/") && method === "DELETE") {
           const id = path.split("/")[2];
-          const candIdx = mockDb.candidates.findIndex(c => c.id === id && c.uploaded_by === currentUserId);
+          const candIdx = mockDb.candidates.findIndex(c => c.id === id);
           if (candIdx === -1) return reject(new Error("Not found"));
           const cand = mockDb.candidates[candIdx];
           mockDb.candidates.splice(candIdx, 1);
@@ -1541,8 +1540,12 @@ async function handleMockRequest<T>(
           return resolve({ success: true } as unknown as T);
         }
         if (path === "/candidates" && method === "POST") {
-          // Check duplicate email -> MERGE IF EXISTS
-          const exists = mockDb.candidates.find(c => c.email.toLowerCase() === data.email.toLowerCase() && c.uploaded_by === currentUserId);
+          // Check duplicate email AND job_id -> MERGE IF EXISTS
+          const exists = mockDb.candidates.find(c => 
+            c.email.toLowerCase() === data.email.toLowerCase() && 
+            (c.job_id || null) === (data.job_id || null) &&
+            c.uploaded_by === currentUserId
+          );
           if (exists) {
             exists.full_name = data.full_name || exists.full_name;
             exists.phone = data.phone || exists.phone;
@@ -1580,6 +1583,7 @@ async function handleMockRequest<T>(
             },
             source: "manual",
             uploaded_by: currentUserId,
+            job_id: data.job_id || null,
             created_at: new Date().toISOString(),
             linked_jobs: []
           };

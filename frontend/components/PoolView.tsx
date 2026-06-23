@@ -9,14 +9,14 @@ import Papa from "papaparse";
 import { 
   Users, UserPlus, Upload, ShieldCheck, Search, Plus, 
   ChevronDown, ChevronUp, ChevronRight, Edit2, RefreshCcw, AlertCircle, Sparkles, Database, FileSpreadsheet,
-  Filter, FileText, CheckCircle2, Mail, Layers, GraduationCap, Trophy, Trash2
+  Filter, FileText, CheckCircle2, Mail, Layers, GraduationCap, Trophy, Trash2, Briefcase
 } from "lucide-react";
 
 function mergeDuplicateCandidates(list: Candidate[]): Candidate[] {
   const map = new Map<string, Candidate>();
   for (const c of list) {
     if (!c.email || !c.full_name) continue;
-    const key = `${c.full_name.toLowerCase().trim()}|${c.email.toLowerCase().trim()}`;
+    const key = `${c.full_name.toLowerCase().trim()}|${c.email.toLowerCase().trim()}|${c.job_id || "general"}`;
     if (!map.has(key)) {
       map.set(key, { ...c, skills: [...(c.skills || [])] });
     } else {
@@ -205,12 +205,16 @@ function CandidateRow({
   c, 
   router, 
   isExpanded, 
-  onToggleExpand 
+  onToggleExpand,
+  jobs = [],
+  hideJobIndicator = false
 }: { 
   c: Candidate; 
   router: ReturnType<typeof useRouter>;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  jobs?: any[];
+  hideJobIndicator?: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editSummary, setEditSummary] = useState(c.parsed_resume_json?.summary || "");
@@ -336,6 +340,16 @@ function CandidateRow({
               )}
             </div>
             <p className="text-[10px] text-neutral-400 font-mono">{c.email} • {c.phone || "No phone listed"}</p>
+            {c.job_id && !hideJobIndicator && (() => {
+              const matchedJob = jobs.find(j => j.id === c.job_id);
+              if (!matchedJob) return null;
+              return (
+                <p className="text-[10px] text-primary/90 font-mono flex items-center gap-1 mt-0.5 select-text" onClick={(e) => e.stopPropagation()}>
+                  <Briefcase className="w-3 h-3 text-primary/60 shrink-0" />
+                  <span>Applied for: <span className="font-semibold">{matchedJob.title}</span> ({matchedJob.client_name})</span>
+                </p>
+              );
+            })()}
           </div>
         </div>
 
@@ -500,6 +514,8 @@ export default function PoolView() {
   const [skillsFilter, setSkillsFilter] = useState("");
   const [emailFilter, setEmailFilter] = useState("");
   const [groupByEmailDomain, setGroupByEmailDomain] = useState(false);
+  const [groupByJob, setGroupByJob] = useState(true);
+  const [collapsedJobSections, setCollapsedJobSections] = useState<Record<string, boolean>>({});
 
   // Manual Candidate Form states
   const [name, setName] = useState("");
@@ -529,6 +545,11 @@ export default function PoolView() {
     queryKey: ["candidates"],
     queryFn: () => apiRequest<Candidate[]>("GET", "/candidates"),
     refetchInterval: 3000 // Refetch every 3s to capture background resume downloads and details parsing
+  });
+
+  const { data: jobs = [] } = useQuery<any[]>({
+    queryKey: ["jobs"],
+    queryFn: () => apiRequest<any[]>("GET", "/jobs")
   });
 
   const candidates = useMemo(() => {
@@ -885,10 +906,10 @@ export default function PoolView() {
               </div>
             </div>
 
-            {/* Email filter row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            {/* Email & Grouping filter row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
               {/* Email Search */}
-              <div className="space-y-1">
+              <div className="space-y-1 md:col-span-2">
                 <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Email</label>
                 <div className="relative">
                   <Mail className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-neutral-400" />
@@ -907,7 +928,12 @@ export default function PoolView() {
                 <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Group by Domain</label>
                 <button
                   type="button"
-                  onClick={() => setGroupByEmailDomain(!groupByEmailDomain)}
+                  onClick={() => {
+                    setGroupByEmailDomain(!groupByEmailDomain);
+                    if (!groupByEmailDomain) {
+                      setGroupByJob(false);
+                    }
+                  }}
                   className={`w-full p-2 border rounded-sm text-xs font-mono font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
                     groupByEmailDomain
                       ? "bg-primary/10 border-primary/30 text-primary"
@@ -916,6 +942,28 @@ export default function PoolView() {
                 >
                   <Layers className="w-3.5 h-3.5" />
                   {groupByEmailDomain ? "Grouped by Email Domain" : "Group by Email Domain"}
+                </button>
+              </div>
+
+              {/* Group by Job Opening toggle */}
+              <div className="space-y-1">
+                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Group by Job Opening</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGroupByJob(!groupByJob);
+                    if (!groupByJob) {
+                      setGroupByEmailDomain(false);
+                    }
+                  }}
+                  className={`w-full p-2 border rounded-sm text-xs font-mono font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                    groupByJob
+                      ? "bg-primary/10 border-primary/30 text-primary"
+                      : "bg-neutral-white border-neutral-200 text-neutral-500 hover:bg-neutral-50"
+                  }`}
+                >
+                  <Briefcase className="w-3.5 h-3.5" />
+                  {groupByJob ? "Grouped by Job Opening" : "Group by Job Opening"}
                 </button>
               </div>
             </div>
@@ -930,6 +978,7 @@ export default function PoolView() {
                     setSkillsFilter("");
                     setEmailFilter("");
                     setGroupByEmailDomain(false);
+                    setGroupByJob(false);
                   }}
                   className="px-3 py-1 text-primary border border-primary/25 bg-primary/5 hover:bg-primary/10 rounded-sm cursor-pointer text-[10px] font-mono font-semibold"
                 >
@@ -982,11 +1031,115 @@ export default function PoolView() {
                           router={router} 
                           isExpanded={expandedCandidateId === c.id}
                           onToggleExpand={() => setExpandedCandidateId(expandedCandidateId === c.id ? null : c.id)}
+                          jobs={jobs}
                         />
                       ))}
                     </div>
                   </div>
                 ))}
+              </div>
+            );
+          })()
+        ) : groupByJob ? (
+          /* Grouped-by-job-opening filetree view */
+          (() => {
+            const jobGroups: Record<string, Candidate[]> = {};
+            for (const c of filteredCandidates) {
+              const jobId = c.job_id || "general";
+              if (!jobGroups[jobId]) jobGroups[jobId] = [];
+              jobGroups[jobId].push(c);
+            }
+            
+            // Sort job groups: jobs first, general pool last
+            const sortedJobIds = Object.keys(jobGroups).sort((a, b) => {
+              if (a === "general") return 1;
+              if (b === "general") return -1;
+              return jobGroups[b].length - jobGroups[a].length;
+            });
+            
+            return (
+              <div>
+                {sortedJobIds.map(jobId => {
+                  const groupCandidates = jobGroups[jobId];
+                  const isCollapsed = collapsedJobSections[jobId] !== undefined
+                    ? collapsedJobSections[jobId]
+                    : (jobId === "general");
+                  
+                  let sectionTitle = "General Talent Pool (No Job Opening)";
+                  if (jobId !== "general") {
+                    const matchedJob = jobs.find(j => j.id === jobId);
+                    if (matchedJob) {
+                      sectionTitle = `Job Posting: ${matchedJob.title} (${matchedJob.client_name || "Generic Client"})`;
+                    } else {
+                      sectionTitle = `Job Posting: Unknown Opening (${jobId})`;
+                    }
+                  }
+                  
+                  const toggleJobSection = (id: string) => {
+                    setCollapsedJobSections(prev => ({
+                      ...prev,
+                      [id]: !prev[id]
+                    }));
+                  };
+                  
+                  return (
+                    <div key={jobId} className="border-b border-neutral-200 last:border-b-0">
+                      {/* Job group header */}
+                      <div 
+                        onClick={() => toggleJobSection(jobId)}
+                        className="px-4 py-2.5 bg-neutral-50/85 hover:bg-neutral-100/90 border-b border-neutral-200 flex items-center justify-between sticky top-0 z-10 cursor-pointer select-none transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          {jobId === "general" ? (
+                            <Users className="w-3.5 h-3.5 text-neutral-500" />
+                          ) : (
+                            <Briefcase className="w-3.5 h-3.5 text-primary" />
+                          )}
+                          <span className="font-mono font-bold text-[11px] text-neutral-800">
+                            {sectionTitle}
+                          </span>
+                          <span className="text-[9px] bg-primary/10 text-primary font-mono font-semibold px-1.5 py-0.5 rounded-full border border-primary/20">
+                            {groupCandidates.length} candidate{groupCandidates.length !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <div>
+                          {isCollapsed ? (
+                            <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Candidates listed as a filetree outline when expanded */}
+                      {!isCollapsed && (
+                        <div className="pl-4 ml-6 my-2 space-y-1">
+                          {groupCandidates.map((c, idx) => {
+                            const isLast = idx === groupCandidates.length - 1;
+                            return (
+                              <div key={c.id} className="relative">
+                                {/* Vertical line segment */}
+                                <div className={`absolute left-[-16px] top-0 w-[1px] border-l border-dashed border-neutral-250 ${
+                                  isLast ? "h-[26px]" : "h-full"
+                                }`}></div>
+                                {/* Horizontal connector line */}
+                                <div className="absolute left-[-16px] top-[26px] w-[16px] h-[1px] border-t border-dashed border-neutral-250"></div>
+                                <CandidateRow 
+                                  c={c} 
+                                  router={router} 
+                                  isExpanded={expandedCandidateId === c.id}
+                                  onToggleExpand={() => setExpandedCandidateId(expandedCandidateId === c.id ? null : c.id)}
+                                  jobs={jobs}
+                                  hideJobIndicator={groupByJob}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })()
@@ -999,6 +1152,7 @@ export default function PoolView() {
                 router={router} 
                 isExpanded={expandedCandidateId === c.id}
                 onToggleExpand={() => setExpandedCandidateId(expandedCandidateId === c.id ? null : c.id)}
+                jobs={jobs}
               />
             ))}
           </div>

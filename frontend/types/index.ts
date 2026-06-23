@@ -113,6 +113,7 @@ export interface Candidate {
   } | null;
   source: 'csv' | 'pdf' | 'docx' | 'manual' | null;
   uploaded_by: string | null;
+  job_id?: string | null;
   created_at: string;
   // Combined views
   linked_jobs?: Array<{

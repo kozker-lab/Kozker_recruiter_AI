@@ -47,6 +47,7 @@ app = FastAPI(title="Kozker Recruiter AI Backend", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origin_regex=r"https://.*\.trycloudflare\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -511,6 +512,8 @@ class CandidateModel(BaseModel):
     achievements: Optional[str] = ""
     source: str = "manual"
     summary: Optional[str] = ""
+    job_id: Optional[str] = None
+    uploaded_by: Optional[str] = None
 
 class CandidateUpdateModel(BaseModel):
     full_name: Optional[str] = None
@@ -525,6 +528,8 @@ class CandidateUpdateModel(BaseModel):
     academic_details: Optional[str] = None
     achievements: Optional[str] = None
     summary: Optional[str] = None
+    job_id: Optional[str] = None
+    uploaded_by: Optional[str] = None
 
 class ChatMessageModel(BaseModel):
     message: str
@@ -1244,14 +1249,23 @@ async def update_requirement(req_id: str, req: RequirementUpdateModel, backgroun
         return old_req
         
     # Check status transitions and job existence
-    new_status = update_data.get("status")
+    new_status = update_data.get("status") or old_req.get("status")
+    new_num_posts = update_data.get("num_posts_requested")
+    if new_num_posts is None:
+        new_num_posts = old_req.get("num_posts_requested") or 1
+        
+    # Verify if job openings already exist
+    jobs_res = db.table("job_openings").select("id").eq("requirement_id", req_id).eq("is_deleted", False).execute()
+    existing_jobs_count = len(jobs_res.data) if jobs_res.data else 0
+    
     trigger_generation = False
-    if new_status in ["generating", "ready"] and old_req.get("status") not in ["generating", "ready"]:
-        # Verify if job openings already exist
-        jobs_res = db.table("job_openings").select("id").eq("requirement_id", req_id).eq("is_deleted", False).execute()
-        if not jobs_res.data:
-            trigger_generation = True
-            update_data["status"] = "generating" # force to generating during process
+    if (update_data.get("status") == "generating") or (
+        new_status in ["generating", "ready"] and (
+            existing_jobs_count == 0 or new_num_posts > existing_jobs_count
+        )
+    ):
+        trigger_generation = True
+        update_data["status"] = "generating" # force to generating during process
             
     res = db.table("requirements").update(update_data).eq("id", req_id).execute()
     if not res.data:
@@ -2127,6 +2141,8 @@ async def update_candidate(candidate_id: str, cand: CandidateUpdateModel, db: Cl
         update_data["academic_details"] = cand.academic_details
     if cand.achievements is not None:
         update_data["achievements"] = cand.achievements
+    if cand.job_id is not None:
+        update_data["job_id"] = cand.job_id
 
     parsed_json = current_cand.get("parsed_resume_json") or {}
     if not isinstance(parsed_json, dict):
@@ -2276,8 +2292,24 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
     if db_source not in ["csv", "pdf", "docx", "manual"]:
         db_source = "manual"
 
-    # Search if candidate already exists (globally, including soft-deleted ones)
-    exists = db.table("candidates").select("*").eq("email", cand.email).execute()
+    # Search if candidate already exists with same email AND job_id (globally, including soft-deleted ones)
+    query = db.table("candidates").select("*").eq("email", cand.email)
+    if cand.job_id:
+        query = query.eq("job_id", cand.job_id)
+    else:
+        query = query.is_("job_id", "null")
+    exists = query.execute()
+
+    # Resolve recruiter_id from job_id if not logged in
+    recruiter_id = None
+    if cand.job_id:
+        job_res = db.table("job_openings").select("requirements(created_by)").eq("id", cand.job_id).execute()
+        if job_res.data:
+            req_data = job_res.data[0].get("requirements") or {}
+            recruiter_id = req_data.get("created_by")
+
+    db_uploaded_by = user_id if user_id else (cand.uploaded_by if cand.uploaded_by else recruiter_id)
+
     if exists.data:
         existing_cand = exists.data[0]
         # Merge skills (take union)
@@ -2315,6 +2347,8 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
             "achievements": merged_achievements,
             "parsed_resume_json": {"raw_text": merged_raw, "summary": merged_summary},
             "source": db_source,
+            "job_id": cand.job_id if cand.job_id else existing_cand.get("job_id"),
+            "uploaded_by": db_uploaded_by if db_uploaded_by else existing_cand.get("uploaded_by"),
             "is_deleted": False  # Reactivate candidate if it was soft-deleted
         }).eq("id", existing_cand["id"]).execute()
         
@@ -2335,10 +2369,10 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
         "working_or_not": cand.working_or_not,
         "academic_details": cand.academic_details,
         "achievements": cand.achievements,
-        "source": db_source
+        "source": db_source,
+        "job_id": cand.job_id,
+        "uploaded_by": db_uploaded_by
     }
-    if user_id:
-        payload["uploaded_by"] = user_id
     res = db.table("candidates").insert(payload).execute()
     
     if res.data:

@@ -29,7 +29,7 @@ export default function LoginPage() {
 
       if (authError) throw authError;
 
-      router.push("/dashboard");
+      window.location.href = "/dashboard";
     } catch (err: any) {
       setError(err.message || "Failed to log in");
       setLoading(false);

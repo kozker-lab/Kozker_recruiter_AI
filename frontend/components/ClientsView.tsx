@@ -8,7 +8,8 @@ import { Client, Requirement } from "../types";
 import { 
   Building2, Plus, FileText, ChevronRight, CheckCircle2, 
   MapPin, DollarSign, BrainCircuit, Loader2, Award, Upload, Edit, Trash2, Pencil,
-  ChevronDown, UserCheck, Code, Users, CheckSquare, XCircle, Activity
+  ChevronDown, UserCheck, Code, Users, CheckSquare, XCircle, Activity,
+  Copy, ExternalLink, Check
 } from "lucide-react";
 import { RequirementStatus } from "../types";
 
@@ -59,6 +60,17 @@ export default function ClientsView() {
   // File upload / parsing states
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
+
+  const handleCopyLink = (jobId: string, recruiterId?: string | null) => {
+    if (typeof window !== "undefined") {
+      const queryParam = recruiterId ? `?recruiter_id=${recruiterId}` : "";
+      const applyUrl = `${window.location.origin}/apply/${jobId}${queryParam}`;
+      navigator.clipboard.writeText(applyUrl);
+      setCopiedJobId(jobId);
+      setTimeout(() => setCopiedJobId(null), 2000);
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -723,6 +735,48 @@ export default function ClientsView() {
                                   <span>Disqualified: <strong className="text-red-500">{disqualifiedCount}</strong></span>
                                 </div>
                                 <span className="text-neutral-455">Hover stages for candidate details</span>
+                              </div>
+
+                              {/* Candidate Application Link */}
+                              <div className="mt-3 pt-2.5 border-t border-neutral-150 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+                                <div className="space-y-0.5 min-w-0 flex-1">
+                                  <span className="text-[9px] text-neutral-400 uppercase font-semibold block font-mono">Candidate Apply Link</span>
+                                  <span className="text-[11px] font-mono text-neutral-600 truncate block">
+                                    {typeof window !== "undefined" 
+                                      ? `${window.location.origin}/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}` 
+                                      : `/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}`
+                                    }
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    onClick={() => handleCopyLink(job.id, r.created_by)}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium text-neutral-700 bg-neutral-white hover:bg-neutral-50 border border-neutral-250 rounded-sm shadow-xs transition-colors cursor-pointer"
+                                    title="Copy Apply Link"
+                                  >
+                                    {copiedJobId === job.id ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-green-600" />
+                                        <span>Copied</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3.5 h-3.5" />
+                                        <span>Copy Link</span>
+                                      </>
+                                    )}
+                                  </button>
+                                  <a
+                                    href={`/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium text-neutral-white bg-primary hover:bg-primary/95 rounded-sm shadow-xs transition-colors cursor-pointer"
+                                    title="Open Candidate Application Form"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                    <span>Open Form</span>
+                                  </a>
+                                </div>
                               </div>
                             </div>
                           );
