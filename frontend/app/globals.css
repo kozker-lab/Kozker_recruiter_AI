@@ -50,6 +50,10 @@ html[data-theme="forest"] {
   --color-primary: #10B981;
 }
 
+html[data-theme="pine"] {
+  --color-primary: #2F5A27;
+}
+
 html[data-theme="cosmic"] {
   --color-primary: #8B5CF6;
 }

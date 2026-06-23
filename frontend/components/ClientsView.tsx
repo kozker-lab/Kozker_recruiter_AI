@@ -13,6 +13,74 @@ import {
 } from "lucide-react";
 import { RequirementStatus } from "../types";
 
+const generatePostContent = (tone: string, jobTitle: string, clientName: string, desc: string, requirements: string[], applyUrl: string) => {
+  const cleanTitle = jobTitle.trim();
+  const cleanClient = clientName.trim();
+  const requirementsBullets = requirements && requirements.length > 0
+    ? requirements.map(r => `• ${r}`).join("\n")
+    : "• Strong experience in this domain\n• Excellent problem-solving skills\n• Great team player";
+
+  switch (tone) {
+    case "casual":
+      return `Hey network! 👋
+
+We are on the hunt for a talented ${cleanTitle} to join the team at ${cleanClient}! 
+
+If you are looking for a new challenge, want to build amazing things, and work with a stellar team, this is the role for you. 
+
+Apply directly here: ${applyUrl}
+
+Or share this with someone who would be a perfect fit!
+
+#hiring #${cleanTitle.replace(/\s+/g, "")} #jobopportunity #recruiting`;
+
+    case "exciting":
+      return `🚀 WE ARE HIRING! 🚀
+
+The team at ${cleanClient} is growing rapidly, and we are looking for a stellar ${cleanTitle} to jump on board!
+
+What you'll bring:
+${requirementsBullets}
+
+Why you'll love it:
+✨ High impact role
+✨ Competitive package
+✨ Dynamic and collaborative culture
+
+👉 Apply instantly here: ${applyUrl}
+
+#growth #hiring #${cleanTitle.replace(/\s+/g, "")} #jobsearch #techjobs`;
+
+    case "storytelling":
+      return `Every great product starts with a great team.
+
+At ${cleanClient}, we believe in empowering builders to do their best work. That's why we're looking for our next ${cleanTitle} to help us shape the future.
+
+If you love solving complex problems, pushing boundaries, and collaborating with passionate peers, we'd love to chat.
+
+Check out the full details and apply here: ${applyUrl}
+
+Not for you? A repost goes a long way for someone in your network!
+
+#hiring #careers #recruitment #${cleanTitle.replace(/\s+/g, "")} #culture`;
+
+    case "professional":
+    default:
+      return `We are currently seeking a qualified ${cleanTitle} to join our client ${cleanClient}.
+
+In this position, you will be responsible for driving key project initiatives, collaborating with cross-functional teams, and delivering high-quality solutions.
+
+Key Qualifications:
+${requirementsBullets}
+
+Interested candidates can review the full job description and submit their application directly using the link below:
+
+👉 ${applyUrl}
+
+#recruiting #hiring #${cleanTitle.replace(/\s+/g, "")} #careers #${cleanClient.replace(/\s+/g, "")}`;
+  }
+};
+
 export default function ClientsView() {
   const queryClient = useQueryClient();
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -60,6 +128,19 @@ export default function ClientsView() {
   // File upload / parsing states
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  // LinkedIn Post generation state
+  const [activeLinkedInJob, setActiveLinkedInJob] = useState<{
+    id: string;
+    title: string;
+    clientName: string;
+    description: string;
+    keywords: string[];
+    created_by?: string | null;
+  } | null>(null);
+  const [linkedinTone, setLinkedinTone] = useState("professional");
+  const [customPostContent, setCustomPostContent] = useState("");
+  const [copiedPost, setCopiedPost] = useState(false);
+
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
 
   const handleCopyLink = (jobId: string, recruiterId?: string | null) => {
@@ -766,6 +847,40 @@ export default function ClientsView() {
                                       </>
                                     )}
                                   </button>
+                                  <button
+                                    onClick={() => {
+                                      const activeClient = clients.find(c => c.id === selectedClientId);
+                                      const clientName = activeClient ? activeClient.name : "Our Client";
+                                      const applyUrl = typeof window !== "undefined"
+                                        ? `${window.location.origin}/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}`
+                                        : `/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}`;
+                                      const initialContent = generatePostContent(
+                                        "professional",
+                                        job.title,
+                                        clientName,
+                                        job.description || "",
+                                        job.keywords || [],
+                                        applyUrl
+                                      );
+                                      setLinkedinTone("professional");
+                                      setCustomPostContent(initialContent);
+                                      setActiveLinkedInJob({
+                                        id: job.id,
+                                        title: job.title,
+                                        clientName: clientName,
+                                        description: job.description || "",
+                                        keywords: job.keywords || [],
+                                        created_by: r.created_by
+                                      });
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium text-neutral-700 bg-neutral-white hover:bg-neutral-50 border border-neutral-250 rounded-sm shadow-xs transition-colors cursor-pointer"
+                                    title="Create LinkedIn Post"
+                                  >
+                                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-[#0A66C2]">
+                                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                                    </svg>
+                                    <span>Create Post</span>
+                                  </button>
                                   <a
                                     href={`/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}`}
                                     target="_blank"
@@ -1138,6 +1253,119 @@ export default function ClientsView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 5. LinkedIn Post Generator Modal */}
+      {activeLinkedInJob && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-xl p-6 space-y-4 shadow-xl">
+            <div className="flex justify-between items-start border-b border-neutral-100 pb-3">
+              <div className="space-y-0.5">
+                <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-[#0A66C2]">
+                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                  </svg>
+                  Generate LinkedIn Post
+                </h3>
+                <p className="text-neutral-400 text-[11px] font-mono">
+                  Drafting post for {activeLinkedInJob.title} at {activeLinkedInJob.clientName}
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveLinkedInJob(null)}
+                className="text-neutral-400 hover:text-neutral-600 cursor-pointer p-1 rounded-sm hover:bg-neutral-50"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-neutral-50 p-2.5 rounded-sm border border-neutral-150">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block font-mono">Post Tone</span>
+                  <span className="text-[11px] text-neutral-600 block">Select the vibe of the generated post text.</span>
+                </div>
+                <select
+                  value={linkedinTone}
+                  onChange={(e) => {
+                    const newTone = e.target.value;
+                    setLinkedinTone(newTone);
+                    const applyUrl = typeof window !== "undefined"
+                      ? `${window.location.origin}/apply/${activeLinkedInJob.id}${activeLinkedInJob.created_by ? `?recruiter_id=${activeLinkedInJob.created_by}` : ""}`
+                      : `/apply/${activeLinkedInJob.id}${activeLinkedInJob.created_by ? `?recruiter_id=${activeLinkedInJob.created_by}` : ""}`;
+                    const newContent = generatePostContent(
+                      newTone,
+                      activeLinkedInJob.title,
+                      activeLinkedInJob.clientName,
+                      activeLinkedInJob.description,
+                      activeLinkedInJob.keywords,
+                      applyUrl
+                    );
+                    setCustomPostContent(newContent);
+                  }}
+                  className="px-2.5 py-1.5 border border-neutral-250 bg-neutral-white rounded-sm text-neutral-700 font-mono text-[10px] focus:ring-1 focus:ring-primary focus:outline-hidden cursor-pointer"
+                >
+                  <option value="professional">💼 Professional</option>
+                  <option value="casual">👋 Casual / Modern</option>
+                  <option value="exciting">🚀 Exciting / Growth</option>
+                  <option value="storytelling">📖 Storytelling / Culture</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block font-mono">Draft Content</label>
+                <textarea
+                  value={customPostContent}
+                  onChange={(e) => setCustomPostContent(e.target.value)}
+                  className="w-full h-64 p-3 font-sans text-xs bg-neutral-white border border-neutral-250 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden resize-none leading-relaxed"
+                  placeholder="Drafting post..."
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-neutral-100">
+              <span className="text-[10px] text-neutral-400 font-mono italic">
+                Tip: Copy the text, then click "Share Link" to post on LinkedIn.
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(customPostContent);
+                    setCopiedPost(true);
+                    setTimeout(() => setCopiedPost(false), 2000);
+                  }}
+                  className="px-3.5 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-600 font-medium text-xs tracking-wider uppercase transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  {copiedPost ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-green-600" />
+                      <span>Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Text</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const applyUrl = typeof window !== "undefined"
+                      ? `${window.location.origin}/apply/${activeLinkedInJob.id}${activeLinkedInJob.created_by ? `?recruiter_id=${activeLinkedInJob.created_by}` : ""}`
+                      : `/apply/${activeLinkedInJob.id}${activeLinkedInJob.created_by ? `?recruiter_id=${activeLinkedInJob.created_by}` : ""}`;
+                    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(applyUrl)}`, "_blank");
+                  }}
+                  className="px-4 py-1.5 bg-primary text-neutral-white font-medium hover:bg-primary/95 rounded-sm cursor-pointer flex items-center gap-1.5 text-xs uppercase tracking-wider"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Share Link</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

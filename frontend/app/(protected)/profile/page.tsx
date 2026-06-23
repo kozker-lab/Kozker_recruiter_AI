@@ -14,6 +14,7 @@ const THEMES = [
   { id: "sunset", name: "Sunset Orange", color: "#FF6E30" },
   { id: "ocean", name: "Ocean Breeze", color: "#0EA5E9" },
   { id: "forest", name: "Forest Green", color: "#10B981" },
+  { id: "pine", name: "Pine Green", color: "#2F5A27" },
   { id: "cosmic", name: "Cosmic Orchid", color: "#8B5CF6" },
   { id: "rose", name: "Rose Quartz", color: "#F43F5E" },
   { id: "amber", name: "Classic Amber", color: "#F59E0B" },
