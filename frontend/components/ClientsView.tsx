@@ -9,7 +9,7 @@ import {
   Building2, Plus, FileText, ChevronRight, CheckCircle2, 
   MapPin, DollarSign, BrainCircuit, Loader2, Award, Upload, Edit, Trash2, Pencil,
   ChevronDown, UserCheck, Code, Users, CheckSquare, XCircle, Activity,
-  Copy, ExternalLink, Check
+  Copy, ExternalLink, Check, Download
 } from "lucide-react";
 import { RequirementStatus } from "../types";
 
@@ -218,6 +218,121 @@ export default function ClientsView() {
     queryKey: ["applications"],
     queryFn: () => apiRequest<any[]>("GET", "/applications")
   });
+
+  const handleExportExcel = (jobId: string, jobTitle: string) => {
+    const jobApps = applications.filter(app => app.job_opening_id === jobId);
+    
+    if (jobApps.length === 0) {
+      alert("No applicant responses found to export for this mandate.");
+      return;
+    }
+
+    const customQuestionKeysMap: Record<string, string> = {};
+    
+    jobApps.forEach(app => {
+      const cand = app.candidates;
+      if (cand && cand.parsed_resume_json && Array.isArray(cand.parsed_resume_json.custom_form_responses)) {
+        cand.parsed_resume_json.custom_form_responses.forEach((resp: any) => {
+          if (resp.field_id && resp.question) {
+            customQuestionKeysMap[resp.field_id] = resp.question;
+          }
+        });
+      }
+    });
+
+    try {
+      const localConfig = localStorage.getItem(`form_config_${jobId}`);
+      if (localConfig) {
+        const fields = JSON.parse(localConfig);
+        fields.forEach((f: any) => {
+          if (f.enabled && f.isCustom) {
+            customQuestionKeysMap[f.id] = f.label;
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Failed to read form config from localStorage for export:", e);
+    }
+
+    const customFieldIds = Object.keys(customQuestionKeysMap);
+
+    const headers = [
+      "Rank / Index",
+      "Candidate Name",
+      "Email Address",
+      "Phone Number",
+      "Years of Experience",
+      "Education / Degree",
+      "Employment Status",
+      "Key Skills",
+      "Academic Details",
+      "Achievements",
+      "AI Match Score",
+      "Screening Status",
+      "Current Stage",
+      ...customFieldIds.map(id => customQuestionKeysMap[id])
+    ];
+
+    const escapeCSV = (val: any) => {
+      if (val === null || val === undefined) return "";
+      let strVal = "";
+      if (Array.isArray(val)) {
+        strVal = val.join(", ");
+      } else {
+        strVal = String(val);
+      }
+      if (strVal.includes(",") || strVal.includes('"') || strVal.includes("\n") || strVal.includes("\r")) {
+        return `"${strVal.replace(/"/g, '""')}"`;
+      }
+      return strVal;
+    };
+
+    const csvRows = [headers.map(h => escapeCSV(h)).join(",")];
+
+    jobApps.forEach((app, index) => {
+      const cand = app.candidates || {};
+      const responsesMap: Record<string, string> = {};
+      if (cand.parsed_resume_json && Array.isArray(cand.parsed_resume_json.custom_form_responses)) {
+        cand.parsed_resume_json.custom_form_responses.forEach((resp: any) => {
+          if (resp.field_id) {
+            responsesMap[resp.field_id] = resp.response || "";
+          }
+        });
+      }
+
+      const row = [
+        escapeCSV(index + 1),
+        escapeCSV(cand.full_name || app.candidate_name || "Unknown"),
+        escapeCSV(cand.email || app.candidate_email || ""),
+        escapeCSV(cand.phone || app.candidate_phone || ""),
+        escapeCSV(cand.experience_years !== undefined ? `${cand.experience_years} Years` : ""),
+        escapeCSV(cand.education || ""),
+        escapeCSV(cand.working_or_not === true ? "Employed" : cand.working_or_not === false ? "Open to Work" : ""),
+        escapeCSV(cand.skills || ""),
+        escapeCSV(cand.academic_details || ""),
+        escapeCSV(cand.achievements || ""),
+        escapeCSV(app.fuzzy_score !== undefined && app.fuzzy_score !== null ? `${app.fuzzy_score}%` : ""),
+        escapeCSV(app.screening_status || "pending"),
+        escapeCSV(app.stage || "screening"),
+        ...customFieldIds.map(id => escapeCSV(responsesMap[id] || ""))
+      ];
+
+      csvRows.push(row.join(","));
+    });
+
+    const csvContent = "\ufeff" + csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement("a");
+    const filename = `${jobTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_responses.csv`;
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Filter requirements for the selected client, with search and status filter
   const searchedAndFilteredReqs = requirements.filter(r => {
@@ -723,9 +838,19 @@ export default function ClientsView() {
                                     Post #{job.post_index || 1}: <span className="group-hover:underline">{job.title}</span>
                                   </span>
                                 </Link>
-                                <span className="text-[10px] text-neutral-400 font-mono uppercase bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded-sm">
-                                  {job.status}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleExportExcel(job.id, job.title)}
+                                    className="text-[9.5px] font-mono text-primary hover:underline cursor-pointer flex items-center gap-1 bg-neutral-100 border border-neutral-200/80 px-1.5 py-0.5 rounded-xs font-bold uppercase transition-colors"
+                                    title="Export applicant responses to Excel/CSV"
+                                  >
+                                    <Download className="w-3.5 h-3.5 text-primary" />
+                                    <span>Export Sheet</span>
+                                  </button>
+                                  <span className="text-[10px] text-neutral-400 font-mono uppercase bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded-sm">
+                                    {job.status}
+                                  </span>
+                                </div>
                               </div>
                               
                               {/* Horizontal Pipeline */}

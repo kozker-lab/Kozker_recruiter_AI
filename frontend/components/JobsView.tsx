@@ -8,7 +8,7 @@ import {
   Table, Briefcase, FileSignature, Sparkles, CheckSquare, 
   Play, Check, Edit3, ArrowLeft, RefreshCcw, Save, Trash2, 
   Sliders, UserCheck, AlertTriangle, Layers, UserCircle, ChevronRight, Plus, CheckCircle2, FileText,
-  Folder, FolderOpen, Search, Filter, Building2, ChevronDown, LayoutGrid, List
+  Folder, FolderOpen, Search, Filter, Building2, ChevronDown, LayoutGrid, List, Download
 } from "lucide-react";
 
 // Custom ScatterPlot Component
@@ -669,6 +669,127 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     setLocalSkills(prev => prev.filter(s => s.id !== id));
   };
 
+  const handleExportExcel = async (jobId: string | null | undefined, jobTitle: string | null | undefined) => {
+    if (!jobId || !jobTitle) return;
+    try {
+      const jobCands = await apiRequest<any[]>("GET", `/jobs/${jobId}/candidates`);
+      
+      if (jobCands.length === 0) {
+        alert("No applicant responses found to export for this mandate.");
+        return;
+      }
+
+      const customQuestionKeysMap: Record<string, string> = {};
+      
+      jobCands.forEach(jc => {
+        const fullCand = candidates.find(c => c.id === jc.candidate_id) as any;
+        if (fullCand && fullCand.parsed_resume_json && Array.isArray(fullCand.parsed_resume_json.custom_form_responses)) {
+          fullCand.parsed_resume_json.custom_form_responses.forEach((resp: any) => {
+            if (resp.field_id && resp.question) {
+              customQuestionKeysMap[resp.field_id] = resp.question;
+            }
+          });
+        }
+      });
+
+      try {
+        const localConfig = localStorage.getItem(`form_config_${jobId}`);
+        if (localConfig) {
+          const fields = JSON.parse(localConfig);
+          fields.forEach((f: any) => {
+            if (f.enabled && f.isCustom) {
+              customQuestionKeysMap[f.id] = f.label;
+            }
+          });
+        }
+      } catch (e) {
+        console.error("Failed to read form config from localStorage for export:", e);
+      }
+
+      const customFieldIds = Object.keys(customQuestionKeysMap);
+
+      const headers = [
+        "Rank / Index",
+        "Candidate Name",
+        "Email Address",
+        "Phone Number",
+        "Years of Experience",
+        "Education / Degree",
+        "Employment Status",
+        "Key Skills",
+        "Academic Details",
+        "Achievements",
+        "AI Match Score",
+        "Screening Status",
+        "Current Stage",
+        ...customFieldIds.map(id => customQuestionKeysMap[id])
+      ];
+
+      const escapeCSV = (val: any) => {
+        if (val === null || val === undefined) return "";
+        let strVal = "";
+        if (Array.isArray(val)) {
+          strVal = val.join(", ");
+        } else {
+          strVal = String(val);
+        }
+        if (strVal.includes(",") || strVal.includes('"') || strVal.includes("\n") || strVal.includes("\r")) {
+          return `"${strVal.replace(/"/g, '""')}"`;
+        }
+        return strVal;
+      };
+
+      const csvRows = [headers.map(h => escapeCSV(h)).join(",")];
+
+      jobCands.forEach((jc, index) => {
+        const fullCand = (candidates.find(c => c.id === jc.candidate_id) || {}) as any;
+        const responsesMap: Record<string, string> = {};
+        if (fullCand.parsed_resume_json && Array.isArray(fullCand.parsed_resume_json.custom_form_responses)) {
+          fullCand.parsed_resume_json.custom_form_responses.forEach((resp: any) => {
+            if (resp.field_id) {
+              responsesMap[resp.field_id] = resp.response || "";
+            }
+          });
+        }
+
+        const row = [
+          escapeCSV(index + 1),
+          escapeCSV(jc.candidate_name || "Unknown"),
+          escapeCSV(jc.candidate_email || ""),
+          escapeCSV(jc.candidate_phone || ""),
+          escapeCSV(jc.experience_years !== undefined ? `${jc.experience_years} Years` : ""),
+          escapeCSV(fullCand.education || ""),
+          escapeCSV(fullCand.working_or_not === true ? "Employed" : fullCand.working_or_not === false ? "Open to Work" : ""),
+          escapeCSV(jc.candidate_skills || ""),
+          escapeCSV(fullCand.academic_details || ""),
+          escapeCSV(fullCand.achievements || ""),
+          escapeCSV(jc.fuzzy_score !== undefined && jc.fuzzy_score !== null ? `${jc.fuzzy_score}%` : ""),
+          escapeCSV(jc.candidate_job_status || "pending"),
+          escapeCSV(jc.stage || "screening"),
+          ...customFieldIds.map(id => escapeCSV(responsesMap[id] || ""))
+        ];
+
+        csvRows.push(row.join(","));
+      });
+
+      const csvContent = "\ufeff" + csvRows.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement("a");
+      const filename = `${jobTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_responses.csv`;
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Failed to export responses sheet:", err);
+      alert("Failed to export responses sheet. Please try again.");
+    }
+  };
+
   if (!selectedJobId) {
     return (
       <div className="space-y-6 font-sans text-neutral-700 max-w-7xl mx-auto w-full select-none">
@@ -924,6 +1045,14 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                                           ) : null}
 
                                           <button
+                                            onClick={() => handleExportExcel(job.id, job.title)}
+                                            className="p-1 hover:bg-neutral-200 border border-neutral-200 hover:border-neutral-300 rounded-xs text-neutral-500 hover:text-primary transition-colors cursor-pointer"
+                                            title="Export Form Responses to Excel/CSV"
+                                          >
+                                            <Download className="w-3.5 h-3.5" />
+                                          </button>
+
+                                          <button
                                             onClick={() => {
                                               setSelectedJobId(job.id);
                                               setActiveTab("jd");
@@ -1029,15 +1158,27 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                                           Top match: {job.top_score}%
                                         </span>
                                       ) : null}
-                                      <button
-                                        onClick={() => {
-                                          setSelectedJobId(job.id);
-                                          setActiveTab("jd");
-                                        }}
-                                        className="text-[9px] font-mono text-primary font-bold hover:underline cursor-pointer flex items-center"
-                                      >
-                                        View Workspace ➔
-                                      </button>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleExportExcel(job.id, job.title)}
+                                          className="text-[9px] font-mono text-neutral-500 hover:text-primary hover:underline cursor-pointer flex items-center gap-0.5"
+                                          title="Export Responses to Excel/CSV"
+                                        >
+                                          <Download className="w-3 h-3 text-neutral-450 hover:text-primary" />
+                                          Export
+                                        </button>
+                                        <span className="text-neutral-300">|</span>
+                                        <button
+                                          onClick={() => {
+                                            setSelectedJobId(job.id);
+                                            setActiveTab("jd");
+                                          }}
+                                          className="text-[9px] font-mono text-primary font-bold hover:underline cursor-pointer flex items-center"
+                                        >
+                                          View Workspace ➔
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                 ))}
@@ -1132,16 +1273,26 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                             {new Date(j.created_at).toLocaleDateString()}
                           </td>
                           <td className="p-4 text-right">
-                            <button
-                              onClick={() => {
-                                setSelectedJobId(j.id);
-                                setActiveTab("jd");
-                              }}
-                              className="text-[10px] text-neutral-400 hover:text-primary font-semibold uppercase tracking-wider font-mono flex items-center gap-0.5 ml-auto cursor-pointer"
-                            >
-                              Open
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center justify-end gap-3 ml-auto">
+                              <button
+                                type="button"
+                                onClick={() => handleExportExcel(j.id, j.title)}
+                                className="p-1 hover:bg-neutral-200 border border-neutral-200 rounded-xs text-neutral-550 hover:text-primary transition-colors cursor-pointer"
+                                title="Export Responses to Excel/CSV"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedJobId(j.id);
+                                  setActiveTab("jd");
+                                }}
+                                className="text-[10px] text-neutral-400 hover:text-primary font-semibold uppercase tracking-wider font-mono flex items-center gap-0.5 cursor-pointer"
+                              >
+                                Open
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1631,6 +1782,15 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               >
                 <Plus className="w-3.5 h-3.5" />
                 Add Candidate
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportExcel(activeJob?.id, activeJob?.title)}
+                className="px-2.5 py-1.5 border border-neutral-200 bg-neutral-white hover:bg-neutral-100 rounded-sm text-neutral-650 font-semibold flex items-center gap-1.5 cursor-pointer font-sans text-[10px]"
+                title="Export Form Responses to Excel/CSV"
+              >
+                <Download className="w-3.5 h-3.5 text-neutral-500" />
+                Export Responses
               </button>
               {activeJob?.processing_status === "matching" ? (
                 <span className="text-[10px] text-primary font-semibold flex items-center gap-1.5 font-mono animate-pulse">

@@ -204,12 +204,37 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
 
+  // Custom Alert Modal State
+  const [customAlert, setCustomAlert] = useState<{ message: string; isOpen: boolean } | null>(null);
+
   React.useEffect(() => {
     const savedMode = localStorage.getItem("kozker_pref_mode") as "light" | "dark" | null;
     const initialMode = savedMode || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     setThemeMode(initialMode);
     document.documentElement.setAttribute("data-mode", initialMode);
+
+    // Override browser alert with custom modal dialog
+    if (typeof window !== "undefined") {
+      window.alert = (message: any) => {
+        setCustomAlert({ message: String(message), isOpen: true });
+      };
+    }
   }, []);
+
+  // Dismiss custom alert with Enter, Space or Escape keys
+  React.useEffect(() => {
+    if (!customAlert?.isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === "Escape" || e.key === " ") {
+        e.preventDefault();
+        setCustomAlert(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [customAlert]);
 
   const toggleThemeMode = () => {
     const nextMode = themeMode === "dark" ? "light" : "dark";
@@ -1253,6 +1278,59 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           );
         })}
       </div>
+
+      {/* Custom Themed Alert Modal Overlay */}
+      {customAlert?.isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs transition-opacity duration-300 pointer-events-auto animate-fade-in">
+          <div
+            className={`max-w-md w-full border rounded-sm p-6 shadow-2xl transition-all transform scale-100 animate-zoom-in pointer-events-auto ${
+              themeMode === "dark"
+                ? "bg-[#121620]"
+                : "bg-white"
+            }`}
+            style={{ borderColor: themeMode === "dark" ? "#27272a" : "#e4e4e7" }}
+          >
+            <div className="flex items-start gap-4">
+              <div
+                className={`p-2.5 rounded-sm border shrink-0 flex items-center justify-center ${
+                  themeMode === "dark"
+                    ? "bg-primary/10 text-primary"
+                    : "bg-primary/5 text-primary"
+                }`}
+                style={{ borderColor: themeMode === "dark" ? "rgba(255, 110, 48, 0.25)" : "rgba(255, 110, 48, 0.15)" }}
+              >
+                <AlertCircle className="w-5 h-5 text-primary" style={{ color: "#FF6E30" }} />
+              </div>
+              <div className="flex-1 space-y-1.5 pt-0.5">
+                <h3
+                  className="font-tight font-extrabold text-xs uppercase tracking-wider"
+                  style={{ color: themeMode === "dark" ? "#a8a29e" : "#78716c" }}
+                >
+                  System Notification
+                </h3>
+                <p
+                  className="text-xs font-semibold leading-relaxed break-words whitespace-pre-wrap"
+                  style={{ color: themeMode === "dark" ? "#fafaf9" : "#1c1917" }}
+                >
+                  {customAlert.message}
+                </p>
+              </div>
+            </div>
+            <div
+              className="flex justify-end pt-4 mt-5 border-t"
+              style={{ borderColor: themeMode === "dark" ? "#27272a" : "#e4e4e7" }}
+            >
+              <button
+                onClick={() => setCustomAlert(null)}
+                className="px-4 py-1.5 bg-primary hover:bg-primary/95 text-neutral-white text-xs font-extrabold uppercase tracking-wider rounded-sm transition-all shadow-xs hover:shadow-md cursor-pointer"
+                style={{ backgroundColor: "#FF6E30" }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

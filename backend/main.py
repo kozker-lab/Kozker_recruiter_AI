@@ -514,6 +514,7 @@ class CandidateModel(BaseModel):
     summary: Optional[str] = ""
     job_id: Optional[str] = None
     uploaded_by: Optional[str] = None
+    parsed_resume_json: Optional[Dict[str, Any]] = None
 
 class CandidateUpdateModel(BaseModel):
     full_name: Optional[str] = None
@@ -530,6 +531,7 @@ class CandidateUpdateModel(BaseModel):
     summary: Optional[str] = None
     job_id: Optional[str] = None
     uploaded_by: Optional[str] = None
+    parsed_resume_json: Optional[Dict[str, Any]] = None
 
 class ChatMessageModel(BaseModel):
     message: str
@@ -2155,6 +2157,9 @@ async def update_candidate(candidate_id: str, cand: CandidateUpdateModel, db: Cl
     if cand.raw_text is not None:
         parsed_json["raw_text"] = cand.raw_text
         modified_json = True
+    if cand.parsed_resume_json is not None:
+        parsed_json = {**parsed_json, **cand.parsed_resume_json}
+        modified_json = True
 
     if modified_json:
         update_data["parsed_resume_json"] = parsed_json
@@ -2327,14 +2332,21 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
              # Merge raw text
         existing_raw = ""
         existing_summary = ""
+        existing_parsed = {}
         if "parsed_resume_json" in existing_cand and isinstance(existing_cand["parsed_resume_json"], dict):
-            existing_raw = existing_cand["parsed_resume_json"].get("raw_text") or ""
-            existing_summary = existing_cand["parsed_resume_json"].get("summary") or ""
+            existing_parsed = existing_cand["parsed_resume_json"]
+            existing_raw = existing_parsed.get("raw_text") or ""
+            existing_summary = existing_parsed.get("summary") or ""
         
         merged_raw = existing_raw
         if cand.raw_text and cand.raw_text not in existing_raw:
             merged_raw = f"{existing_raw}\n\n[Updated Profile]:\n{cand.raw_text}" if existing_raw else cand.raw_text
         merged_summary = cand.summary if cand.summary else existing_summary
+        
+        incoming_parsed = cand.parsed_resume_json or {}
+        merged_parsed = {**existing_parsed, **incoming_parsed}
+        merged_parsed["raw_text"] = merged_raw
+        merged_parsed["summary"] = merged_summary
             
         res = db.table("candidates").update({
             "full_name": cand.full_name,
@@ -2345,7 +2357,7 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
             "working_or_not": cand.working_or_not,
             "academic_details": merged_academic,
             "achievements": merged_achievements,
-            "parsed_resume_json": {"raw_text": merged_raw, "summary": merged_summary},
+            "parsed_resume_json": merged_parsed,
             "source": db_source,
             "job_id": cand.job_id if cand.job_id else existing_cand.get("job_id"),
             "uploaded_by": db_uploaded_by if db_uploaded_by else existing_cand.get("uploaded_by"),
@@ -2357,6 +2369,11 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
             data["raw_text"] = merged_raw
             return data
  
+    incoming_parsed = cand.parsed_resume_json or {}
+    parsed_resume_payload = {**incoming_parsed}
+    parsed_resume_payload["raw_text"] = cand.raw_text
+    parsed_resume_payload["summary"] = cand.summary or ""
+
     payload = {
         "full_name": cand.full_name,
         "email": cand.email,
@@ -2364,7 +2381,7 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
         "skills": cand.skills,
         "experience_years": cand.experience_years,
         "resume_url": cand.resume_url,
-        "parsed_resume_json": {"raw_text": cand.raw_text, "summary": cand.summary or ""},
+        "parsed_resume_json": parsed_resume_payload,
         "education": cand.education,
         "working_or_not": cand.working_or_not,
         "academic_details": cand.academic_details,
