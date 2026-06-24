@@ -141,6 +141,63 @@ export default function ClientsView() {
   const [customPostContent, setCustomPostContent] = useState("");
   const [copiedPost, setCopiedPost] = useState(false);
 
+  // LinkedIn Integration States
+  const [linkedinConnected, setLinkedinConnected] = useState(false);
+  const [linkedinHasCompanyPage, setLinkedinHasCompanyPage] = useState(false);
+  const [checkingLinkedinStatus, setCheckingLinkedinStatus] = useState(false);
+  const [sharingToLinkedin, setSharingToLinkedin] = useState(false);
+  const [linkedinShareSuccess, setLinkedinShareSuccess] = useState(false);
+  const [linkedinShareSuccessMessage, setLinkedinShareSuccessMessage] = useState<string | null>(null);
+  const [linkedinShareError, setLinkedinShareError] = useState<string | null>(null);
+
+  // Check LinkedIn connection status when modal opens
+  React.useEffect(() => {
+    if (activeLinkedInJob) {
+      setCheckingLinkedinStatus(true);
+      setLinkedinShareSuccess(false);
+      setLinkedinShareSuccessMessage(null);
+      setLinkedinShareError(null);
+      apiRequest<{ connected: boolean; company_page_id?: string | null }>(
+        "GET",
+        "/integrations/linkedin/status"
+      )
+        .then((data) => {
+          setLinkedinConnected(data.connected);
+          setLinkedinHasCompanyPage(!!data.company_page_id);
+        })
+        .catch((err) => {
+          console.error("Error checking LinkedIn status in modal", err);
+          setLinkedinConnected(false);
+          setLinkedinHasCompanyPage(false);
+        })
+        .finally(() => {
+          setCheckingLinkedinStatus(false);
+        });
+    }
+  }, [activeLinkedInJob]);
+
+  const handlePostToLinkedin = async () => {
+    if (!activeLinkedInJob) return;
+    setSharingToLinkedin(true);
+    setLinkedinShareSuccess(false);
+    setLinkedinShareSuccessMessage(null);
+    setLinkedinShareError(null);
+    try {
+      const data = await apiRequest<{ success: boolean; message?: string; post_id?: string }>(
+        "POST",
+        `/jobs/${activeLinkedInJob.id}/share-linkedin`,
+        { text: customPostContent }
+      );
+      setLinkedinShareSuccess(true);
+      setLinkedinShareSuccessMessage(data.message || "Successfully published job opening post to LinkedIn!");
+    } catch (err: any) {
+      console.error("Error sharing post on LinkedIn", err);
+      setLinkedinShareError(err.message || "Failed to publish post to LinkedIn.");
+    } finally {
+      setSharingToLinkedin(false);
+    }
+  };
+
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
 
   const handleCopyLink = (jobId: string, recruiterId?: string | null) => {
@@ -1450,9 +1507,63 @@ export default function ClientsView() {
               </div>
             </div>
 
+            {/* LinkedIn integration alerts / status */}
+            <div className="space-y-2 pt-2 border-t border-neutral-100">
+              {checkingLinkedinStatus && (
+                <div className="flex items-center gap-2 p-2 bg-neutral-50 border border-neutral-200 rounded-sm text-[10px] text-neutral-500 font-mono animate-pulse">
+                  <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span>Checking LinkedIn integration status...</span>
+                </div>
+              )}
+              
+              {!checkingLinkedinStatus && !linkedinConnected && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-sm text-[10px] text-amber-800 flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-bold block uppercase tracking-wider mb-0.5">LinkedIn Not Connected</span>
+                    <span>To post automatically, connect your LinkedIn account under Recruiter settings.</span>
+                  </div>
+                  <Link
+                    href="/profile?tab=integrations"
+                    className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-sm font-semibold uppercase tracking-wider shrink-0 transition-colors"
+                  >
+                    Go to Settings
+                  </Link>
+                </div>
+              )}
+
+              {!checkingLinkedinStatus && linkedinConnected && !linkedinHasCompanyPage && (
+                <div className="p-2.5 bg-neutral-50 border border-neutral-200 rounded-sm text-[10px] text-neutral-600 flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-bold block uppercase tracking-wider mb-0.5 text-neutral-800">Posting to Personal Feed</span>
+                    <span>Company Page ID is not configured. Posts will be published to your personal LinkedIn feed. Set a Company Page ID under settings to post to your company page instead.</span>
+                  </div>
+                  <Link
+                    href="/profile?tab=integrations"
+                    className="px-2 py-1 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 rounded-sm font-semibold uppercase tracking-wider shrink-0 transition-colors"
+                  >
+                    Go to Settings
+                  </Link>
+                </div>
+              )}
+
+              {linkedinShareSuccess && (
+                <div className="p-2.5 bg-emerald-50/50 border border-emerald-200 rounded-sm text-[10px] text-emerald-800 font-semibold flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{linkedinShareSuccessMessage || "Successfully published job opening post to LinkedIn!"}</span>
+                </div>
+              )}
+
+              {linkedinShareError && (
+                <div className="p-2.5 bg-rose-50 border border-rose-250 rounded-sm text-[10px] text-rose-800">
+                  <span className="font-bold block uppercase tracking-wider mb-0.5">Publishing Failed</span>
+                  <span>{linkedinShareError}</span>
+                </div>
+              )}
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-neutral-100">
               <span className="text-[10px] text-neutral-400 font-mono italic">
-                Tip: Copy the text, then click "Share Link" to post on LinkedIn.
+                Tip: Copy the text, or use "Post to LinkedIn" to share directly to your page.
               </span>
               <div className="flex gap-2">
                 <button
@@ -1476,6 +1587,29 @@ export default function ClientsView() {
                     </>
                   )}
                 </button>
+
+                {/* Direct Post Button */}
+                <button
+                  type="button"
+                  disabled={checkingLinkedinStatus || !linkedinConnected || sharingToLinkedin || linkedinShareSuccess}
+                  onClick={handlePostToLinkedin}
+                  className="px-4 py-1.5 bg-[#0A66C2] hover:bg-[#0A66C2]/90 disabled:opacity-50 text-white font-medium rounded-sm cursor-pointer flex items-center gap-1.5 text-xs uppercase tracking-wider transition-colors"
+                >
+                  {sharingToLinkedin ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Posting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                      </svg>
+                      <span>Post to LinkedIn</span>
+                    </>
+                  )}
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -1484,7 +1618,7 @@ export default function ClientsView() {
                       : `/apply/${activeLinkedInJob.id}${activeLinkedInJob.created_by ? `?recruiter_id=${activeLinkedInJob.created_by}` : ""}`;
                     window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(applyUrl)}`, "_blank");
                   }}
-                  className="px-4 py-1.5 bg-primary text-neutral-white font-medium hover:bg-primary/95 rounded-sm cursor-pointer flex items-center gap-1.5 text-xs uppercase tracking-wider"
+                  className="px-4 py-1.5 bg-neutral-900 text-neutral-white font-medium hover:bg-neutral-850 rounded-sm cursor-pointer flex items-center gap-1.5 text-xs uppercase tracking-wider transition-colors"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                   <span>Share Link</span>

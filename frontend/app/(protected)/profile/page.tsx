@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useCurrentUser, useProfile, useUpdateProfile } from "@/lib/hooks/useAuth";
 import { createClient } from "@/lib/supabase/client";
+import { useSearchParams } from "next/navigation";
 import UserAvatar, { GRADIENTS, ICONS } from "@/components/UserAvatar";
 
 const THEMES = [
@@ -27,8 +28,21 @@ export default function ProfilePage() {
   const updateProfile = useUpdateProfile();
   const supabase = createClient();
 
-  // Active Tab: "profile" | "preferences" | "workspace"
-  const [activeTab, setActiveTab] = useState<"profile" | "preferences" | "workspace">("profile");
+  // Active Tab: "profile" | "preferences" | "workspace" | "integrations"
+  const [activeTab, setActiveTab] = useState<"profile" | "preferences" | "workspace" | "integrations">("profile");
+
+  // LinkedIn Integration States
+  const [linkedinConnected, setLinkedinConnected] = useState(false);
+  const [linkedinMemberId, setLinkedinMemberId] = useState<string | null>(null);
+  const [linkedinCompanyPageId, setLinkedinCompanyPageId] = useState("");
+  const [loadingLinkedin, setLoadingLinkedin] = useState(true);
+  const [savingCompanyPage, setSavingCompanyPage] = useState(false);
+  const [disconnectingLinkedin, setDisconnectingLinkedin] = useState(false);
+
+  const searchParams = useSearchParams();
+  const paramTab = searchParams ? searchParams.get("tab") : null;
+  const paramStatus = searchParams ? searchParams.get("status") : null;
+  const paramMessage = searchParams ? searchParams.get("message") : null;
 
   // Profile Form States
   const [fullName, setFullName] = useState("");
@@ -92,6 +106,126 @@ export default function ProfilePage() {
       setSelectedTheme(localStorage.getItem("kozker_pref_theme") || "sunset");
     }
   }, [profile]);
+
+  // Fetch LinkedIn status
+  const fetchLinkedinStatus = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      const res = await fetch("http://localhost:8000/api/v1/integrations/linkedin/status", {
+        headers: token ? { "Authorization": `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLinkedinConnected(data.connected);
+        setLinkedinMemberId(data.linkedin_member_id);
+        setLinkedinCompanyPageId(data.company_page_id || "");
+      }
+    } catch (err) {
+      console.error("Error fetching LinkedIn status:", err);
+    } finally {
+      setLoadingLinkedin(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLinkedinStatus();
+  }, []);
+
+  // Handle URL query parameters for LinkedIn redirects
+  useEffect(() => {
+    if (paramTab === "integrations") {
+      setActiveTab("integrations");
+      if (paramStatus === "success") {
+        setSuccessMsg("Successfully connected to LinkedIn!");
+        // Clear params from URL
+        window.history.replaceState({}, "", "/profile");
+      } else if (paramStatus === "error") {
+        setErrorMsg(paramMessage || "Failed to connect to LinkedIn.");
+        window.history.replaceState({}, "", "/profile");
+      }
+    }
+  }, [paramTab, paramStatus, paramMessage]);
+
+  const handleConnectLinkedin = async () => {
+    setSuccessMsg("");
+    setErrorMsg("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      const res = await fetch(`http://localhost:8000/api/v1/integrations/linkedin/authorize?t=${Date.now()}`, {
+        headers: token ? { "Authorization": `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        throw new Error("Failed to get authorization URL");
+      }
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to start LinkedIn connection flow");
+    }
+  };
+
+  const handleDisconnectLinkedin = async () => {
+    if (!confirm("Are you sure you want to disconnect your LinkedIn account?")) return;
+    setSuccessMsg("");
+    setErrorMsg("");
+    setDisconnectingLinkedin(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      const res = await fetch("http://localhost:8000/api/v1/integrations/linkedin/disconnect", {
+        method: "POST",
+        headers: token ? { "Authorization": `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        throw new Error("Failed to disconnect LinkedIn account");
+      }
+      setLinkedinConnected(false);
+      setLinkedinMemberId(null);
+      setLinkedinCompanyPageId("");
+      setSuccessMsg("LinkedIn account disconnected successfully.");
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to disconnect LinkedIn");
+    } finally {
+      setDisconnectingLinkedin(false);
+    }
+  };
+
+  const handleSaveCompanyPage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSuccessMsg("");
+    setErrorMsg("");
+    setSavingCompanyPage(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      
+      const res = await fetch("http://localhost:8000/api/v1/integrations/linkedin/company-page", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ company_page_id: linkedinCompanyPageId }),
+      });
+      if (!res.ok) {
+        throw new Error("Failed to save Company Page ID");
+      }
+      setSuccessMsg("LinkedIn Company Page ID saved successfully.");
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to save Company Page ID");
+    } finally {
+      setSavingCompanyPage(false);
+    }
+  };
 
   // Compute live preview avatar string
   const getPreviewAvatarUrl = () => {
@@ -281,6 +415,19 @@ export default function ProfilePage() {
         >
           <Sliders className="w-4 h-4" />
           Preferences & Themes
+        </button>
+        <button
+          onClick={() => { setActiveTab("integrations"); setSuccessMsg(""); setErrorMsg(""); }}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === "integrations" 
+              ? "border-primary text-neutral-900" 
+              : "border-transparent text-neutral-400 hover:text-neutral-600 hover:border-neutral-200"
+          }`}
+        >
+          <svg className="w-4 h-4 animate-fade-in" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.779-1.75-1.75s.784-1.75 1.75-1.75 1.75.779 1.75 1.75-.784 1.75-1.75 1.75zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+          </svg>
+          LinkedIn Integration
         </button>
         <button
           onClick={() => { setActiveTab("workspace"); setSuccessMsg(""); setErrorMsg(""); }}
@@ -778,6 +925,109 @@ export default function ProfilePage() {
                 <li>Full access permissions to your created clients & mandates log.</li>
               </ul>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: LinkedIn Integration */}
+      {activeTab === "integrations" && (
+        <div className="bg-white border border-neutral-200 rounded-sm p-6 space-y-6">
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-800 border-b border-neutral-100 pb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.779-1.75-1.75s.784-1.75 1.75-1.75 1.75.779 1.75 1.75-.784 1.75-1.75 1.75zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+              </svg>
+              LinkedIn Company Page Integration
+            </h3>
+            
+            <p className="text-xs text-neutral-500 leading-relaxed">
+              Connect your LinkedIn account to enable publishing generated job openings directly to your organization's LinkedIn Company Page with a single click.
+            </p>
+
+            {loadingLinkedin ? (
+              <div className="flex items-center gap-2 py-4">
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-semibold text-neutral-500 font-mono">Loading Integration Status...</span>
+              </div>
+            ) : linkedinConnected ? (
+              <div className="space-y-6">
+                <div className="p-4 bg-emerald-50/50 border border-emerald-150 rounded-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                      <span className="text-xs font-bold text-neutral-800">Connected to LinkedIn</span>
+                    </div>
+                    <button
+                      onClick={handleDisconnectLinkedin}
+                      disabled={disconnectingLinkedin}
+                      type="button"
+                      className="px-3 py-1.5 border border-red-200 hover:bg-red-50 text-red-500 font-semibold text-[10px] tracking-wider uppercase transition-colors rounded-sm cursor-pointer disabled:opacity-50"
+                    >
+                      {disconnectingLinkedin ? "Disconnecting..." : "Disconnect"}
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono pt-2 border-t border-emerald-100/50 text-neutral-600">
+                    <div>
+                      <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block">Connected Member ID</span>
+                      <span className="text-neutral-800 font-semibold">{linkedinMemberId || "Unknown"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSaveCompanyPage} className="space-y-4 pt-2 border-t border-neutral-100">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-neutral-800 block">
+                      LinkedIn Company Page ID
+                    </label>
+                    <span className="text-[10px] text-neutral-400 block">
+                      To publish to your company page, find your organization's numeric ID on LinkedIn (e.g., from your company page admin URL).
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 12345678"
+                      value={linkedinCompanyPageId}
+                      onChange={(e) => setLinkedinCompanyPageId(e.target.value)}
+                      className="w-full max-w-md px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-sm text-neutral-900 placeholder:text-neutral-400 focus:border-primary text-sm transition-colors font-mono"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={savingCompanyPage}
+                    className="px-5 py-2 bg-primary hover:bg-primary/90 text-neutral-white font-medium text-xs tracking-wider uppercase transition-colors rounded-sm cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {savingCompanyPage ? "Saving..." : "Save Company Page ID"}
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="p-6 bg-neutral-50 border border-neutral-200 rounded-sm flex flex-col items-center text-center space-y-4 max-w-lg mx-auto">
+                <div className="p-3 bg-neutral-100 border border-neutral-200 rounded-full text-neutral-400">
+                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.779-1.75-1.75s.784-1.75 1.75-1.75 1.75.779 1.75 1.75-.784 1.75-1.75 1.75zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+                  </svg>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-semibold text-neutral-800">Account Not Connected</h4>
+                  <p className="text-xs text-neutral-400 max-w-sm leading-relaxed">
+                    Connect your LinkedIn profile to start posting job descriptions automatically from your dashboard.
+                  </p>
+                </div>
+                <button
+                  onClick={handleConnectLinkedin}
+                  type="button"
+                  className="px-6 py-2.5 bg-neutral-900 hover:bg-neutral-850 text-white font-medium text-xs tracking-wider uppercase transition-colors rounded-sm cursor-pointer shadow-xs flex items-center gap-2"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.779-1.75-1.75s.784-1.75 1.75-1.75 1.75.779 1.75 1.75-.784 1.75-1.75 1.75zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+                  </svg>
+                  Connect LinkedIn
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
