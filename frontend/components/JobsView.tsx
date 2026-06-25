@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { apiRequest } from "../lib/api";
 import { JobOpening, JobOpeningSkill, JobCandidate, Candidate } from "../types";
 import { 
@@ -327,6 +328,7 @@ const EMPTY_CANDIDATES: JobCandidate[] = [];
 
 export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewProps) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(initialJobId || null);
   const [activeTab, setActiveTab] = useState<"jd" | "skills" | "candidates">("jd");
 
@@ -335,6 +337,18 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       setSelectedJobId(initialJobId);
     }
   }, [initialJobId]);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (selectedJobId) {
+        url.searchParams.set("id", selectedJobId);
+      } else {
+        url.searchParams.delete("id");
+      }
+      router.replace(url.pathname + url.search, { scroll: false });
+    }
+  }, [selectedJobId, router]);
 
   // View mode and filtering states
   const [viewMode, setViewMode] = useState<"tree" | "accordion" | "table">("tree");

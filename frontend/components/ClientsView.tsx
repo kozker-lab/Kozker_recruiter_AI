@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "../lib/api";
 import { Client, Requirement } from "../types";
@@ -83,8 +84,39 @@ Interested candidates can review the full job description and submit their appli
 
 export default function ClientsView() {
   const queryClient = useQueryClient();
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [expandedReqId, setExpandedReqId] = useState<string | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialClientId = searchParams ? searchParams.get("clientId") : null;
+  const initialReqId = searchParams ? searchParams.get("reqId") : null;
+
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(initialClientId);
+  const [expandedReqId, setExpandedReqId] = useState<string | null>(initialReqId);
+
+  React.useEffect(() => {
+    if (initialClientId) {
+      setSelectedClientId(initialClientId);
+    }
+    if (initialReqId) {
+      setExpandedReqId(initialReqId);
+    }
+  }, [initialClientId, initialReqId]);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (selectedClientId) {
+        url.searchParams.set("clientId", selectedClientId);
+      } else {
+        url.searchParams.delete("clientId");
+      }
+      if (expandedReqId) {
+        url.searchParams.set("reqId", expandedReqId);
+      } else {
+        url.searchParams.delete("reqId");
+      }
+      router.replace(url.pathname + url.search, { scroll: false });
+    }
+  }, [selectedClientId, expandedReqId, router]);
   const [clientSearchQuery, setClientSearchQuery] = useState("");
 
   const stages = [

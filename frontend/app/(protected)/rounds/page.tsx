@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
 import ReviewWorkspace from "@/components/ReviewWorkspace";
+import { useSearchParams, useRouter } from "next/navigation";
 import { 
   Loader2, Layers, Search, ChevronRight,
   Folder, FolderOpen, List, Table, Building2, ChevronDown, User, Users,
@@ -12,7 +13,28 @@ import {
 
 export default function RoundsPage() {
   const queryClient = useQueryClient();
-  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialAppId = searchParams ? searchParams.get("appId") : null;
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(initialAppId || null);
+
+  React.useEffect(() => {
+    if (initialAppId) {
+      setSelectedAppId(initialAppId);
+    }
+  }, [initialAppId]);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (selectedAppId) {
+        url.searchParams.set("appId", selectedAppId);
+      } else {
+        url.searchParams.delete("appId");
+      }
+      router.replace(url.pathname + url.search, { scroll: false });
+    }
+  }, [selectedAppId, router]);
   const [searchQuery, setSearchQuery] = useState("");
 
   // View toggle & expanded node states

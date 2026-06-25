@@ -4,7 +4,7 @@ import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, API_BASE_URL, apiUploadFile } from "../lib/api";
 import { Candidate } from "../types";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Papa from "papaparse";
 import { 
   Users, UserPlus, Upload, ShieldCheck, Search, Plus, 
@@ -557,10 +557,30 @@ export default function PoolView() {
   }, [rawCandidates]);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialCandidateId = searchParams ? searchParams.get("candidateId") : null;
 
   // Persistent search query state
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null);
+  const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(initialCandidateId);
+
+  React.useEffect(() => {
+    if (initialCandidateId) {
+      setExpandedCandidateId(initialCandidateId);
+    }
+  }, [initialCandidateId]);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (expandedCandidateId) {
+        url.searchParams.set("candidateId", expandedCandidateId);
+      } else {
+        url.searchParams.delete("candidateId");
+      }
+      router.replace(url.pathname + url.search, { scroll: false });
+    }
+  }, [expandedCandidateId, router]);
 
   // Modal / drawer states
   const [isAddOpen, setIsAddOpen] = useState(false);

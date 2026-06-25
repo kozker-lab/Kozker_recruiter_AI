@@ -3,10 +3,11 @@
 import React, { useState } from "react";
 import JobsView from "@/components/JobsView";
 import ReviewWorkspace from "@/components/ReviewWorkspace";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 export default function JobsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialJobId = searchParams.get("id");
   const initialAppId = searchParams.get("appId");
   
@@ -19,6 +20,18 @@ export default function JobsPage() {
       setSelectedAppId(null);
     }
   }, [initialAppId]);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (selectedAppId) {
+        url.searchParams.set("appId", selectedAppId);
+      } else {
+        url.searchParams.delete("appId");
+      }
+      router.replace(url.pathname + url.search, { scroll: false });
+    }
+  }, [selectedAppId, router]);
 
   const handleNavigateToReview = (appId: string) => {
     setSelectedAppId(appId);
