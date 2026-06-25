@@ -100,6 +100,48 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
     return history.filter((h: any) => h.application_id !== applicationId);
   }, [history, applicationId]);
 
+  // Publish current candidate evaluation workspace context to AI Copilot
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && app) {
+      const context = {
+        evaluation_workspace: {
+          application_id: app.id,
+          candidate_name: app.candidate_name,
+          candidate_email: app.candidate_email,
+          job_title: job?.title,
+          client_name: job?.client_name,
+          fit_score: app.fuzzy_score,
+          stage: app.stage,
+          status: app.screening_status,
+          fit_analysis: app.match_reason,
+          skills: app.candidate_skills || [],
+          experience_years: app.candidate_experience
+        },
+        screening_questions: questions.map(q => ({
+          question: q.question,
+          difficulty: q.difficulty,
+          refining: q.refining,
+          reason: q.reason
+        })),
+        interview_stages_history: stages.map(s => ({
+          stage_name: s.stage_name,
+          status: s.status,
+          outcome: s.outcome,
+          notes: s.notes,
+          completed_at: s.completed_at
+        })),
+        other_applications_history: otherHistory.map(oh => ({
+          job_title: oh.job_openings?.title,
+          status: oh.status,
+          stage: oh.stage,
+          fit_score: oh.fit_score
+        }))
+      };
+
+      window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));
+    }
+  }, [app, job, questions, stages, otherHistory]);
+
   // Mutations
   const updateQuestionMutation = useMutation({
     mutationFn: ({ id, text, difficulty, reason, order }: { id: string; text: string; difficulty: "easy" | "medium" | "hard"; reason: string; order: number }) => 

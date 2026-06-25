@@ -276,6 +276,54 @@ export default function ClientsView() {
     queryFn: () => apiRequest<any[]>("GET", "/applications")
   });
 
+  // Publish current clients & mandates context to AI Copilot
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const activeClient = selectedClientId 
+        ? clients.find(c => c.id === selectedClientId)
+        : null;
+      
+      const activeRequirement = expandedReqId
+        ? requirements.find(r => r.id === expandedReqId)
+        : null;
+
+      const activeRequirementJobs = activeRequirement
+        ? jobs.filter(j => j.requirement_id === activeRequirement.id)
+        : [];
+
+      const context = {
+        selected_client: activeClient ? {
+          id: activeClient.id,
+          name: activeClient.name,
+          created_at: activeClient.created_at
+        } : null,
+        expanded_requirement: activeRequirement ? {
+          id: activeRequirement.id,
+          title: activeRequirement.title,
+          skills: activeRequirement.skills,
+          experience_range: `${activeRequirement.experience_min}-${activeRequirement.experience_max} years`,
+          budget_range: `$${activeRequirement.budget_min}k - $${activeRequirement.budget_max}k`,
+          seniority: activeRequirement.seniority,
+          status: activeRequirement.status,
+          notes: activeRequirement.notes,
+          job_openings_generated: activeRequirementJobs.map(j => ({
+            id: j.id,
+            title: j.title,
+            status: j.status
+          }))
+        } : null,
+        active_linkedin_sharing_job: activeLinkedInJob ? {
+          id: activeLinkedInJob.id,
+          title: activeLinkedInJob.title,
+          client: activeLinkedInJob.clientName,
+          draft_post_content: customPostContent
+        } : null
+      };
+
+      window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));
+    }
+  }, [selectedClientId, expandedReqId, activeLinkedInJob, customPostContent, clients, requirements, jobs]);
+
   const handleExportExcel = (jobId: string, jobTitle: string) => {
     const jobApps = applications.filter(app => app.job_opening_id === jobId);
     

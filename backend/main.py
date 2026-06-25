@@ -3089,17 +3089,23 @@ async def handle_chat_message(chat: ChatMessageModel, db: Client = Depends(get_s
     
     # Call n8n webhook for ATS AI Copilot
     n8n_url = "https://n8n.srv832341.hstgr.cloud/webhook/ats-ai-copilot"
+    
+    # Merge database stats with frontend-provided page context details
+    merged_context = {
+        "clients_count": clients_count,
+        "requirements_count": reqs_count,
+        "jobs_count": jobs_count,
+        "candidates_count": candidates_count,
+        "db_summary": db_summary.strip()
+    }
+    if ctx:
+        merged_context.update(ctx)
+        
     payload = {
         "message": user_msg,
         "current_page": current_page,
         "user_id": user_id,
-        "context": {
-            "clients_count": clients_count,
-            "requirements_count": reqs_count,
-            "jobs_count": jobs_count,
-            "candidates_count": candidates_count,
-            "db_summary": db_summary.strip()
-        }
+        "context": merged_context
     }
     
     logger.info(f"Forwarding chatbot message to n8n copilot webhook: {n8n_url}")

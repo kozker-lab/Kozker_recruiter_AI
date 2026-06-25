@@ -484,6 +484,40 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     }
   }, [skills]);
 
+  // Publish current job opening context to AI Copilot
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const context = {
+        selected_job: activeJob ? {
+          id: activeJob.id,
+          title: activeJob.title,
+          client: activeJob.client_name,
+          status: activeJob.status,
+          processing_status: activeJob.processing_status,
+          description: activeJob.description,
+          salary_range: activeJob.salary_range,
+          responsibilities: activeJob.responsibilities,
+          qualifications: activeJob.qualifications,
+          keywords: activeJob.keywords
+        } : null,
+        active_tab: activeTab,
+        job_skills: activeJob && skills ? skills.map(s => ({
+          name: s.skill_name,
+          weight: s.weight
+        })) : [],
+        matched_candidates: activeJob && matchedCandidates ? matchedCandidates.slice(0, 15).map(mc => ({
+          name: mc.candidate_name,
+          score: mc.fuzzy_score,
+          stage: mc.stage,
+          missing_skills: mc.skill_gaps,
+          matching_skills: mc.skills
+        })) : []
+      };
+
+      window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));
+    }
+  }, [selectedJobId, activeJob, activeTab, skills, matchedCandidates]);
+
   useEffect(() => {
     setSelectedCandidatesForCompare([]);
   }, [selectedJobId, activeTab]);

@@ -80,6 +80,43 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
     }
   });
 
+  // Publish dashboard stats and selected item context to AI Copilot
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const activeApp = expandedAppId 
+        ? applications.find(a => a.id === expandedAppId)
+        : null;
+
+      const context = {
+        stats: {
+          active_jobs_count: jobs.filter(j => j.status === "published").length,
+          total_candidates_count: candidates.length,
+          total_applications_count: applications.length,
+          pending_reviews_count: applications.filter(a => a.screening_status === "pending").length
+        },
+        recent_activity_logs: logs.slice(0, 10).map(l => ({
+          action: l.action,
+          actor_name: l.actor_name,
+          created_at: l.created_at,
+          metadata: l.metadata
+        })),
+        expanded_application: activeApp ? {
+          id: activeApp.id,
+          candidate_name: activeApp.candidates?.full_name,
+          candidate_email: activeApp.candidates?.email,
+          job_title: activeApp.job_openings?.title,
+          client_name: activeApp.job_openings?.client_name || activeApp.job_openings?.clients?.name,
+          status: activeApp.screening_status,
+          fit_score: activeApp.fuzzy_score,
+          fit_analysis: activeApp.match_reason,
+          screening_questions: activeApp.screening_questions
+        } : null
+      };
+
+      window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));
+    }
+  }, [jobs, candidates, logs, applications, expandedAppId]);
+
   // Calculate statistics based on fetched data
   const activeJobsCount = jobs.filter(j => j.status === "published" || j.status === "confirmed").length;
   const totalCandidates = candidates.length;

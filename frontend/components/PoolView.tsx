@@ -643,6 +643,54 @@ export default function PoolView() {
     return matchesSearch && matchesEducation && matchesWorkingStatus && matchesExperience && matchesSkillsFilter && matchesEmail;
   });
 
+  // Publish current pool state context to AI Copilot
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const activeCandidate = expandedCandidateId 
+        ? candidates.find(c => c.id === expandedCandidateId)
+        : null;
+      
+      const context = {
+        total_candidates_listed: filteredCandidates.length,
+        search_query: searchQuery,
+        filters: {
+          education: selectedEducation,
+          working_status: selectedWorkingStatus,
+          experience_range: experienceRange,
+          skills_filter: skillsFilter,
+          email_filter: emailFilter
+        },
+        candidates_on_screen: filteredCandidates.slice(0, 15).map(c => ({
+          id: c.id,
+          name: c.full_name,
+          email: c.email,
+          skills: c.skills,
+          experience_years: c.experience_years,
+          education: c.education,
+          working_status: c.working_or_not !== false ? "Employed" : "Open to Work",
+          active_linked_jobs: c.linked_jobs?.map(lj => lj.job_title) || []
+        })),
+        active_candidate_details: activeCandidate ? {
+          id: activeCandidate.id,
+          name: activeCandidate.full_name,
+          email: activeCandidate.email,
+          phone: activeCandidate.phone,
+          skills: activeCandidate.skills,
+          experience_years: activeCandidate.experience_years,
+          education: activeCandidate.education,
+          academic_details: activeCandidate.academic_details,
+          achievements: activeCandidate.achievements,
+          summary: activeCandidate.parsed_resume_json?.summary,
+          resume_url: activeCandidate.resume_url,
+          working_status: activeCandidate.working_or_not !== false ? "Employed" : "Open to Work",
+          linked_jobs: activeCandidate.linked_jobs
+        } : null
+      };
+
+      window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));
+    }
+  }, [filteredCandidates, expandedCandidateId, searchQuery, selectedEducation, selectedWorkingStatus, experienceRange, skillsFilter, emailFilter, candidates]);
+
   // Mutations
   const addCandidateMutation = useMutation({
     mutationFn: (data: any) => apiRequest<Candidate>("POST", "/candidates", data),

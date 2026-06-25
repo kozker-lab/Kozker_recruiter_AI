@@ -29,11 +29,29 @@ export default function ChatbotPanel({ isOpen, onClose, onOpen, currentPage }: C
     "Show interview pipeline stages"
   ];
 
+  const [pageContext, setPageContext] = useState<any>(null);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  useEffect(() => {
+    const handleContextUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setPageContext(customEvent.detail);
+    };
+    window.addEventListener("copilot-context-update", handleContextUpdate);
+    return () => {
+      window.removeEventListener("copilot-context-update", handleContextUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Clear context on page navigation so we don't send stale data
+    setPageContext(null);
+  }, [currentPage]);
 
   const handleSend = async (text: string) => {
     if (!text.trim() || loading) return;
@@ -46,7 +64,11 @@ export default function ChatbotPanel({ isOpen, onClose, onOpen, currentPage }: C
       const reply = await apiRequest<{ role: "assistant"; content: string }>(
         "POST",
         "/chatbot/message",
-        { message: text, current_page: currentPage }
+        { 
+          message: text, 
+          current_page: currentPage,
+          context: pageContext
+        }
       );
       setMessages(prev => [...prev, reply]);
     } catch (err) {
