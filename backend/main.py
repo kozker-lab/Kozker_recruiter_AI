@@ -540,6 +540,7 @@ class CandidateUpdateModel(BaseModel):
 class ChatMessageModel(BaseModel):
     message: str
     context: Optional[Dict[str, Any]] = None
+    current_page: Optional[str] = None
 
 class CSVUploadModel(BaseModel):
     items: List[Dict[str, Any]]
@@ -3064,9 +3065,10 @@ async def ai_edit_question(q_id: str, data: Dict[str, str], background_tasks: Ba
 
 # 7. Chatbot Endpoint
 @app.post("/api/v1/chatbot/message")
-async def handle_chat_message(chat: ChatMessageModel, db: Client = Depends(get_supabase)):
+async def handle_chat_message(chat: ChatMessageModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
     user_msg = chat.message
     ctx = chat.context or {}
+    current_page = chat.current_page or ctx.get("current_page") or "unknown"
     
     # Compile database stats to inject in context
     try:
@@ -3085,7 +3087,64 @@ async def handle_chat_message(chat: ChatMessageModel, db: Client = Depends(get_s
     - Candidate Pool Size: {candidates_count}
     """
     
-    # Mock chatbot replies
+    # Call n8n webhook for ATS AI Copilot
+    n8n_url = "https://n8n.srv832341.hstgr.cloud/webhook/ats-ai-copilot"
+    payload = {
+        "message": user_msg,
+        "current_page": current_page,
+        "user_id": user_id,
+        "context": {
+            "clients_count": clients_count,
+            "requirements_count": reqs_count,
+            "jobs_count": jobs_count,
+            "candidates_count": candidates_count,
+            "db_summary": db_summary.strip()
+        }
+    }
+    
+    logger.info(f"Forwarding chatbot message to n8n copilot webhook: {n8n_url}")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(n8n_url, json=payload, timeout=60.0)
+            if res.status_code in (200, 201, 202):
+                logger.info(f"Successfully received response from n8n copilot (status: {res.status_code})")
+                
+                # Robust extraction of the reply from n8n response
+                try:
+                    res_data = res.json()
+                    
+                    if isinstance(res_data, list) and len(res_data) > 0:
+                        res_data = res_data[0]
+                        
+                    if isinstance(res_data, dict):
+                        reply = (
+                            res_data.get("reply") or 
+                            res_data.get("output") or 
+                            res_data.get("response") or 
+                            res_data.get("text") or 
+                            res_data.get("message")
+                        )
+                        if reply:
+                            return {"role": "assistant", "content": str(reply)}
+                            
+                        if len(res_data) > 0:
+                            first_val = list(res_data.values())[0]
+                            if isinstance(first_val, str):
+                                return {"role": "assistant", "content": first_val}
+                    elif isinstance(res_data, str):
+                        return {"role": "assistant", "content": res_data}
+                except Exception as parse_err:
+                    logger.error(f"Error parsing n8n JSON response: {parse_err}")
+                
+                if res.text:
+                    return {"role": "assistant", "content": res.text.strip()}
+            else:
+                logger.error(f"n8n copilot webhook returned non-success status: {res.status_code}, response: {res.text}")
+    except Exception as e:
+        logger.error(f"Exception calling n8n copilot webhook: {e}")
+        
+    # Mock chatbot replies (fallback)
     reply = ""
     if "candidate" in user_msg.lower():
         reply = f"Currently, there are {candidates_count} candidates in the common pool. Rohan Sharma (fuzzy match score: 94.5%) is accepted and in the Technical Interview stage."
@@ -3094,7 +3153,7 @@ async def handle_chat_message(chat: ChatMessageModel, db: Client = Depends(get_s
     else:
         reply = f"Hello! I'm your Kozker Recruiter AI Companion. I see we have {clients_count} clients and {reqs_count} active mandate requirements. How can I help you manage your pipeline today?"
             
-    return {"reply": reply}
+    return {"role": "assistant", "content": reply}
 
 # ============================================================
 # n8n Inbound Callbacks
