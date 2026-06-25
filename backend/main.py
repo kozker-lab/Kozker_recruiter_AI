@@ -3108,7 +3108,8 @@ async def handle_chat_message(chat: ChatMessageModel, db: Client = Depends(get_s
         "context": merged_context
     }
     
-    logger.info(f"Forwarding chatbot message to n8n copilot webhook: {n8n_url}")
+    import json
+    logger.info(f"Forwarding chatbot message to n8n copilot webhook: {n8n_url} with payload: {json.dumps(payload, default=str)}")
     
     try:
         async with httpx.AsyncClient() as client:

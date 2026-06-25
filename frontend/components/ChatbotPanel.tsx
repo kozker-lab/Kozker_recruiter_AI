@@ -50,8 +50,10 @@ export default function ChatbotPanel({ isOpen, onClose, onOpen, currentPage }: C
 
   useEffect(() => {
     // Clear context on page navigation so we don't send stale data
-    setPageContext(null);
-  }, [currentPage]);
+    if (pageContext && pageContext.page && pageContext.page !== currentPage) {
+      setPageContext(null);
+    }
+  }, [currentPage, pageContext]);
 
   const handleSend = async (text: string) => {
     if (!text.trim() || loading) return;

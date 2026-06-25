@@ -103,7 +103,9 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
   // Publish current candidate evaluation workspace context to AI Copilot
   React.useEffect(() => {
     if (typeof window !== "undefined" && app) {
+      const pageName = window.location.pathname.substring(1) || "dashboard";
       const context = {
+        page: pageName,
         evaluation_workspace: {
           application_id: app.id,
           candidate_name: app.candidate_name,

@@ -292,6 +292,7 @@ export default function ClientsView() {
         : [];
 
       const context = {
+        page: "clients",
         selected_client: activeClient ? {
           id: activeClient.id,
           name: activeClient.name,

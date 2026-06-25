@@ -88,6 +88,7 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
         : null;
 
       const context = {
+        page: "dashboard",
         stats: {
           active_jobs_count: jobs.filter(j => j.status === "published").length,
           total_candidates_count: candidates.length,

@@ -651,6 +651,7 @@ export default function PoolView() {
         : null;
       
       const context = {
+        page: "pool",
         total_candidates_listed: filteredCandidates.length,
         search_query: searchQuery,
         filters: {

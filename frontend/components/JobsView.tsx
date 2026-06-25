@@ -488,6 +488,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const context = {
+        page: "jobs",
         selected_job: activeJob ? {
           id: activeJob.id,
           title: activeJob.title,
