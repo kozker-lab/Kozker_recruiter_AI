@@ -274,6 +274,50 @@ export default function RoundsPage() {
     return clientsMap;
   }, [filteredApps]);
 
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && !selectedAppId) {
+      const context = {
+        page: "stages",
+        selected_application: null,
+        applications: applications.map((app: any) => ({
+          application_id: app.id,
+          candidate_id: app.candidate_id,
+          candidate_name: app.candidate_name || app.candidates?.full_name,
+          job_opening_id: app.job_opening_id,
+          job_title: app.job_title || app.job_openings?.title,
+          fuzzy_score: app.fuzzy_score || app.match_score,
+          screening_status: app.screening_status,
+          stage: app.stage,
+          stage_status: app.stage_status || "pending"
+        })),
+        filters: {
+          client: selectedClient,
+          requirement: selectedRequirement,
+          job_opening: selectedJob,
+          stage: selectedRound,
+          candidate: searchQuery
+        },
+        // Global format
+        selected_entity: null,
+        visible_rows: filteredApps.slice(0, 15).map((app: any) => ({
+          id: app.id,
+          candidate_name: app.candidate_name || app.candidates?.full_name,
+          stage: app.stage
+        })),
+        visible_data: {
+          total_applications: applications.length,
+          filtered_applications_count: filteredApps.length,
+          view_mode: viewMode
+        },
+        entities: {
+          application_ids: applications.map((app: any) => app.id)
+        }
+      };
+
+      window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));
+    }
+  }, [selectedAppId, applications, filteredApps, selectedClient, selectedRequirement, selectedJob, selectedRound, searchQuery, viewMode]);
+
   if (selectedAppId) {
     return (
       <ReviewWorkspace 

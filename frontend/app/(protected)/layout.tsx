@@ -1043,6 +1043,14 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         onClose={() => setIsChatOpen(false)}
         onOpen={() => setIsChatOpen(true)}
         currentPage={pathname.substring(1) || "dashboard"}
+        profile={profile}
+        showToast={(title, message, type = "info") => {
+          const toastId = `toast-${Date.now()}-${Math.random()}`;
+          setToasts(prev => [...prev, { id: toastId, title, message, type }]);
+          setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== toastId));
+          }, 5000);
+        }}
       />
 
       {/* Onboarding Tour Tooltips */}

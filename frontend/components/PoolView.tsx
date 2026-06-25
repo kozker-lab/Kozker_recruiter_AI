@@ -649,43 +649,67 @@ export default function PoolView() {
       const activeCandidate = expandedCandidateId 
         ? candidates.find(c => c.id === expandedCandidateId)
         : null;
-      
+
+      const skillsQuery = skillsFilter
+        ? skillsFilter.split(",").map(s => s.trim()).filter(Boolean)
+        : [];
+
+      const expMin = Array.isArray(experienceRange) ? experienceRange[0] : 0;
+      const expMax = Array.isArray(experienceRange) ? experienceRange[1] : 20;
+
+      const mappedSelectedCandidate = activeCandidate ? {
+        candidate_id: activeCandidate.id,
+        full_name: activeCandidate.full_name,
+        email: activeCandidate.email,
+        phone: activeCandidate.phone || "",
+        skills: activeCandidate.skills || [],
+        experience_years: activeCandidate.experience_years || 0,
+        resume_url: activeCandidate.resume_url || "",
+        parsed_resume_json: activeCandidate.parsed_resume_json || {},
+        source: activeCandidate.source || "manual"
+      } : null;
+
       const context = {
         page: "pool",
-        total_candidates_listed: filteredCandidates.length,
-        search_query: searchQuery,
-        filters: {
-          education: selectedEducation,
-          working_status: selectedWorkingStatus,
-          experience_range: experienceRange,
-          skills_filter: skillsFilter,
-          email_filter: emailFilter
-        },
-        candidates_on_screen: filteredCandidates.slice(0, 15).map(c => ({
-          id: c.id,
-          name: c.full_name,
+        candidates: filteredCandidates.slice(0, 15).map(c => ({
+          candidate_id: c.id,
+          full_name: c.full_name,
           email: c.email,
           skills: c.skills,
-          experience_years: c.experience_years,
-          education: c.education,
-          working_status: c.working_or_not !== false ? "Employed" : "Open to Work",
-          active_linked_jobs: c.linked_jobs?.map(lj => lj.job_title) || []
+          experience_years: c.experience_years
         })),
-        active_candidate_details: activeCandidate ? {
+        selected_candidate: mappedSelectedCandidate,
+        filters: {
+          search: searchQuery,
+          skills: skillsQuery,
+          experience_min: expMin,
+          experience_max: expMax
+        },
+        skills_query: skillsQuery,
+        candidate_count: filteredCandidates.length,
+        visible_candidates: filteredCandidates.slice(0, 15).map(c => ({
+          candidate_id: c.id,
+          full_name: c.full_name,
+          skills: c.skills
+        })),
+        // Global format
+        selected_entity: activeCandidate ? {
+          type: "candidate",
           id: activeCandidate.id,
-          name: activeCandidate.full_name,
-          email: activeCandidate.email,
-          phone: activeCandidate.phone,
-          skills: activeCandidate.skills,
-          experience_years: activeCandidate.experience_years,
-          education: activeCandidate.education,
-          academic_details: activeCandidate.academic_details,
-          achievements: activeCandidate.achievements,
-          summary: activeCandidate.parsed_resume_json?.summary,
-          resume_url: activeCandidate.resume_url,
-          working_status: activeCandidate.working_or_not !== false ? "Employed" : "Open to Work",
-          linked_jobs: activeCandidate.linked_jobs
-        } : null
+          name: activeCandidate.full_name
+        } : null,
+        visible_rows: filteredCandidates.slice(0, 15).map(c => ({
+          id: c.id,
+          full_name: c.full_name,
+          email: c.email
+        })),
+        visible_data: {
+          total_candidates: candidates.length,
+          filtered_candidates_count: filteredCandidates.length
+        },
+        entities: {
+          candidate_ids: candidates.map(c => c.id)
+        }
       };
 
       window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));

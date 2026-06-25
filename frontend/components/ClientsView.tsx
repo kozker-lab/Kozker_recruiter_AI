@@ -294,36 +294,66 @@ export default function ClientsView() {
       const context = {
         page: "clients",
         selected_client: activeClient ? {
-          id: activeClient.id,
-          name: activeClient.name,
-          created_at: activeClient.created_at
+          client_id: activeClient.id,
+          client_name: activeClient.name
         } : null,
-        expanded_requirement: activeRequirement ? {
-          id: activeRequirement.id,
+        clients: clients.map(c => ({
+          client_id: c.id,
+          client_name: c.name
+        })),
+        requirements: requirements.map(r => ({
+          requirement_id: r.id,
+          client_id: r.client_id,
+          title: r.title,
+          status: r.status
+        })),
+        selected_requirement: activeRequirement ? {
+          requirement_id: activeRequirement.id,
+          client_id: activeRequirement.client_id,
           title: activeRequirement.title,
-          skills: activeRequirement.skills,
-          experience_range: `${activeRequirement.experience_min}-${activeRequirement.experience_max} years`,
-          budget_range: `$${activeRequirement.budget_min}k - $${activeRequirement.budget_max}k`,
-          seniority: activeRequirement.seniority,
-          status: activeRequirement.status,
-          notes: activeRequirement.notes,
-          job_openings_generated: activeRequirementJobs.map(j => ({
-            id: j.id,
-            title: j.title,
-            status: j.status
-          }))
+          description: activeRequirement.description || "",
+          skills: activeRequirement.skills || [],
+          experience_min: activeRequirement.experience_min || 0,
+          experience_max: activeRequirement.experience_max || 0,
+          budget_min: activeRequirement.budget_min || 0,
+          budget_max: activeRequirement.budget_max || 0,
+          currency: "USD",
+          seniority: activeRequirement.seniority || "any",
+          location: "Remote",
+          employment_type: "Full-time",
+          num_posts_requested: activeRequirement.num_posts_requested || 1,
+          status: activeRequirement.status
         } : null,
-        active_linkedin_sharing_job: activeLinkedInJob ? {
-          id: activeLinkedInJob.id,
-          title: activeLinkedInJob.title,
-          client: activeLinkedInJob.clientName,
-          draft_post_content: customPostContent
-        } : null
+        // Global format
+        selected_entity: activeRequirement ? {
+          type: "requirement",
+          id: activeRequirement.id,
+          title: activeRequirement.title
+        } : activeClient ? {
+          type: "client",
+          id: activeClient.id,
+          name: activeClient.name
+        } : null,
+        visible_rows: requirements.filter(r => !selectedClientId || r.client_id === selectedClientId).map(r => ({
+          id: r.id,
+          title: r.title,
+          status: r.status
+        })),
+        visible_data: {
+          total_clients: clients.length,
+          total_requirements: requirements.length,
+          selected_client_name: activeClient?.name || null
+        },
+        entities: {
+          client_ids: clients.map(c => c.id),
+          requirement_ids: requirements.map(r => r.id),
+          job_ids: jobs.map(j => j.id)
+        }
       };
 
       window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));
     }
-  }, [selectedClientId, expandedReqId, activeLinkedInJob, customPostContent, clients, requirements, jobs]);
+  }, [selectedClientId, expandedReqId, clients, requirements, jobs]);
 
   const handleExportExcel = (jobId: string, jobTitle: string) => {
     const jobApps = applications.filter(app => app.job_opening_id === jobId);

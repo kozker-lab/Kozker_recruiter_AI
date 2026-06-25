@@ -384,6 +384,56 @@ export default function ProfilePage() {
     }
   };
 
+  // Publish profile settings context to AI Copilot
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const context = {
+        page: "settings",
+        profile: profile ? {
+          recruiter_id: profile.id,
+          name: profile.full_name || fullName,
+          email: profile.email || "",
+          role: profile.role || "recruiter"
+        } : {
+          recruiter_id: user?.id || "usr-1",
+          name: fullName,
+          email: "",
+          role: "recruiter"
+        },
+        preferences: {
+          email_alerts: emailNotifs,
+          slack_sync: slackNotifs,
+          sound_effects: soundAlerts,
+          theme: selectedTheme
+        },
+        workspace: {
+          subdomain: "default",
+          title: "Enterprise Recruiter Workspace"
+        },
+        // Global format
+        selected_entity: null,
+        visible_rows: [
+          { name: "Full Name", value: fullName },
+          { name: "Email Notifications", value: emailNotifs ? "Enabled" : "Disabled" },
+          { name: "Slack Sync", value: slackNotifs ? "Enabled" : "Disabled" },
+          { name: "Sound Effects", value: soundAlerts ? "Enabled" : "Disabled" },
+          { name: "Active Theme", value: selectedTheme }
+        ],
+        visible_data: {
+          active_tab: activeTab,
+          linkedin_connected: linkedinConnected,
+          linkedin_member_id: linkedinMemberId,
+          linkedin_company_page_id: linkedinCompanyPageId
+        },
+        entities: {
+          recruiter_id: profile?.id || user?.id
+        }
+      };
+
+      window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));
+    }
+  }, [profile, user, fullName, emailNotifs, slackNotifs, soundAlerts, selectedTheme, activeTab, linkedinConnected, linkedinMemberId, linkedinCompanyPageId]);
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-12">
       {/* Title Header */}

@@ -103,9 +103,26 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
   // Publish current candidate evaluation workspace context to AI Copilot
   React.useEffect(() => {
     if (typeof window !== "undefined" && app) {
-      const pageName = window.location.pathname.substring(1) || "dashboard";
+      const pageName = window.location.pathname.includes("jobs") ? "job_catalog" : "stages";
+      
+      const selectedApp = {
+        application_id: app.id,
+        candidate_id: app.candidate_id,
+        candidate_name: app.candidate_name || "",
+        job_opening_id: app.job_opening_id || "",
+        job_title: job?.title || "",
+        fuzzy_score: app.fuzzy_score || 0,
+        match_reason: app.match_reason || "",
+        strengths: app.candidate_skills || [],
+        skill_gaps: app.skill_gaps || [],
+        screening_status: app.screening_status,
+        stage: app.stage,
+        stage_status: app.stage_status || "pending"
+      };
+
       const context = {
         page: pageName,
+        selected_application: selectedApp,
         evaluation_workspace: {
           application_id: app.id,
           candidate_name: app.candidate_name,
@@ -137,7 +154,30 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
           status: oh.status,
           stage: oh.stage,
           fit_score: oh.fit_score
-        }))
+        })),
+        // Global format
+        selected_entity: {
+          type: "application",
+          id: app.id,
+          name: app.candidate_name
+        },
+        visible_rows: [
+          {
+            id: app.id,
+            candidate_name: app.candidate_name,
+            stage: app.stage
+          }
+        ],
+        visible_data: {
+          candidate_name: app.candidate_name,
+          stage: app.stage,
+          score: app.fuzzy_score
+        },
+        entities: {
+          application_ids: [app.id],
+          candidate_ids: [app.candidate_id],
+          job_ids: app.job_opening_id ? [app.job_opening_id] : []
+        }
       };
 
       window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));

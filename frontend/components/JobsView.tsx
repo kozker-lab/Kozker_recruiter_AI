@@ -487,37 +487,79 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   // Publish current job opening context to AI Copilot
   React.useEffect(() => {
     if (typeof window !== "undefined") {
+      const activeJobContext = activeJob ? {
+        id: activeJob.id,
+        job_opening_uuid: activeJob.id,
+        job_opening_id: activeJob.id,
+        requirement_id: activeJob.requirement_id,
+        client_id: activeJob.client_id,
+        client_name: activeJob.client_name || "",
+        title: activeJob.title || "",
+        department: "Engineering",
+        description: activeJob.description || "",
+        responsibilities: activeJob.responsibilities || [],
+        qualifications: activeJob.qualifications || [],
+        keywords: activeJob.keywords || [],
+        salary_range: activeJob.salary_range || "",
+        status: activeJob.status,
+        processing_status: activeJob.processing_status === "questions_ready" ? "ready" : activeJob.processing_status,
+        created_at: activeJob.created_at,
+        updated_at: activeJob.created_at
+      } : null;
+
       const context = {
         page: "jobs",
-        selected_job: activeJob ? {
+        selected_job_opening: activeJobContext,
+        // Duplicate fields directly under page_context for the n8n webhook
+        job_opening_uuid: activeJob ? activeJob.id : null,
+        job_opening_id: activeJob ? activeJob.id : null,
+        title: activeJob ? activeJob.title : null,
+        description: activeJob ? activeJob.description : null,
+        responsibilities: activeJob ? activeJob.responsibilities : null,
+        qualifications: activeJob ? activeJob.qualifications : null,
+        keywords: activeJob ? activeJob.keywords : null,
+        salary_range: activeJob ? activeJob.salary_range : null,
+        jobs: jobs.map(j => ({
+          id: j.id,
+          job_opening_uuid: j.id,
+          title: j.title,
+          status: j.status,
+          processing_status: j.processing_status
+        })),
+        filters: {
+          client: clientFilter,
+          status: statusFilter,
+          search: searchQuery
+        },
+        // Global format
+        selected_entity: activeJob ? {
+          type: "job_opening",
           id: activeJob.id,
-          title: activeJob.title,
-          client: activeJob.client_name,
-          status: activeJob.status,
-          processing_status: activeJob.processing_status,
-          description: activeJob.description,
-          salary_range: activeJob.salary_range,
-          responsibilities: activeJob.responsibilities,
-          qualifications: activeJob.qualifications,
-          keywords: activeJob.keywords
+          title: activeJob.title
         } : null,
-        active_tab: activeTab,
-        job_skills: activeJob && skills ? skills.map(s => ({
-          name: s.skill_name,
-          weight: s.weight
-        })) : [],
-        matched_candidates: activeJob && matchedCandidates ? matchedCandidates.slice(0, 15).map(mc => ({
-          name: mc.candidate_name,
-          score: mc.fuzzy_score,
-          stage: mc.stage,
-          missing_skills: mc.skill_gaps,
-          matching_skills: mc.skills
-        })) : []
+        visible_rows: jobs.filter(j => {
+          const matchesSearch = !searchQuery || (j.title || "").toLowerCase().includes(searchQuery.toLowerCase());
+          const matchesStatus = statusFilter === "all" || j.status === statusFilter;
+          const matchesClient = clientFilter === "all" || j.client_id === clientFilter;
+          return matchesSearch && matchesStatus && matchesClient;
+        }).map(j => ({
+          id: j.id,
+          title: j.title,
+          status: j.status
+        })),
+        visible_data: {
+          total_jobs: jobs.length,
+          active_tab: activeTab,
+          local_skills_count: localSkills.length
+        },
+        entities: {
+          job_ids: jobs.map(j => j.id)
+        }
       };
 
       window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));
     }
-  }, [selectedJobId, activeJob, activeTab, skills, matchedCandidates]);
+  }, [selectedJobId, activeJob, activeTab, clientFilter, statusFilter, searchQuery, jobs, localSkills]);
 
   useEffect(() => {
     setSelectedCandidatesForCompare([]);

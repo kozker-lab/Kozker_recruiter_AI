@@ -360,6 +360,56 @@ export default function NotificationsTimelinePage() {
     };
   }, [notifications, activityLogs]);
 
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const context = {
+        page: "notifications",
+        alerts: notifications.map(n => ({
+          id: n.id,
+          title: n.title,
+          message: n.message,
+          type: n.type,
+          is_read: n.is_read,
+          created_at: n.created_at
+        })),
+        audit_logs: activityLogs.map(a => ({
+          id: a.id,
+          action: a.action,
+          actor_name: a.actor_name,
+          created_at: a.created_at,
+          metadata: a.metadata
+        })),
+        system_errors: notifications.filter(n => n.type === "error").map(n => ({
+          id: n.id,
+          title: n.title,
+          message: n.message,
+          created_at: n.created_at
+        })),
+        unread_alerts: stats.unreadAlerts,
+        system_error_count: stats.systemErrors,
+        audit_log_count: stats.recruiterActions,
+        // Global format
+        selected_entity: null,
+        visible_rows: formattedItems.slice(0, 15).map(item => ({
+          id: item.id,
+          title: item.title,
+          message: item.message,
+          type: item.type
+        })),
+        visible_data: {
+          unread_count: stats.unreadAlerts,
+          total_items: formattedItems.length
+        },
+        entities: {
+          notification_ids: notifications.map(n => n.id),
+          activity_log_ids: activityLogs.map(a => a.id)
+        }
+      };
+
+      window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));
+    }
+  }, [notifications, activityLogs, stats, formattedItems]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-neutral-50">
       {/* Title Header */}

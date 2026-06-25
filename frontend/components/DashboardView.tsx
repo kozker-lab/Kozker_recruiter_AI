@@ -87,31 +87,76 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
         ? applications.find(a => a.id === expandedAppId)
         : null;
 
+      const activeJobsCount = jobs.filter(j => j.status === "published" || j.status === "confirmed").length;
+      const totalCandidates = candidates.length;
+      const pendingReviewsCount = applications.filter(a => a.screening_status === "pending").length;
+      const activePipelinesCount = applications.filter(
+        app => app.screening_status === "accepted" && app.stage !== "rejected" && app.stage !== "hired"
+      ).length;
+
+      const stageCounts: Record<string, number> = {};
+      applications.forEach(app => {
+        if (app.stage) {
+          stageCounts[app.stage] = (stageCounts[app.stage] || 0) + 1;
+        }
+      });
+      const pipelineStatus = Object.entries(stageCounts).map(([stage, count]) => ({ stage, count }));
+
+      const alerts: any[] = [];
+      const jobsNeedingApproval = jobs.filter(j => j.processing_status === "skill_approval");
+      if (jobsNeedingApproval.length > 0) {
+        alerts.push({
+          type: "warning",
+          message: `${jobsNeedingApproval.length} job(s) require skill weight approval.`
+        });
+      }
+
       const context = {
         page: "dashboard",
-        stats: {
-          active_jobs_count: jobs.filter(j => j.status === "published").length,
-          total_candidates_count: candidates.length,
-          total_applications_count: applications.length,
-          pending_reviews_count: applications.filter(a => a.screening_status === "pending").length
-        },
-        recent_activity_logs: logs.slice(0, 10).map(l => ({
+        active_jobs: activeJobsCount,
+        candidates_sourced: totalCandidates,
+        pending_reviews: pendingReviewsCount,
+        active_pipelines: activePipelinesCount,
+        recent_jobs: jobs.slice(0, 10).map(j => ({
+          id: j.id,
+          title: j.title,
+          status: j.status,
+          client: j.client_name
+        })),
+        recent_audit_logs: logs.slice(0, 10).map(l => ({
           action: l.action,
           actor_name: l.actor_name,
           created_at: l.created_at,
           metadata: l.metadata
         })),
-        expanded_application: activeApp ? {
+        pipeline_status: pipelineStatus,
+        alerts: alerts,
+        selected_entity: activeApp ? {
           id: activeApp.id,
           candidate_name: activeApp.candidates?.full_name,
           candidate_email: activeApp.candidates?.email,
           job_title: activeApp.job_openings?.title,
-          client_name: activeApp.job_openings?.client_name || activeApp.job_openings?.clients?.name,
           status: activeApp.screening_status,
-          fit_score: activeApp.fuzzy_score,
-          fit_analysis: activeApp.match_reason,
-          screening_questions: activeApp.screening_questions
-        } : null
+          fit_score: activeApp.fuzzy_score
+        } : null,
+        visible_rows: applications.slice(0, 15).map(app => ({
+          id: app.id,
+          candidate_name: app.candidates?.full_name,
+          job_title: app.job_openings?.title,
+          status: app.screening_status,
+          score: app.fuzzy_score
+        })),
+        visible_data: {
+          active_jobs: activeJobsCount,
+          candidates_sourced: totalCandidates,
+          pending_reviews: pendingReviewsCount,
+          active_pipelines: activePipelinesCount
+        },
+        entities: {
+          job_ids: jobs.map(j => j.id),
+          candidate_ids: candidates.map(c => c.id),
+          application_ids: applications.map(a => a.id)
+        }
       };
 
       window.dispatchEvent(new CustomEvent("copilot-context-update", { detail: context }));

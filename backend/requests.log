@@ -19480,3 +19480,15 @@
 [GET] /api/v1/requirements | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.5847s
 [GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.5902s
 [GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8887s
+[OPTIONS] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.0006s
+[OPTIONS] /api/v1/requirements | Auth: No | Status: 200 | Time: 0.0009s
+[GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.4229s
+[GET] /api/v1/requirements | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.4232s
+[OPTIONS] /api/v1/notifications | Auth: No | Status: 200 | Time: 0.0025s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2840s
+[OPTIONS] /api/v1/clients | Auth: No | Status: 200 | Time: 0.0070s
+[OPTIONS] /api/v1/applications | Auth: No | Status: 200 | Time: 0.0078s
+[GET] /api/v1/requirements | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.1147s
+[GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.1123s
+[GET] /api/v1/clients | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.0963s
+[GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 2.2051s
