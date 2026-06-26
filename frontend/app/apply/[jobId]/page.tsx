@@ -10,7 +10,7 @@ import {
   MapPin, Loader2, ArrowLeft, Building2, Sparkles, Check,
   Eye, Settings, Plus, Trash2, ArrowUp, ArrowDown, Sparkle,
   Copy, ExternalLink, Moon, Sun, Info, Layout, AlignLeft,
-  ChevronRight, ChevronDown, CheckSquare, List, RefreshCw, Pencil
+  ChevronRight, ChevronDown, CheckSquare, List, RefreshCw, Pencil, MessageSquare
 } from "lucide-react";
 
 interface FormFieldConfig {
@@ -142,9 +142,10 @@ export default function PublicApplyPage() {
   const searchParams = useSearchParams();
   const jobId = params?.jobId as string;
   const recruiterId = searchParams ? searchParams.get("recruiter_id") : null;
+  const isEditMode = searchParams ? searchParams.get("edit") === "true" : false;
 
   // App mode: "design" (Studio Designer) or "preview" (Candidate View)
-  // By default, if accessed with recruiterId or preview is true, load designer. Otherwise load candidate view.
+  // By default, if accessed with edit=true, load designer. Otherwise load candidate view.
   const [mode, setMode] = useState<"design" | "preview">("preview");
 
   // Load configuration from local storage or set defaults
@@ -200,6 +201,87 @@ export default function PublicApplyPage() {
   const [newFieldOptions, setNewFieldOptions] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Support Form & Queries States
+  const [candidateEmail, setCandidateEmail] = useState("");
+  const [chatbotQueryText, setChatbotQueryText] = useState("");
+  const [candidateQueries, setCandidateQueries] = useState<any[]>([]);
+  const [loadingQueries, setLoadingQueries] = useState(false);
+  const [leftPanelTab, setLeftPanelTab] = useState<"description" | "queries">("description");
+  const [isSendingQuery, setIsSendingQuery] = useState(false);
+
+  // Sync candidate email from main form values if filled
+  useEffect(() => {
+    if (fieldValues.email && !candidateEmail) {
+      setCandidateEmail(fieldValues.email);
+    }
+  }, [fieldValues.email, candidateEmail]);
+
+  // Load saved email on startup
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedEmail = localStorage.getItem(`cand_email_query_${jobId}`) || localStorage.getItem("cand_email_general") || "";
+      if (savedEmail) {
+        setCandidateEmail(savedEmail);
+      }
+    }
+  }, [jobId]);
+
+  // Fetch queries for this specific candidate email when Queries tab is active
+  useEffect(() => {
+    if (!candidateEmail || leftPanelTab !== "queries") return;
+    
+    const loadQueries = async () => {
+      setLoadingQueries(true);
+      try {
+        const res = await apiRequest<any[]>("GET", `/jobs/${jobId}/queries?email=${encodeURIComponent(candidateEmail.trim())}`);
+        setCandidateQueries(res);
+      } catch (err) {
+        console.error("Failed to load candidate queries:", err);
+      } finally {
+        setLoadingQueries(false);
+      }
+    };
+    
+    loadQueries();
+  }, [jobId, candidateEmail, leftPanelTab]);
+
+  const handleSendCandidateQuery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!candidateEmail.trim() || !chatbotQueryText.trim() || isSendingQuery) return;
+    
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`cand_email_query_${jobId}`, candidateEmail);
+      localStorage.setItem("cand_email_general", candidateEmail);
+    }
+
+    const userText = chatbotQueryText;
+    setChatbotQueryText("");
+    setIsSendingQuery(true);
+    
+    try {
+      const result = await apiRequest<any>("POST", `/jobs/${jobId}/queries`, {
+        candidate_email: candidateEmail.trim(),
+        query_text: userText
+      });
+      
+      setCandidateQueries(prev => [result, ...prev]);
+    } catch (err: any) {
+      console.error("Failed to submit query:", err);
+      const fallbackQuery = {
+        id: `q-fallback-${Date.now()}`,
+        job_id: jobId,
+        candidate_email: candidateEmail.trim(),
+        query_text: userText,
+        ai_response: "Thanks for your question. We've recorded your query and forwarded it to the hiring team.",
+        is_resolved: false,
+        created_at: new Date().toISOString()
+      };
+      setCandidateQueries(prev => [fallbackQuery, ...prev]);
+    } finally {
+      setIsSendingQuery(false);
+    }
+  };
+
   // Active theme properties
   const theme = themes[selectedTheme];
   const isDarkBg = bgMode === "dark";
@@ -231,8 +313,8 @@ export default function PublicApplyPage() {
         const result = await apiRequest<any>("GET", `/jobs/${jobId}`);
         setJob(result);
         
-        // If recruiter_id exists in URL, set mode to design by default
-        if (recruiterId) {
+        // If edit=true exists in URL, set mode to design by default
+        if (isEditMode) {
           setMode("design");
         }
       } catch (err: any) {
@@ -244,7 +326,7 @@ export default function PublicApplyPage() {
     };
 
     fetchJobDetails();
-  }, [jobId, recruiterId]);
+  }, [jobId, recruiterId, isEditMode]);
 
   // Load/Save Configuration from localStorage
   useEffect(() => {
@@ -676,8 +758,8 @@ export default function PublicApplyPage() {
 
   return (
     <div className={`min-h-screen ${resolvedBgClass} font-sans flex flex-col transition-colors duration-250`}>
-      {/* Studio Header (Only shown when recruiter_id is present to manage form) */}
-      {recruiterId && (
+      {/* Studio Header (Only shown when edit=true is present to manage form) */}
+      {isEditMode && (
         <div className={`px-6 py-3 flex items-center justify-between border-b ${theme.studioHeader} transition-colors duration-250`}>
           <div className="flex items-center gap-2.5">
             <div className="bg-emerald-600 text-white w-6 h-6 rounded-xs flex items-center justify-center text-xs font-black">
@@ -746,7 +828,7 @@ export default function PublicApplyPage() {
       <div className="flex-1 flex flex-col lg:flex-row">
         
         {/* DESIGNER PANEL VIEW: 3-column view */}
-        {mode === "design" && recruiterId ? (
+        {mode === "design" && isEditMode ? (
           <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0">
             
             {/* COLUMN 1: Job Details & AI Insights (Col span: 4) */}
@@ -1346,6 +1428,89 @@ export default function PublicApplyPage() {
                     </ul>
                   </div>
                 )}
+              </div>
+
+              {/* Support Chatbot Widget */}
+              <div className={`border rounded-sm p-5 space-y-4 shadow-sm transition-colors duration-250 ${resolvedCardClass} mt-4`}>
+                <div className="flex items-center justify-between border-b pb-3 border-neutral-200/50">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-emerald-600 animate-pulse" />
+                    <h3 className="font-tight font-black text-xs uppercase tracking-wider text-neutral-800 dark:text-slate-200">
+                      Candidate Support Chatbot
+                    </h3>
+                  </div>
+                  <span className="px-1.5 py-0.5 text-[8px] font-mono font-bold uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 rounded-sm">
+                    AI Active
+                  </span>
+                </div>
+
+                {/* Chat Log Window */}
+                <div className={`p-3 rounded-sm h-[200px] overflow-y-auto space-y-3 border text-xs leading-relaxed ${isDarkBg ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-neutral-50/50 border-neutral-200 text-neutral-600'}`}>
+                  {chatbotHistory.map((msg, index) => (
+                    <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] rounded-md p-2.5 shadow-2xs ${
+                        msg.role === 'user'
+                          ? 'bg-emerald-600 text-white rounded-br-none'
+                          : `${isDarkBg ? 'bg-slate-850 border border-slate-700' : 'bg-white border border-neutral-200'} rounded-bl-none text-neutral-800 dark:text-slate-200`
+                      }`}>
+                        <p className="whitespace-pre-line">{msg.content}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {isSendingQuery && (
+                    <div className="flex justify-start">
+                      <div className={`max-w-[85%] rounded-md p-2.5 rounded-bl-none ${isDarkBg ? 'bg-slate-850 border border-slate-700' : 'bg-white border border-neutral-200'} text-neutral-400 flex items-center gap-1.5`}>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                        <span>AI is typing...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Chat Controls Form */}
+                <form onSubmit={handleSendCandidateQuery} className="space-y-2">
+                  <div className="grid grid-cols-1 gap-2">
+                    <div>
+                      <label className="block text-[9.5px] font-mono uppercase font-bold text-neutral-400 mb-1">
+                        Your Email (for recruiter response)
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="candidate@example.com"
+                        value={candidateEmail}
+                        onChange={(e) => setCandidateEmail(e.target.value)}
+                        className={`w-full p-2 text-xs border rounded-sm outline-none transition-all ${
+                          isDarkBg 
+                            ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-emerald-600' 
+                            : 'bg-white border-neutral-350 text-neutral-800 focus:border-emerald-600'
+                        }`}
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ask about salary, qualifications, remote..."
+                        value={chatbotQueryText}
+                        onChange={(e) => setChatbotQueryText(e.target.value)}
+                        className={`flex-1 p-2 text-xs border rounded-sm outline-none transition-all ${
+                          isDarkBg 
+                            ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-emerald-600' 
+                            : 'bg-white border-neutral-350 text-neutral-800 focus:border-emerald-600'
+                        }`}
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSendingQuery || !candidateEmail.trim() || !chatbotQueryText.trim()}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold uppercase tracking-wider rounded-sm transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        Ask
+                      </button>
+                    </div>
+                  </div>
+                </form>
               </div>
             </section>
 

@@ -284,6 +284,37 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     return combined;
   }, [notifications, activityLogs, notifTab]);
 
+  const alertsToShow = React.useMemo(() => {
+    const formattedNotifs = notifications.map(n => ({
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      created_at: n.created_at,
+      type: n.type,
+      is_read: n.is_read,
+      isActivity: false,
+      metadata: n.metadata
+    }));
+
+    const errorActivities = activityLogs
+      .map(formatActivityLog)
+      .filter(act => act.type === "error")
+      .map(act => ({
+        id: act.id,
+        title: act.title,
+        message: act.message,
+        created_at: act.created_at,
+        type: "error",
+        is_read: true,
+        isActivity: true,
+        metadata: act.metadata
+      }));
+
+    return [...formattedNotifs, ...errorActivities].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [notifications, activityLogs]);
+
   const markReadMutation = useMutation({
     mutationFn: (id: string) => apiRequest("POST", `/notifications/${id}/read`),
     onSuccess: () => {
@@ -929,63 +960,62 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                     </div>
 
                     <div className="overflow-y-auto divide-y divide-neutral-150 scrollbar-thin flex-1 max-h-80">
-                      {notifications.length === 0 ? (
+                      {alertsToShow.length === 0 ? (
                         <div className="p-8 text-center text-xs text-neutral-400">No alerts or notifications.</div>
                       ) : (
-                        [...notifications]
-                          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                          .map((notif) => {
-                            let Icon = Bell;
-                            let iconColor = "text-neutral-400 bg-neutral-50 border-neutral-250";
-                            if (notif.type === "job_generation") {
-                              Icon = Briefcase;
-                              iconColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
-                            } else if (notif.type === "candidate_matching") {
-                              Icon = Sparkles;
-                              iconColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
-                            } else if (notif.type === "upload") {
-                              Icon = Upload;
-                              iconColor = "text-blue-600 bg-blue-50 border-blue-100";
-                            } else if (notif.type === "error") {
-                              Icon = AlertCircle;
-                              iconColor = "text-rose-600 bg-rose-50 border-rose-100";
-                            } else if (notif.type === "screening_questions") {
-                              Icon = Layers;
-                              iconColor = "text-amber-600 bg-amber-50 border-amber-100";
-                            }
+                        alertsToShow.map((notif) => {
+                          let Icon = Bell;
+                          let iconColor = "text-neutral-400 bg-neutral-50 border-neutral-250";
+                          if (notif.type === "job_generation") {
+                            Icon = Briefcase;
+                            iconColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
+                          } else if (notif.type === "candidate_matching") {
+                            Icon = Sparkles;
+                            iconColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
+                          } else if (notif.type === "upload") {
+                            Icon = Upload;
+                            iconColor = "text-blue-600 bg-blue-50 border-blue-100";
+                          } else if (notif.type === "error") {
+                            Icon = AlertCircle;
+                            iconColor = "text-rose-600 bg-rose-50 border-rose-100";
+                          } else if (notif.type === "screening_questions") {
+                            Icon = Layers;
+                            iconColor = "text-amber-600 bg-amber-50 border-amber-100";
+                          }
 
-                            return (
-                              <div 
-                                key={notif.id} 
-                                onClick={() => handleNotificationClick(notif)}
-                                className={`p-3 text-xs flex gap-3 transition-colors hover:bg-neutral-50 relative cursor-pointer ${notif.is_read ? '' : 'bg-primary/[0.02]'}`}
-                              >
-                                <div className={`w-7 h-7 rounded-sm border flex items-center justify-center shrink-0 ${iconColor}`}>
-                                  <Icon className="w-3.5 h-3.5" />
+                          return (
+                            <div 
+                              key={notif.id} 
+                              onClick={() => handleNotificationClick(notif)}
+                              className={`p-3 text-xs flex gap-3 transition-colors hover:bg-neutral-50 relative cursor-pointer ${notif.is_read ? '' : 'bg-primary/[0.02]'}`}
+                            >
+                              <div className={`w-7 h-7 rounded-sm border flex items-center justify-center shrink-0 ${iconColor}`}>
+                                <Icon className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="space-y-0.5 flex-1 pr-8">
+                                <div className="flex justify-between items-baseline gap-1.5">
+                                  <span className={`font-bold text-[11px] leading-tight ${!notif.is_read ? 'text-neutral-900' : 'text-neutral-600'}`}>{notif.title}</span>
+                                  <span className="text-[8px] text-neutral-400 font-mono shrink-0">
+                                    {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
                                 </div>
-                                <div className="space-y-0.5 flex-1 pr-8">
-                                  <div className="flex justify-between items-baseline gap-1.5">
-                                    <span className={`font-bold text-[11px] leading-tight ${!notif.is_read ? 'text-neutral-900' : 'text-neutral-600'}`}>{notif.title}</span>
-                                    <span className="text-[8px] text-neutral-400 font-mono shrink-0">
-                                      {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                  </div>
-                                  <p className="text-neutral-500 text-[10px] leading-snug">{notif.message}</p>
-                                </div>
-                                <div className="absolute right-2 top-2 flex items-center gap-1">
-                                  {!notif.is_read && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        markReadMutation.mutate(notif.id);
-                                      }}
-                                      className="p-0.5 text-neutral-450 hover:text-success cursor-pointer transition-colors"
-                                      title="Mark as read"
-                                      aria-label="Mark notification as read"
-                                    >
-                                      <Check className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
+                                <p className="text-neutral-500 text-[10px] leading-snug">{notif.message}</p>
+                              </div>
+                              <div className="absolute right-2 top-2 flex items-center gap-1">
+                                {!notif.is_read && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      markReadMutation.mutate(notif.id);
+                                    }}
+                                    className="p-0.5 text-neutral-450 hover:text-success cursor-pointer transition-colors"
+                                    title="Mark as read"
+                                    aria-label="Mark notification as read"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {!notif.isActivity && (
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -997,10 +1027,11 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
-                                </div>
+                                )}
                               </div>
-                            );
-                          })
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </div>

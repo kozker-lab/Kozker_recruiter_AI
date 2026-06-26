@@ -159,7 +159,7 @@ export default function NotificationsTimelinePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   
-  const [filterTab, setFilterTab] = useState<"all" | "alerts" | "activities">("all");
+  const [filterTab, setFilterTab] = useState<"all" | "alerts" | "activities" | "errors">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState("");
@@ -273,6 +273,8 @@ export default function NotificationsTimelinePage() {
       combined = combined.filter(item => !item.isActivity);
     } else if (filterTab === "activities") {
       combined = combined.filter(item => item.isActivity);
+    } else if (filterTab === "errors") {
+      combined = combined.filter(item => item.type === "error");
     }
 
     if (searchQuery.trim() !== "") {
@@ -439,7 +441,12 @@ export default function NotificationsTimelinePage() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-          <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs flex items-center gap-3">
+          <button
+            onClick={() => setFilterTab("alerts")}
+            className={`bg-white border p-4 rounded-sm shadow-xs flex items-center gap-3 text-left transition-all cursor-pointer ${
+              filterTab === "alerts" ? "border-primary ring-1 ring-primary/25" : "border-neutral-200 hover:border-neutral-350 hover:bg-neutral-50/30"
+            }`}
+          >
             <div className="w-10 h-10 rounded-sm bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
               <Bell className="w-5 h-5 animate-pulse" />
             </div>
@@ -447,9 +454,14 @@ export default function NotificationsTimelinePage() {
               <p className="text-[10px] font-bold font-mono text-neutral-450 uppercase tracking-wider">Unread Alerts</p>
               <h3 className="text-xl font-extrabold text-neutral-850 mt-0.5">{stats.unreadAlerts}</h3>
             </div>
-          </div>
+          </button>
           
-          <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs flex items-center gap-3">
+          <button
+            onClick={() => setFilterTab("errors")}
+            className={`bg-white border p-4 rounded-sm shadow-xs flex items-center gap-3 text-left transition-all cursor-pointer ${
+              filterTab === "errors" ? "border-rose-500 ring-1 ring-rose-500/25" : "border-neutral-200 hover:border-neutral-350 hover:bg-neutral-50/30"
+            }`}
+          >
             <div className="w-10 h-10 rounded-sm bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shrink-0">
               <AlertCircle className="w-5 h-5" />
             </div>
@@ -457,9 +469,14 @@ export default function NotificationsTimelinePage() {
               <p className="text-[10px] font-bold font-mono text-rose-555 uppercase tracking-wider">System Errors</p>
               <h3 className="text-xl font-extrabold text-neutral-850 mt-0.5">{stats.systemErrors}</h3>
             </div>
-          </div>
+          </button>
 
-          <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs flex items-center gap-3">
+          <button
+            onClick={() => setFilterTab("activities")}
+            className={`bg-white border p-4 rounded-sm shadow-xs flex items-center gap-3 text-left transition-all cursor-pointer ${
+              filterTab === "activities" ? "border-purple-500 ring-1 ring-purple-500/25" : "border-neutral-200 hover:border-neutral-350 hover:bg-neutral-50/30"
+            }`}
+          >
             <div className="w-10 h-10 rounded-sm bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shrink-0">
               <Clock className="w-5 h-5" />
             </div>
@@ -467,7 +484,7 @@ export default function NotificationsTimelinePage() {
               <p className="text-[10px] font-bold font-mono text-purple-600 uppercase tracking-wider">Audited Logs</p>
               <h3 className="text-xl font-extrabold text-neutral-850 mt-0.5">{stats.recruiterActions}</h3>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Filters and Search Bar */}
@@ -485,7 +502,7 @@ export default function NotificationsTimelinePage() {
             <button
               onClick={() => setFilterTab("alerts")}
               className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-wider font-bold cursor-pointer transition-colors ${
-                filterTab === "alerts" ? "bg-white text-primary border-r border-l border-neutral-200 shadow-sm" : "text-neutral-500 hover:text-neutral-800"
+                filterTab === "alerts" ? "bg-white text-primary border-r border-neutral-200 shadow-sm" : "text-neutral-500 hover:text-neutral-800"
               }`}
             >
               Alerts ({notifications.length})
@@ -493,10 +510,18 @@ export default function NotificationsTimelinePage() {
             <button
               onClick={() => setFilterTab("activities")}
               className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-wider font-bold cursor-pointer transition-colors ${
-                filterTab === "activities" ? "bg-white text-primary border-l border-neutral-200 shadow-sm" : "text-neutral-500 hover:text-neutral-800"
+                filterTab === "activities" ? "bg-white text-primary border-r border-neutral-200 shadow-sm" : "text-neutral-500 hover:text-neutral-800"
               }`}
             >
               Activities ({activityLogs.length})
+            </button>
+            <button
+              onClick={() => setFilterTab("errors")}
+              className={`px-4 py-1.5 text-[10px] font-mono uppercase tracking-wider font-bold cursor-pointer transition-colors ${
+                filterTab === "errors" ? "bg-white text-primary shadow-sm" : "text-neutral-500 hover:text-neutral-800"
+              }`}
+            >
+              Errors ({stats.systemErrors})
             </button>
           </div>
 

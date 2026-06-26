@@ -1175,7 +1175,7 @@ export default function ClientsView() {
                                     <span>Create Post</span>
                                   </button>
                                   <a
-                                    href={`/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}`}
+                                    href={`/apply/${job.id}?edit=true${r.created_by ? `&recruiter_id=${r.created_by}` : ""}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium text-neutral-white bg-primary hover:bg-primary/95 rounded-sm shadow-xs transition-colors cursor-pointer"

@@ -236,3 +236,13 @@ export interface Notification {
   metadata: Record<string, any>;
   created_at: string;
 }
+
+export interface CandidateQuery {
+  id: string;
+  job_id: string;
+  candidate_email: string;
+  query_text: string;
+  ai_response: string | null;
+  is_resolved: boolean;
+  created_at: string;
+}

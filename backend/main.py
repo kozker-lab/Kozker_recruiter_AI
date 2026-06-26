@@ -43,6 +43,8 @@ LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
 LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
 LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI", f"{BACKEND_BASE_URL}/api/v1/auth/linkedin/callback")
 
+# Global backup in-memory storage for candidate queries fallback
+in_memory_queries: Dict[str, List[Dict[str, Any]]] = {}
 
 # Initialize FastAPI
 app = FastAPI(title="Kozker Recruiter AI Backend", version="1.0.0")
@@ -620,6 +622,15 @@ class CompanyPageModel(BaseModel):
 
 class SharePostModel(BaseModel):
     text: str
+
+
+class CandidateQueryCreateModel(BaseModel):
+    candidate_email: str
+    query_text: str
+
+
+class ResolveQueryModel(BaseModel):
+    is_resolved: bool = True
 
 
 
@@ -1620,6 +1631,190 @@ async def scan_and_publish_job(job_id: str, background_tasks: BackgroundTasks, r
         background_tasks.add_task(run_local_scan_publish, job_id, jwt_token)
         
     return {"status": "skill_approval"}
+
+
+def generate_candidate_query_response(job: dict, query_text: str) -> str:
+    import re
+    query = query_text.lower()
+    title = job.get("title") or "this role"
+    
+    # 1. Salary query
+    if any(k in query for k in ["salary", "pay", "compensation", "package", "lpa", "ctc", "remuneration", "money"]):
+        sal = job.get("salary_range")
+        if sal and sal.strip():
+            return f"The salary range for the {title} position is {sal}."
+        else:
+            return f"The salary range for the {title} position is not explicitly specified. We have forwarded your question to the hiring team."
+            
+    # 2. Experience query
+    if any(k in query for k in ["experience", "years", "yrs", "how long", "mid", "senior", "junior"]):
+        quals = job.get("qualifications") or []
+        exp_mentions = [q for q in quals if "year" in q.lower() or "experience" in q.lower()]
+        if exp_mentions:
+            return f"Regarding experience requirements for {title}: " + " ".join(exp_mentions)
+        return f"Please review the preferred qualifications. Typically, relevant industry experience in similar roles is preferred. We have alerted the recruiter to clarify this for you."
+
+    # 3. Location / Remote query
+    if any(k in query for k in ["location", "remote", "wfh", "office", "hybrid", "city", "where"]):
+        desc = job.get("description", "")
+        loc_match = re.search(r'(remote|hybrid|office|on-site|location)', desc, re.IGNORECASE)
+        if loc_match:
+            return f"Regarding location: The role description mentions '{loc_match.group(0)}'. Please review the full job description details on this page."
+        return f"This role's location / work model (remote/hybrid/on-site) is not explicitly listed. We have forwarded this query to the hiring team."
+
+    # 4. Responsibilities query
+    if any(k in query for k in ["responsibility", "responsibilities", "duties", "duty", "do", "task", "day to day", "role"]):
+        resps = job.get("responsibilities") or []
+        if resps:
+            bullets = "\n".join([f"- {r}" for r in resps[:4]])
+            return f"Key responsibilities for this role include:\n{bullets}"
+        return f"Responsibilities for this role include delivering on the goals outlined in the job description. The recruiter has been notified of your inquiry."
+
+    # 5. Skills / Tech stack query
+    if any(k in query for k in ["skill", "skills", "tech", "technology", "technologies", "language", "framework", "database"]):
+        keywords = job.get("keywords") or []
+        quals = job.get("qualifications") or []
+        skills_mentioned = [q for q in quals if any(kw.lower() in q.lower() for kw in keywords)]
+        
+        tech_list = ", ".join(keywords) if keywords else ""
+        resp = ""
+        if tech_list:
+            resp += f"The key technologies and skills mentioned for this role are: {tech_list}. "
+        if skills_mentioned:
+            resp += f"\nPreferred qualifications: " + " ".join(skills_mentioned[:2])
+        if resp:
+            return resp.strip()
+        return "The required skills are detailed in the job opening description and qualifications. We have forwarded your tech stack query to the team."
+
+    # 6. Qualifications query
+    if any(k in query for k in ["qualification", "qualifications", "require", "requirements", "degree", "education", "background"]):
+        quals = job.get("qualifications") or []
+        if quals:
+            bullets = "\n".join([f"- {q}" for q in quals[:4]])
+            return f"Preferred qualifications for this role:\n{bullets}"
+        return f"The qualifications for this position are listed in the details panel. We have notified the hiring team of your question."
+
+    # 7. Generic Fallback
+    client = job.get("client_name")
+    client_str = f" with {client}" if client else ""
+    return f"Thanks for your question regarding the {title} position{client_str}. We have recorded your query and forwarded it to our hiring team. They will get back to you at {job.get('candidate_email', 'your email')} if further details are needed."
+
+
+# 10. Candidate queries endpoints
+@app.post("/api/v1/jobs/{job_id}/queries")
+async def post_candidate_query(job_id: str, payload: CandidateQueryCreateModel, db: Client = Depends(get_supabase)):
+    import uuid
+    from datetime import datetime
+    
+    # Try to fetch job details
+    job = {}
+    try:
+        job_res = db.table("job_openings").select("*, requirements(id, title, created_by, clients(name))").eq("id", job_id).eq("is_deleted", False).execute()
+        if job_res.data:
+            row = job_res.data[0]
+            req = row.get("requirements") or {}
+            cli = req.get("clients") or {}
+            job = {
+                **{k: v for k, v in row.items() if k != "requirements"},
+                "client_name": cli.get("name") or "Generic Client",
+                "created_by": req.get("created_by") or "usr-1"
+            }
+    except Exception as e:
+        logger.error(f"Failed to fetch job details for query answer generator: {e}")
+        
+    # Generate the context-aware response
+    ai_response = generate_candidate_query_response(job, payload.query_text)
+    
+    query_id = str(uuid.uuid4())
+    new_query = {
+        "id": query_id,
+        "job_id": job_id,
+        "candidate_email": payload.candidate_email,
+        "query_text": payload.query_text,
+        "ai_response": ai_response,
+        "is_resolved": False,
+        "created_at": datetime.utcnow().isoformat() + "Z"
+    }
+    
+    # Dual-mode save: database first, in-memory backup second
+    saved_to_db = False
+    try:
+        db.table("candidate_queries").insert(new_query).execute()
+        saved_to_db = True
+    except Exception as e:
+        logger.warning(f"Failed to save candidate query to Supabase: {e}. Falling back to in-memory dictionary.")
+        if job_id not in in_memory_queries:
+            in_memory_queries[job_id] = []
+        in_memory_queries[job_id].append(new_query)
+        
+    # Recruiter notification: try to insert into db notifications, fallback to logging
+    recruiter_id = job.get("created_by") or "usr-1"
+    notif_msg = f"Candidate ({payload.candidate_email}) submitted a query for role '{job.get('title', 'Active Opening')}': '{payload.query_text}'"
+    try:
+        db.table("notifications").insert({
+            "recruiter_id": recruiter_id,
+            "title": "New Candidate Query",
+            "message": notif_msg,
+            "type": "upload", # matches valid types
+            "is_read": False,
+            "metadata": {"job_id": job_id, "query_id": query_id}
+        }).execute()
+    except Exception as ne:
+        logger.warning(f"Failed to insert database notification for candidate query: {ne}")
+        
+    return new_query
+
+
+@app.get("/api/v1/jobs/{job_id}/queries")
+async def get_candidate_queries(job_id: str, email: Optional[str] = None, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not email and not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized: Recruiter auth or candidate email filter required")
+        
+    # Dual-mode read
+    try:
+        query_builder = db.table("candidate_queries").select("*").eq("job_id", job_id)
+        if email:
+            query_builder = query_builder.eq("candidate_email", email.strip())
+        res = query_builder.order("created_at", desc=True).execute()
+        
+        db_queries = res.data or []
+        mem_queries = in_memory_queries.get(job_id, [])
+        if email:
+            mem_queries = [mq for mq in mem_queries if mq.get("candidate_email", "").strip().lower() == email.strip().lower()]
+            
+        all_queries = {q["id"]: q for q in (db_queries + mem_queries)}
+        return sorted(all_queries.values(), key=lambda x: x["created_at"], reverse=True)
+    except Exception as e:
+        logger.warning(f"Failed to fetch candidate queries from Supabase: {e}. Falling back to in-memory dictionary.")
+        mem_queries = in_memory_queries.get(job_id, [])
+        if email:
+            mem_queries = [mq for mq in mem_queries if mq.get("candidate_email", "").strip().lower() == email.strip().lower()]
+        return sorted(mem_queries, key=lambda x: x["created_at"], reverse=True)
+
+
+@app.post("/api/v1/queries/{query_id}/resolve")
+async def resolve_candidate_query(query_id: str, payload: ResolveQueryModel, db: Client = Depends(get_supabase)):
+    # Dual-mode update
+    updated_query = None
+    try:
+        res = db.table("candidate_queries").update({"is_resolved": payload.is_resolved}).eq("id", query_id).execute()
+        if res.data:
+            updated_query = res.data[0]
+    except Exception as e:
+        logger.warning(f"Failed to update candidate query in Supabase: {e}. Updating in-memory.")
+        
+    # Check/update in-memory backup as well to maintain consistency
+    for job_id, queries in in_memory_queries.items():
+        for q in queries:
+            if q["id"] == query_id:
+                q["is_resolved"] = payload.is_resolved
+                updated_query = q
+                break
+                
+    if not updated_query:
+        raise HTTPException(status_code=404, detail="Query not found")
+        
+    return updated_query
 
 
 @app.get("/api/v1/jobs/{job_id}/skills")

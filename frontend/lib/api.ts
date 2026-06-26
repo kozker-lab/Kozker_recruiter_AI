@@ -1,7 +1,7 @@
 import { 
   User, Client, Requirement, JobOpening, JobOpeningSkill, 
   Candidate, Application, ScreeningQuestion, InterviewStage, 
-  ActivityLog, ChatMessage, JobCandidate, Notification
+  ActivityLog, ChatMessage, JobCandidate, Notification, CandidateQuery
 } from "../types";
 import { createClient } from "./supabase/client";
 
@@ -442,6 +442,27 @@ class MockDatabase {
       entity_id: "app-1",
       metadata: { candidate_name: "Rohan Sharma", fuzzy_score: 94.5 },
       created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+    }
+  ];
+
+  candidateQueries: CandidateQuery[] = [
+    {
+      id: "q-mock-1",
+      job_id: "job-1",
+      candidate_email: "eager.applicant@example.com",
+      query_text: "What is the expected salary range? Is it remote?",
+      ai_response: "The salary range for the Senior UI/Frontend Developer - Cloud Platform position is ₹18 - ₹24 LPA. The role description mentions hybrid/office, but remote policies are determined during later rounds.",
+      is_resolved: false,
+      created_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString()
+    },
+    {
+      id: "q-mock-2",
+      job_id: "job-1",
+      candidate_email: "tech.wizard@example.com",
+      query_text: "Does the GCP team require Kubernetes experience?",
+      ai_response: "The key technologies and skills mentioned for this role are: React, Next.js, TypeScript, Performance, GCP, Tailwind CSS. Kubernetes is not explicitly listed as a mandatory requirement.",
+      is_resolved: true,
+      created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     }
   ];
 }
@@ -1355,6 +1376,67 @@ async function handleMockRequest<T>(
           }, 3000);
 
           return resolve({ success: true } as unknown as T);
+        }
+        if (path.startsWith("/jobs/") && path.includes("/queries") && method === "GET") {
+          const cleanPath = path.split("?")[0];
+          if (cleanPath.endsWith("/queries")) {
+            const id = cleanPath.split("/")[2];
+            const urlParams = new URLSearchParams(path.split("?")[1] || "");
+            const email = urlParams.get("email");
+            
+            let list = mockDb.candidateQueries.filter(q => q.job_id === id);
+            if (email) {
+              list = list.filter(q => q.candidate_email.toLowerCase() === email.toLowerCase());
+            }
+            return resolve(list as unknown as T);
+          }
+        }
+        if (path.startsWith("/jobs/") && path.endsWith("/queries") && method === "POST") {
+          const id = path.split("/")[2];
+          const job = mockDb.jobOpenings.find(j => j.id === id);
+          const title = job?.title || "this role";
+          const queryText = data.query_text || "";
+          const queryLower = queryText.toLowerCase();
+          
+          let ai_response = `Thanks for your question regarding the ${title} position. We have recorded your query and forwarded it to our hiring team. They will get back to you at ${data.candidate_email} if further details are needed.`;
+          if (queryLower.includes("salary") || queryLower.includes("pay") || queryLower.includes("package") || queryLower.includes("lpa") || queryLower.includes("compensation")) {
+            ai_response = `The salary range for the ${title} position is ${job?.salary_range || "not explicitly specified"}.`;
+          } else if (queryLower.includes("skill") || queryLower.includes("tech") || queryLower.includes("language") || queryLower.includes("framework")) {
+            ai_response = `The key technologies and skills mentioned for this role are: ${job?.keywords?.join(", ") || "React, TypeScript"}.`;
+          } else if (queryLower.includes("responsibility") || queryLower.includes("do") || queryLower.includes("duty")) {
+            ai_response = `Key responsibilities for this role include: ${job?.responsibilities?.slice(0, 3).join("; ") || "delivering on goals outlined in the description"}.`;
+          }
+          
+          const newQuery: CandidateQuery = {
+            id: `q-mock-${Date.now()}`,
+            job_id: id,
+            candidate_email: data.candidate_email,
+            query_text: queryText,
+            ai_response,
+            is_resolved: false,
+            created_at: new Date().toISOString()
+          };
+          mockDb.candidateQueries.unshift(newQuery);
+          
+          mockDb.notifications.unshift({
+            id: `not-q-${Date.now()}`,
+            recruiter_id: currentUserId,
+            title: "New Candidate Query",
+            message: `Candidate (${data.candidate_email}) submitted a query for role '${job?.title || "Active Opening"}': '${queryText}'`,
+            type: "upload",
+            is_read: false,
+            metadata: { job_id: id, query_id: newQuery.id },
+            created_at: new Date().toISOString()
+          });
+          
+          return resolve(newQuery as unknown as T);
+        }
+        if (path.startsWith("/queries/") && path.endsWith("/resolve") && method === "POST") {
+          const queryId = path.split("/")[2];
+          const query = mockDb.candidateQueries.find(q => q.id === queryId);
+          if (!query) return reject(new Error("Query not found"));
+          query.is_resolved = data.is_resolved !== undefined ? data.is_resolved : true;
+          return resolve(query as unknown as T);
         }
         if (path.startsWith("/jobs/") && path.endsWith("/candidates") && method === "GET") {
           const id = path.split("/")[2];
