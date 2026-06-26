@@ -633,6 +633,10 @@ class ResolveQueryModel(BaseModel):
     is_resolved: bool = True
 
 
+class AnswerQueryModel(BaseModel):
+    response_text: str
+
+
 
 # ============================================================
 # API ENDPOINTS
@@ -1697,7 +1701,63 @@ def generate_candidate_query_response(job: dict, query_text: str) -> str:
     # 7. Generic Fallback
     client = job.get("client_name")
     client_str = f" with {client}" if client else ""
-    return f"Thanks for your question regarding the {title} position{client_str}. We have recorded your query and forwarded it to our hiring team. They will get back to you at {job.get('candidate_email', 'your email')} if further details are needed."
+    return f"Thank you for your question regarding the {title} position{client_str}. We have recorded your query and forwarded it to our hiring team for review."
+
+
+def send_email(to_email: str, subject: str, html_body: str):
+    import smtplib
+    import os
+    import re
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from datetime import datetime
+    
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = os.getenv("SMTP_PORT")
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_pass = os.getenv("SMTP_PASSWORD")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user or "noreply@kozker.ai")
+    
+    # Log to console & requests.log for local audit
+    log_msg = f"\n========================================\n[EMAIL DISPATCH] To: {to_email}\nSubject: {subject}\nBody:\n{html_body}\n========================================\n"
+    logger.info(log_msg)
+    
+    try:
+        with open("requests.log", "a") as f:
+            f.write(f"[{datetime.utcnow().isoformat()}] EMAIL To: {to_email} | Subject: {subject}\n{html_body}\n\n")
+    except Exception as le:
+        logger.error(f"Failed to write email to requests.log: {le}")
+        
+    if smtp_host and smtp_port and smtp_user and smtp_pass:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = smtp_from
+            msg["To"] = to_email
+            
+            text_body = re.sub('<[^<]+?>', '', html_body)
+            
+            part1 = MIMEText(text_body, "plain")
+            part2 = MIMEText(html_body, "html")
+            
+            msg.attach(part1)
+            msg.attach(part2)
+            
+            port = int(smtp_port)
+            if port == 465:
+                server = smtplib.SMTP_SSL(smtp_host, port)
+            else:
+                server = smtplib.SMTP(smtp_host, port)
+                server.starttls()
+                
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, to_email, msg.as_string())
+            server.quit()
+            logger.info(f"Email successfully sent via SMTP to {to_email}")
+        except Exception as e:
+            logger.error(f"Failed to send email via SMTP to {to_email}: {e}")
+    else:
+        logger.info(f"SMTP is not configured. Email to {to_email} was logged to console and requests.log.")
 
 
 # 10. Candidate queries endpoints
@@ -1814,6 +1874,125 @@ async def resolve_candidate_query(query_id: str, payload: ResolveQueryModel, db:
     if not updated_query:
         raise HTTPException(status_code=404, detail="Query not found")
         
+    return updated_query
+
+
+@app.get("/api/v1/queries")
+async def get_all_candidate_queries(db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        # Fetch the recruiter's own job opening IDs (Rls scopes this automatically for authenticated user)
+        jobs_res = db.table("job_openings").select("id").eq("is_deleted", False).execute()
+        recruiter_job_ids = {j["id"] for j in jobs_res.data} if jobs_res.data else set()
+
+        # Fetch from Supabase candidate_queries table, joined with job details if possible
+        res = db.table("candidate_queries").select("*, job_openings(id, title)").order("created_at", desc=True).execute()
+        db_queries = res.data or []
+        
+        # Explicit python-side filtering to match recruiter job IDs
+        db_queries = [q for q in db_queries if q.get("job_id") in recruiter_job_ids]
+        
+        # Merge with in-memory backups filtered by recruiter's job IDs
+        all_mem = []
+        for j_id, q_list in in_memory_queries.items():
+            if j_id in recruiter_job_ids:
+                all_mem.extend(q_list)
+            
+        all_queries = {q["id"]: q for q in (db_queries + all_mem)}
+        return sorted(all_queries.values(), key=lambda x: x["created_at"], reverse=True)
+    except Exception as e:
+        logger.warning(f"Failed to fetch candidate queries from Supabase: {e}. Falling back to in-memory.")
+        # Fallback to fetching recruiter's jobs to filter in-memory queries
+        recruiter_job_ids = set()
+        try:
+            jobs_res = db.table("job_openings").select("id").eq("is_deleted", False).execute()
+            if jobs_res.data:
+                recruiter_job_ids = {j["id"] for j in jobs_res.data}
+        except Exception as je:
+            logger.warning(f"Failed to fetch job openings for fallback queries filter: {je}")
+
+        all_mem = []
+        for j_id, q_list in in_memory_queries.items():
+            if not recruiter_job_ids or j_id in recruiter_job_ids:
+                all_mem.extend(q_list)
+        return sorted(all_mem, key=lambda x: x["created_at"], reverse=True)
+
+
+@app.post("/api/v1/queries/{query_id}/answer")
+async def answer_candidate_query(query_id: str, payload: AnswerQueryModel, db: Client = Depends(get_supabase)):
+    updated_query = None
+    try:
+        res = db.table("candidate_queries").update({
+            "ai_response": payload.response_text,
+            "is_resolved": True
+        }).eq("id", query_id).execute()
+        if res.data:
+            updated_query = res.data[0]
+    except Exception as e:
+        logger.warning(f"Failed to update query answer in Supabase: {e}. Updating in-memory.")
+
+    # Check/update in-memory backup as well to maintain consistency
+    for job_id, queries in in_memory_queries.items():
+        for q in queries:
+            if q["id"] == query_id:
+                q["ai_response"] = payload.response_text
+                q["is_resolved"] = True
+                updated_query = q
+                break
+
+    if not updated_query:
+        raise HTTPException(status_code=404, detail="Query not found")
+
+    # Send response email directly to candidate
+    try:
+        cand_email = updated_query.get("candidate_email")
+        orig_text = updated_query.get("query_text")
+        ans_text = payload.response_text
+        j_id = updated_query.get("job_id")
+        
+        # Fetch job title
+        job_title = "Active Opening"
+        try:
+            job_res = db.table("job_openings").select("title").eq("id", j_id).execute()
+            if job_res.data:
+                job_title = job_res.data[0].get("title") or "Active Opening"
+        except Exception as je:
+            logger.warning(f"Failed to fetch job title for email notification: {je}")
+            
+        subject = f"Answer to your query regarding the {job_title} position"
+        html_body = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 4px;">
+                <div style="background-color: #ff7e5f; padding: 15px; border-radius: 4px 4px 0 0; text-align: center;">
+                    <h2 style="color: #ffffff; margin: 0; font-size: 18px; text-transform: uppercase; letter-spacing: 1px;">Kozker Recruiter Support</h2>
+                </div>
+                <div style="padding: 20px 10px;">
+                    <p>Hi there,</p>
+                    <p>The hiring team has responded to your question regarding the <strong>{job_title}</strong> opening.</p>
+                    
+                    <div style="background-color: #f7fafc; border-left: 4px solid #cbd5e0; padding: 12px; margin: 15px 0; font-style: italic;">
+                        <strong>Your Question:</strong><br/>
+                        "{orig_text}"
+                    </div>
+                    
+                    <div style="background-color: #ebf8ff; border-left: 4px solid #3182ce; padding: 15px; margin: 15px 0;">
+                        <strong>Answer:</strong><br/>
+                        {ans_text}
+                    </div>
+                    
+                    <p style="margin-top: 25px;">Best regards,<br/>The Hiring Team</p>
+                </div>
+                <div style="border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; font-size: 11px; color: #718096;">
+                    This is an automated notification from Kozker Recruiter AI Workspace.
+                </div>
+            </body>
+        </html>
+        """
+        send_email(cand_email, subject, html_body)
+    except Exception as e:
+        logger.error(f"Failed to construct or send query response email: {e}")
+
     return updated_query
 
 

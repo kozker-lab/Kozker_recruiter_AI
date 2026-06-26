@@ -14,6 +14,7 @@ ALTER TABLE public.candidate_queries ENABLE ROW LEVEL SECURITY;
 
 -- Drop policies if exist
 DROP POLICY IF EXISTS "Allow view candidate queries" ON public.candidate_queries;
+DROP POLICY IF EXISTS "Allow anonymous view candidate queries" ON public.candidate_queries;
 DROP POLICY IF EXISTS "Allow resolve candidate queries" ON public.candidate_queries;
 DROP POLICY IF EXISTS "Allow insert candidate queries" ON public.candidate_queries;
 
@@ -26,6 +27,10 @@ CREATE POLICY "Allow view candidate queries" ON public.candidate_queries
         WHERE j.id = job_id AND r.created_by = auth.uid()
     ));
 
+CREATE POLICY "Allow anonymous view candidate queries" ON public.candidate_queries 
+    FOR SELECT TO anon 
+    USING (true);
+
 CREATE POLICY "Allow resolve candidate queries" ON public.candidate_queries 
     FOR UPDATE TO authenticated 
     USING (EXISTS (
@@ -37,3 +42,4 @@ CREATE POLICY "Allow resolve candidate queries" ON public.candidate_queries
 CREATE POLICY "Allow insert candidate queries" ON public.candidate_queries 
     FOR INSERT 
     WITH CHECK (true);
+

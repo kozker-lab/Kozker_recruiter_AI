@@ -10,7 +10,7 @@ import {
   MapPin, Loader2, ArrowLeft, Building2, Sparkles, Check,
   Eye, Settings, Plus, Trash2, ArrowUp, ArrowDown, Sparkle,
   Copy, ExternalLink, Moon, Sun, Info, Layout, AlignLeft,
-  ChevronRight, ChevronDown, CheckSquare, List, RefreshCw, Pencil, MessageSquare
+  ChevronRight, ChevronDown, CheckSquare, List, RefreshCw, Pencil, MessageSquare, X, HelpCircle
 } from "lucide-react";
 
 interface FormFieldConfig {
@@ -208,6 +208,8 @@ export default function PublicApplyPage() {
   const [loadingQueries, setLoadingQueries] = useState(false);
   const [leftPanelTab, setLeftPanelTab] = useState<"description" | "queries">("description");
   const [isSendingQuery, setIsSendingQuery] = useState(false);
+  const [isQueryModalOpen, setIsQueryModalOpen] = useState(false);
+  const [modalQueryText, setModalQueryText] = useState("");
 
   // Sync candidate email from main form values if filled
   useEffect(() => {
@@ -277,6 +279,47 @@ export default function PublicApplyPage() {
         created_at: new Date().toISOString()
       };
       setCandidateQueries(prev => [fallbackQuery, ...prev]);
+    } finally {
+      setIsSendingQuery(false);
+    }
+  };
+
+  const handleSendModalQuery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!candidateEmail.trim() || !modalQueryText.trim() || isSendingQuery) return;
+    
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`cand_email_query_${jobId}`, candidateEmail);
+      localStorage.setItem("cand_email_general", candidateEmail);
+    }
+
+    const userText = modalQueryText;
+    setModalQueryText("");
+    setIsSendingQuery(true);
+    
+    try {
+      const result = await apiRequest<any>("POST", `/jobs/${jobId}/queries`, {
+        candidate_email: candidateEmail.trim(),
+        query_text: userText
+      });
+      
+      setCandidateQueries(prev => [result, ...prev]);
+      setIsQueryModalOpen(false);
+      setLeftPanelTab("queries");
+    } catch (err: any) {
+      console.error("Failed to submit query:", err);
+      const fallbackQuery = {
+        id: `q-fallback-${Date.now()}`,
+        job_id: jobId,
+        candidate_email: candidateEmail.trim(),
+        query_text: userText,
+        ai_response: "Thanks for your question. We've recorded your query and forwarded it to the hiring team.",
+        is_resolved: false,
+        created_at: new Date().toISOString()
+      };
+      setCandidateQueries(prev => [fallbackQuery, ...prev]);
+      setIsQueryModalOpen(false);
+      setLeftPanelTab("queries");
     } finally {
       setIsSendingQuery(false);
     }
@@ -1355,9 +1398,10 @@ export default function PublicApplyPage() {
           /* LIVE PREVIEW / CANDIDATE APPLICATION VIEW (2-column layout matching original look but customized dynamically) */
           <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 transition-colors duration-250">
             
-            {/* Left Column: Job Description & Details */}
-            <section className="lg:col-span-5 space-y-4 select-none">
+            {/* Left Column: Job Description & Candidate Queries Tabbed Panel */}
+            <section className="lg:col-span-5 space-y-4">
               <div className={`border rounded-sm p-5 space-y-4 shadow-xs transition-colors duration-250 ${resolvedCardClass}`}>
+                {/* Header: Title and Client */}
                 <div className="space-y-1.5">
                   <span className={`px-2 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wider rounded-sm ${resolvedBadgeClass}`}>
                     Active Opening
@@ -1373,144 +1417,219 @@ export default function PublicApplyPage() {
                   )}
                 </div>
 
-                {/* Quick Stats Grid */}
-                <div className={`grid grid-cols-2 gap-3 p-3 border rounded-sm text-[11px] font-mono opacity-90 ${isDarkBg ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-neutral-50 border-neutral-200 text-neutral-600'}`}>
-                  {job.salary_range && (
-                    <div className="space-y-0.5">
-                      <span className="text-[9px] opacity-65 uppercase font-semibold block">Salary Range</span>
-                      <span className="flex items-center gap-0.5">{job.salary_range}</span>
-                    </div>
-                  )}
-                  {job.keywords && job.keywords.length > 0 && (
-                    <div className="space-y-0.5">
-                      <span className="text-[9px] opacity-65 uppercase font-semibold block">Key Tags</span>
-                      <span className="truncate block" title={job.keywords.join(", ")}>{job.keywords.slice(0, 2).join(", ")}</span>
-                    </div>
-                  )}
+                {/* Tab Navigation */}
+                <div className={`flex border-b text-xs font-mono font-semibold ${isDarkBg ? 'border-slate-800' : 'border-neutral-200'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setLeftPanelTab("description")}
+                    className={`flex-1 pb-2.5 text-center uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                      leftPanelTab === "description"
+                        ? `border-emerald-600 ${theme.primaryText} font-bold`
+                        : "border-transparent text-neutral-400 hover:text-neutral-600 dark:hover:text-slate-350"
+                    }`}
+                  >
+                    Job Description
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLeftPanelTab("queries")}
+                    className={`flex-1 pb-2.5 text-center uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                      leftPanelTab === "queries"
+                        ? `border-emerald-600 ${theme.primaryText} font-bold`
+                        : "border-transparent text-neutral-400 hover:text-neutral-600 dark:hover:text-slate-350"
+                    }`}
+                  >
+                    Queries & Support
+                  </button>
                 </div>
 
-                {/* Job Description Block */}
-                {job.description && (
-                  <div className={`space-y-1.5 border-t pt-3 ${isDarkBg ? 'border-slate-800' : 'border-neutral-150'}`}>
-                    <h4 className="text-[10px] font-bold opacity-75 uppercase tracking-wider font-mono">
-                      Role Overview
-                    </h4>
-                    <p className="text-xs leading-relaxed whitespace-pre-line opacity-85">
-                      {job.description}
-                    </p>
-                  </div>
-                )}
+                {/* Tab Contents */}
+                {leftPanelTab === "description" ? (
+                  <div className="space-y-4">
+                    {/* Quick Stats Grid */}
+                    <div className={`grid grid-cols-2 gap-3 p-3 border rounded-sm text-[11px] font-mono opacity-90 ${isDarkBg ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-neutral-50 border-neutral-200 text-neutral-600'}`}>
+                      {job.salary_range && (
+                        <div className="space-y-0.5">
+                          <span className="text-[9px] opacity-65 uppercase font-semibold block">Salary Range</span>
+                          <span className="flex items-center gap-0.5">{job.salary_range}</span>
+                        </div>
+                      )}
+                      {job.keywords && job.keywords.length > 0 && (
+                        <div className="space-y-0.5">
+                          <span className="text-[9px] opacity-65 uppercase font-semibold block">Key Tags</span>
+                          <span className="truncate block" title={job.keywords.join(", ")}>{job.keywords.slice(0, 2).join(", ")}</span>
+                        </div>
+                      )}
+                    </div>
 
-                {/* Responsibilities */}
-                {job.responsibilities && job.responsibilities.length > 0 && (
-                  <div className={`space-y-2 border-t pt-3 ${isDarkBg ? 'border-slate-800' : 'border-neutral-150'}`}>
-                    <h4 className="text-[10px] font-bold opacity-75 uppercase tracking-wider font-mono">
-                      Key Responsibilities
-                    </h4>
-                    <ul className="list-disc pl-4 text-xs space-y-1.5 opacity-85">
-                      {job.responsibilities.map((resp: string, idx: number) => (
-                        <li key={idx} className="leading-relaxed">{resp}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Qualifications */}
-                {job.qualifications && job.qualifications.length > 0 && (
-                  <div className={`space-y-2 border-t pt-3 ${isDarkBg ? 'border-slate-800' : 'border-neutral-150'}`}>
-                    <h4 className="text-[10px] font-bold opacity-75 uppercase tracking-wider font-mono">
-                      Preferred Qualifications
-                    </h4>
-                    <ul className="list-disc pl-4 text-xs space-y-1.5 opacity-85">
-                      {job.qualifications.map((qual: string, idx: number) => (
-                        <li key={idx} className="leading-relaxed">{qual}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-
-              {/* Support Chatbot Widget */}
-              <div className={`border rounded-sm p-5 space-y-4 shadow-sm transition-colors duration-250 ${resolvedCardClass} mt-4`}>
-                <div className="flex items-center justify-between border-b pb-3 border-neutral-200/50">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4 text-emerald-600 animate-pulse" />
-                    <h3 className="font-tight font-black text-xs uppercase tracking-wider text-neutral-800 dark:text-slate-200">
-                      Candidate Support Chatbot
-                    </h3>
-                  </div>
-                  <span className="px-1.5 py-0.5 text-[8px] font-mono font-bold uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 rounded-sm">
-                    AI Active
-                  </span>
-                </div>
-
-                {/* Chat Log Window */}
-                <div className={`p-3 rounded-sm h-[200px] overflow-y-auto space-y-3 border text-xs leading-relaxed ${isDarkBg ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-neutral-50/50 border-neutral-200 text-neutral-600'}`}>
-                  {chatbotHistory.map((msg, index) => (
-                    <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[85%] rounded-md p-2.5 shadow-2xs ${
-                        msg.role === 'user'
-                          ? 'bg-emerald-600 text-white rounded-br-none'
-                          : `${isDarkBg ? 'bg-slate-850 border border-slate-700' : 'bg-white border border-neutral-200'} rounded-bl-none text-neutral-800 dark:text-slate-200`
-                      }`}>
-                        <p className="whitespace-pre-line">{msg.content}</p>
+                    {/* Job Description Block */}
+                    {job.description && (
+                      <div className={`space-y-1.5 border-t pt-3 ${isDarkBg ? 'border-slate-800' : 'border-neutral-150'}`}>
+                        <h4 className="text-[10px] font-bold opacity-75 uppercase tracking-wider font-mono">
+                          Role Overview
+                        </h4>
+                        <p className="text-xs leading-relaxed whitespace-pre-line opacity-85">
+                          {job.description}
+                        </p>
                       </div>
-                    </div>
-                  ))}
-                  {isSendingQuery && (
-                    <div className="flex justify-start">
-                      <div className={`max-w-[85%] rounded-md p-2.5 rounded-bl-none ${isDarkBg ? 'bg-slate-850 border border-slate-700' : 'bg-white border border-neutral-200'} text-neutral-400 flex items-center gap-1.5`}>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
-                        <span>AI is typing...</span>
+                    )}
+
+                    {/* Responsibilities */}
+                    {job.responsibilities && job.responsibilities.length > 0 && (
+                      <div className={`space-y-2 border-t pt-3 ${isDarkBg ? 'border-slate-800' : 'border-neutral-150'}`}>
+                        <h4 className="text-[10px] font-bold opacity-75 uppercase tracking-wider font-mono">
+                          Key Responsibilities
+                        </h4>
+                        <ul className="list-disc pl-4 text-xs space-y-1.5 opacity-85">
+                          {job.responsibilities.map((resp: string, idx: number) => (
+                            <li key={idx} className="leading-relaxed">{resp}</li>
+                          ))}
+                        </ul>
                       </div>
-                    </div>
-                  )}
-                </div>
+                    )}
 
-                {/* Chat Controls Form */}
-                <form onSubmit={handleSendCandidateQuery} className="space-y-2">
-                  <div className="grid grid-cols-1 gap-2">
-                    <div>
-                      <label className="block text-[9.5px] font-mono uppercase font-bold text-neutral-400 mb-1">
-                        Your Email (for recruiter response)
-                      </label>
-                      <input
-                        type="email"
-                        required
-                        placeholder="candidate@example.com"
-                        value={candidateEmail}
-                        onChange={(e) => setCandidateEmail(e.target.value)}
-                        className={`w-full p-2 text-xs border rounded-sm outline-none transition-all ${
-                          isDarkBg 
-                            ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-emerald-600' 
-                            : 'bg-white border-neutral-350 text-neutral-800 focus:border-emerald-600'
-                        }`}
-                      />
-                    </div>
+                    {/* Qualifications */}
+                    {job.qualifications && job.qualifications.length > 0 && (
+                      <div className={`space-y-2 border-t pt-3 ${isDarkBg ? 'border-slate-800' : 'border-neutral-150'}`}>
+                        <h4 className="text-[10px] font-bold opacity-75 uppercase tracking-wider font-mono">
+                          Preferred Qualifications
+                        </h4>
+                        <ul className="list-disc pl-4 text-xs space-y-1.5 opacity-85">
+                          {job.qualifications.map((qual: string, idx: number) => (
+                            <li key={idx} className="leading-relaxed">{qual}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4 animate-fadeIn">
+                    {/* Submit Candidate Query Form */}
+                    <form onSubmit={handleSendCandidateQuery} className="space-y-3.5 text-xs">
+                      <div className="space-y-1">
+                        <label className="text-neutral-400 uppercase tracking-wider block font-bold text-[9.5px] font-mono">
+                          Email Address *
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          placeholder="candidate@example.com"
+                          value={candidateEmail}
+                          onChange={(e) => setCandidateEmail(e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-sm outline-none transition-colors ${
+                            isDarkBg 
+                              ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-emerald-600' 
+                              : 'bg-white border-neutral-200 text-neutral-800 focus:border-emerald-600'
+                          }`}
+                        />
+                      </div>
 
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ask about salary, qualifications, remote..."
-                        value={chatbotQueryText}
-                        onChange={(e) => setChatbotQueryText(e.target.value)}
-                        className={`flex-1 p-2 text-xs border rounded-sm outline-none transition-all ${
-                          isDarkBg 
-                            ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-emerald-600' 
-                            : 'bg-white border-neutral-350 text-neutral-800 focus:border-emerald-600'
-                        }`}
-                      />
-                      <button
-                        type="submit"
-                        disabled={isSendingQuery || !candidateEmail.trim() || !chatbotQueryText.trim()}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold uppercase tracking-wider rounded-sm transition-colors flex items-center gap-1 cursor-pointer shrink-0"
-                      >
-                        Ask
-                      </button>
+                      <div className="space-y-1">
+                        <label className="text-neutral-400 uppercase tracking-wider block font-bold text-[9.5px] font-mono">
+                          Your Question *
+                        </label>
+                        <textarea
+                          required
+                          rows={3}
+                          placeholder="Ask about salary, qualifications, remote, tech stack..."
+                          value={chatbotQueryText}
+                          onChange={(e) => setChatbotQueryText(e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-sm outline-none transition-colors ${
+                            isDarkBg 
+                              ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-emerald-600' 
+                              : 'bg-white border-neutral-200 text-neutral-800 focus:border-emerald-600'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="submit"
+                          disabled={isSendingQuery || !candidateEmail.trim() || !chatbotQueryText.trim()}
+                          className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold uppercase tracking-wider rounded-sm transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          {isSendingQuery ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Submitting...</span>
+                            </>
+                          ) : (
+                            <span>Submit Question</span>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+
+                    {/* Candidate's submitted queries list */}
+                    <div className={`border-t pt-4 ${isDarkBg ? 'border-slate-800' : 'border-neutral-200'}`}>
+                      <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800 dark:text-slate-200 mb-3">
+                        Your Submitted Queries
+                      </h3>
+
+                      {!candidateEmail.trim() ? (
+                        <p className="text-neutral-450 dark:text-slate-500 text-xs italic text-center py-4">
+                          Enter your email address above to view your query history.
+                        </p>
+                      ) : loadingQueries ? (
+                        <div className="text-center py-6 flex flex-col items-center justify-center gap-2">
+                          <Loader2 className="w-5 h-5 text-emerald-600 animate-spin" />
+                          <span className="text-neutral-400 font-mono text-[9px] uppercase tracking-wider">
+                            Retrieving query logs...
+                          </span>
+                        </div>
+                      ) : candidateQueries.length === 0 ? (
+                        <p className="text-neutral-450 dark:text-slate-500 text-xs italic text-center py-4">
+                          No queries submitted yet for this email.
+                        </p>
+                      ) : (
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                          {candidateQueries.map((q) => (
+                            <div
+                              key={q.id}
+                              className={`p-3 border rounded-sm space-y-2 text-xs transition-all ${
+                                isDarkBg 
+                                  ? 'bg-slate-900/50 border-slate-800 text-slate-350 shadow-xs' 
+                                  : 'bg-neutral-50/50 border-neutral-200 text-neutral-650 shadow-xs'
+                              }`}
+                            >
+                              <div className="flex justify-between items-start gap-2">
+                                <span className="font-semibold break-words max-w-[70%]">
+                                  {q.query_text}
+                                </span>
+                                {q.is_resolved ? (
+                                  <span className="px-1.5 py-0.5 text-[8px] font-mono font-bold uppercase tracking-wider text-success bg-success/10 border border-success/20 rounded-xs shrink-0">
+                                    Resolved
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 text-[8px] font-mono font-bold uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-250 rounded-xs shrink-0">
+                                    Pending Review
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className="text-[10px] text-neutral-400 font-mono">
+                                Submitted: {new Date(q.created_at).toLocaleDateString()}
+                              </p>
+
+                              {q.ai_response && (
+                                <div className={`p-2 rounded-xs border text-[11px] leading-relaxed ${
+                                  isDarkBg 
+                                    ? 'bg-slate-950 border-slate-800 text-slate-200' 
+                                    : 'bg-white border-neutral-150 text-neutral-800'
+                                }`}>
+                                  <span className="font-mono text-[8px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block font-bold mb-1">
+                                    Reply from Team / AI:
+                                  </span>
+                                  {q.ai_response}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </form>
+                )}
               </div>
             </section>
 
@@ -1526,7 +1645,21 @@ export default function PublicApplyPage() {
                       Fill out the details below. {fields.some(f => f.id === "resume" && f.enabled) && "Uploading a resume auto-fills the form."}
                     </p>
                   </div>
-                  <Sparkles className={`w-5 h-5 opacity-80 ${theme.primaryText}`} />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsQueryModalOpen(true)}
+                      className={`px-2.5 py-1.5 border rounded-sm text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs ${
+                        isDarkBg 
+                          ? 'border-slate-700 hover:border-slate-500 hover:bg-slate-800 text-slate-200' 
+                          : 'border-neutral-350 hover:bg-neutral-100 text-neutral-650'
+                      }`}
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                      Queries
+                    </button>
+                    <Sparkles className={`w-5 h-5 opacity-80 ${theme.primaryText}`} />
+                  </div>
                 </div>
 
                 {/* Resume File Upload Widget (Only render if enabled in fields config) */}
@@ -1766,6 +1899,87 @@ export default function PublicApplyPage() {
         )}
 
       </div>
+
+      {/* Candidate Query Dialog Modal */}
+      {isQueryModalOpen && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className={`border w-full max-w-md p-6 rounded-sm shadow-xl space-y-4 text-xs ${
+            isDarkBg ? 'bg-slate-900 border-slate-800 text-slate-100 shadow-slate-950/50' : 'bg-white border-neutral-200 text-neutral-800'
+          }`}>
+            <div className="flex justify-between items-center border-b border-neutral-200/50 pb-3">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                <HelpCircle className="w-4 h-4 text-emerald-600" />
+                Submit a Query to Recruiter
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsQueryModalOpen(false)}
+                className="text-neutral-450 hover:text-neutral-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendModalQuery} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-neutral-400 uppercase font-bold tracking-wider text-[10.5px] font-mono block">
+                  Email Address *
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="candidate@example.com"
+                  value={candidateEmail}
+                  onChange={(e) => setCandidateEmail(e.target.value)}
+                  className={`w-full px-3 py-2 border rounded-sm outline-none transition-colors ${
+                    isDarkBg 
+                      ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-emerald-600' 
+                      : 'bg-white border-neutral-200 text-neutral-800 focus:border-emerald-600'
+                  }`}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-400 uppercase font-bold tracking-wider text-[10.5px] font-mono block">
+                  Your Question *
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  placeholder="Ask about salary, qualifications, remote, tech stack..."
+                  value={modalQueryText}
+                  onChange={(e) => setModalQueryText(e.target.value)}
+                  className={`w-full px-3 py-2 border rounded-sm outline-none transition-colors resize-none ${
+                    isDarkBg 
+                      ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-emerald-600' 
+                      : 'bg-white border-neutral-200 text-neutral-800 focus:border-emerald-600'
+                  }`}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsQueryModalOpen(false)}
+                  className={`px-3 py-1.5 border rounded-sm font-mono text-[10px] uppercase font-bold cursor-pointer transition-colors ${
+                    isDarkBg ? 'border-slate-800 hover:bg-slate-800 text-slate-400' : 'border-neutral-200 hover:bg-neutral-50 text-neutral-500'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingQuery || !candidateEmail.trim() || !modalQueryText.trim()}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-mono text-[10px] uppercase font-bold tracking-wider rounded-sm transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  {isSendingQuery && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Send Query
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Premium Footer */}
       <footer className={`border-t py-5 px-6 text-center text-[10px] font-mono mt-auto select-none transition-colors duration-250 ${

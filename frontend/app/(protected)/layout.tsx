@@ -11,7 +11,7 @@ import { Logo } from "@/components/Logo";
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
   Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
-  X, AlertCircle, Layers, Bell, Clock, Check, Trash2, Sun, Moon
+  X, AlertCircle, Layers, Bell, Clock, Check, Trash2, Sun, Moon, HelpCircle
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
@@ -433,7 +433,11 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         router.push("/jobs");
       }
     } else if (type === "upload") {
-      router.push("/pool");
+      if (meta.query_id) {
+        router.push("/qna");
+      } else {
+        router.push("/pool");
+      }
     } else {
       router.push("/dashboard");
     }
@@ -685,7 +689,9 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     { id: "jobs", href: "/jobs", label: "Job Catalog", icon: Briefcase },
     { id: "pool", href: "/pool", label: "Sourcing Pool", icon: Users },
     { id: "rounds", href: "/rounds", label: "Stages", icon: Layers },
+    { id: "qna", href: "/qna", label: "Candidate Q&A", icon: MessageSquare },
     { id: "notifications", href: "/notifications", label: "Notifications", icon: Bell },
+    { id: "help", href: "/help", label: "Help", icon: HelpCircle },
     { id: "settings", href: "/profile", label: "Settings", icon: Settings },
   ];
 

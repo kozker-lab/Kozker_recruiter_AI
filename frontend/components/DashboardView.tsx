@@ -80,6 +80,8 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
     }
   });
 
+
+
   // Publish dashboard stats and selected item context to AI Copilot
   React.useEffect(() => {
     if (typeof window !== "undefined") {
