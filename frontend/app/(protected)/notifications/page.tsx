@@ -168,6 +168,11 @@ export default function NotificationsTimelinePage() {
   const [candidateFilter, setCandidateFilter] = useState("all");
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
 
+  // States for clear/delete animations
+  const [isClearing, setIsClearing] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [locallyDeletedIds, setLocallyDeletedIds] = useState<string[]>([]);
+
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["notifications"],
     queryFn: () => apiRequest<Notification[]>("GET", "/notifications"),
@@ -210,6 +215,76 @@ export default function NotificationsTimelinePage() {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }
   });
+
+  const deleteActivityLogMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/activity_log/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["activityLogs"] });
+    }
+  });
+
+  const clearAllNotificationsMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", "/notifications"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      setIsClearing(false);
+    },
+    onError: () => {
+      setIsClearing(false);
+    }
+  });
+
+  const clearAllActivityLogsMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", "/activity_log"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["activityLogs"] });
+      setIsClearing(false);
+    },
+    onError: () => {
+      setIsClearing(false);
+    }
+  });
+
+  const handleClearAll = () => {
+    setIsClearing(true);
+    const itemsCount = formattedItems.length;
+    const animDelay = Math.min((itemsCount * 50) + 600, 2500); // 50ms stagger delay + 600ms transition
+    
+    // Determine which IDs are being cleared
+    const idsToClear = formattedItems
+      .filter(item => {
+        if (filterTab === "activities") return item.isActivity;
+        if (filterTab === "alerts") return !item.isActivity;
+        if (filterTab === "errors") return item.type === "error";
+        return true;
+      })
+      .map(item => item.id);
+
+    setTimeout(() => {
+      setLocallyDeletedIds(prev => [...prev, ...idsToClear]);
+      if (filterTab === "activities") {
+        clearAllActivityLogsMutation.mutate();
+      } else if (filterTab === "alerts") {
+        clearAllNotificationsMutation.mutate();
+      } else {
+        clearAllNotificationsMutation.mutate();
+        clearAllActivityLogsMutation.mutate();
+      }
+    }, animDelay);
+  };
+
+  const handleDeleteIndividual = (id: string, isActivity?: boolean) => {
+    setDeletingId(id);
+    setTimeout(() => {
+      setLocallyDeletedIds(prev => [...prev, id]);
+      if (isActivity) {
+        deleteActivityLogMutation.mutate(id);
+      } else {
+        deleteNotifMutation.mutate(id);
+      }
+      setDeletingId(null);
+    }, 550); // 350ms slide-off + 200ms height collapse
+  };
 
   const handleResetFilters = () => {
     setDateFilter("all");
@@ -351,8 +426,9 @@ export default function NotificationsTimelinePage() {
       });
     }
 
+    combined = combined.filter(item => !locallyDeletedIds.includes(item.id));
     return combined;
-  }, [notifications, activityLogs, filterTab, searchQuery, dateFilter, customDate, typeFilter, clientFilter, candidateFilter]);
+  }, [notifications, activityLogs, filterTab, searchQuery, dateFilter, customDate, typeFilter, clientFilter, candidateFilter, locallyDeletedIds]);
 
   const stats = React.useMemo(() => {
     return {
@@ -414,6 +490,33 @@ export default function NotificationsTimelinePage() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-neutral-50">
+      <style dangerouslySetInnerHTML={{__html: `
+        .timeline-card {
+          transition: transform 350ms cubic-bezier(0.25, 1, 0.5, 1),
+                      opacity 350ms cubic-bezier(0.25, 1, 0.5, 1),
+                      max-height 200ms ease-out 350ms,
+                      padding-top 200ms ease-out 350ms,
+                      padding-bottom 200ms ease-out 350ms,
+                      border-width 200ms ease-out 350ms,
+                      margin-top 200ms ease-out 350ms,
+                      margin-bottom 200ms ease-out 350ms;
+          transform: translateX(0);
+          opacity: 1;
+          max-height: 300px;
+        }
+
+        .timeline-card-deleting {
+          transform: translateX(100%) !important;
+          opacity: 0 !important;
+          max-height: 0px !important;
+          padding-top: 0px !important;
+          padding-bottom: 0px !important;
+          border-width: 0px !important;
+          margin-top: 0px !important;
+          margin-bottom: 0px !important;
+          pointer-events: none;
+        }
+      `}} />
       {/* Title Header */}
       <div className="p-6 border-b border-neutral-200 bg-white shrink-0">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -426,7 +529,7 @@ export default function NotificationsTimelinePage() {
               Audit trail of background n8n automation status, recruiter actions, and system logs.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2.5">
             {notifications.some(n => !n.is_read) && (
               <button
                 onClick={() => markAllReadMutation.mutate()}
@@ -434,6 +537,18 @@ export default function NotificationsTimelinePage() {
               >
                 <CheckSquare className="w-3.5 h-3.5" />
                 Mark all read
+              </button>
+            )}
+            {(notifications.length > 0 || activityLogs.length > 0) && (
+              <button
+                onClick={handleClearAll}
+                disabled={clearAllNotificationsMutation.isPending || clearAllActivityLogsMutation.isPending || isClearing}
+                className="px-3 py-1.5 bg-rose-50 border border-rose-250 hover:bg-rose-100 disabled:opacity-50 text-[10px] uppercase font-mono font-bold tracking-wider text-rose-600 rounded-sm cursor-pointer transition-colors flex items-center gap-1.5 shadow-sm"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {filterTab === "alerts" ? "Clear Alerts" : 
+                 filterTab === "activities" ? "Clear Logs" : 
+                 filterTab === "errors" ? "Clear Errors" : "Clear Timeline"}
               </button>
             )}
           </div>
@@ -645,12 +760,52 @@ export default function NotificationsTimelinePage() {
       <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
         <div className="max-w-4xl mx-auto space-y-4">
           {formattedItems.length === 0 ? (
-            <div className="p-12 text-center border border-dashed border-neutral-250 bg-white rounded-sm">
-              <Calendar className="w-8 h-8 text-neutral-300 mx-auto mb-3" />
-              <p className="text-neutral-550 text-xs font-mono uppercase tracking-wide">No operations logs match filters.</p>
+            <div className="p-16 text-center border border-dashed border-neutral-200 bg-white rounded-sm shadow-xs select-none flex flex-col items-center justify-center">
+              <style dangerouslySetInnerHTML={{__html: `
+                @keyframes mail-drop-1 {
+                  0% { transform: translateY(-40px) rotate(-8deg); opacity: 0; }
+                  15% { opacity: 1; }
+                  50% { transform: translateY(18px) rotate(2deg); opacity: 0.8; }
+                  70%, 100% { transform: translateY(32px) rotate(0deg); opacity: 0; }
+                }
+                @keyframes mail-drop-2 {
+                  0%, 35% { transform: translateY(-40px) rotate(6deg); opacity: 0; }
+                  50% { opacity: 1; }
+                  80% { transform: translateY(18px) rotate(-4deg); opacity: 0.8; }
+                  92%, 100% { transform: translateY(32px) rotate(0deg); opacity: 0; }
+                }
+                @keyframes tray-bounce {
+                  0%, 100% { transform: translateY(0); }
+                  50% { transform: translateY(2px); }
+                }
+                .animate-mail-1 { animation: mail-drop-1 3s infinite cubic-bezier(0.25, 1, 0.5, 1); }
+                .animate-mail-2 { animation: mail-drop-2 3s infinite cubic-bezier(0.25, 1, 0.5, 1); }
+                .animate-tray { animation: tray-bounce 3s infinite ease-in-out; }
+              `}} />
+              
+              <svg width="120" height="90" viewBox="0 0 120 90" fill="none" xmlns="http://www.w3.org/2000/svg" className="mx-auto mb-2 animate-tray">
+                {/* Envelope 1 */}
+                <g className="animate-mail-1">
+                  <rect x="42" y="8" width="36" height="22" rx="2" fill="#F4F4F5" stroke="#71717A" strokeWidth="1.5" />
+                  <path d="M42 8L60 20L78 8" stroke="#71717A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </g>
+                {/* Envelope 2 */}
+                <g className="animate-mail-2">
+                  <rect x="44" y="8" width="36" height="22" rx="2" fill="#E4E4E7" stroke="#3F3F46" strokeWidth="1.5" />
+                  <path d="M44 8L62 20L80 8" stroke="#3F3F46" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </g>
+                {/* Document Tray */}
+                <path d="M25 48H15V78H105V48H95V68H25V48Z" fill="#F4F4F5" stroke="#18181B" strokeWidth="2" strokeLinejoin="round" />
+                <line x1="35" y1="73" x2="85" y2="73" stroke="#D4D4D8" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+
+              <h4 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Timeline Empty</h4>
+              <p className="text-neutral-450 text-[11px] max-w-xs mt-1.5 leading-relaxed">
+                The operations log is clean. Incoming alerts and background automation activities will be collected here.
+              </p>
             </div>
           ) : (
-            formattedItems.map((item) => {
+            formattedItems.map((item, idx) => {
               let Icon = Bell;
               let iconColor = "text-neutral-400 bg-neutral-50 border-neutral-250";
               if (item.type === "job_generation") {
@@ -673,12 +828,24 @@ export default function NotificationsTimelinePage() {
                 iconColor = "text-purple-600 bg-purple-50 border-purple-100";
               }
 
+              const isItemDeleting = deletingId === item.id || (isClearing && (
+                filterTab === "all" || 
+                filterTab === "errors" ||
+                (filterTab === "alerts" && !item.isActivity) ||
+                (filterTab === "activities" && item.isActivity)
+              ));
+
               return (
                 <div 
                   key={item.id}
-                  className={`bg-white border border-neutral-200 rounded-sm p-4 hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 relative group ${
+                  className={`timeline-card bg-white border border-neutral-200 rounded-sm p-4 hover:shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 relative group overflow-hidden ${
                     !item.isActivity && !item.is_read ? "border-l-4 border-l-primary bg-primary/[0.01]" : ""
+                  } ${
+                    isItemDeleting ? "timeline-card-deleting" : ""
                   }`}
+                  style={{
+                    transitionDelay: isClearing ? `${idx * 50}ms` : "0ms"
+                  }}
                 >
                   <div className="flex gap-4 items-start">
                     <div className={`w-10 h-10 rounded-sm border flex items-center justify-center shrink-0 shadow-xs ${iconColor}`}>
@@ -700,7 +867,7 @@ export default function NotificationsTimelinePage() {
                           <span className="w-2.5 h-2.5 rounded-full bg-primary inline-block shrink-0 animate-pulse"></span>
                         )}
                       </div>
-                      <p className="text-neutral-500 text-xs mt-1.5 leading-relaxed">{item.message}</p>
+                      <p className="text-neutral-550 text-xs mt-1.5 leading-relaxed">{item.message}</p>
                       
                       <div className="flex items-center gap-1.5 mt-3 text-[10px] text-neutral-400 font-mono">
                         <Calendar className="w-3.5 h-3.5 text-neutral-300" />
@@ -725,28 +892,26 @@ export default function NotificationsTimelinePage() {
                       <ExternalLink className="w-3 h-3 text-neutral-400" />
                     </button>
                     
-                    {!item.isActivity && (
-                      <div className="flex gap-1">
-                        {!item.is_read && (
-                          <button
-                            onClick={() => markReadMutation.mutate(item.id)}
-                            className="p-1.5 border border-neutral-200 hover:border-success hover:bg-success/5 text-neutral-450 hover:text-success rounded-sm cursor-pointer transition-all shadow-xs"
-                            title="Mark as read"
-                            aria-label="Mark alert read"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                    <div className="flex gap-1">
+                      {!item.isActivity && !item.is_read && (
                         <button
-                          onClick={() => deleteNotifMutation.mutate(item.id)}
-                          className="p-1.5 border border-neutral-200 hover:border-red-250 hover:bg-red-50 text-neutral-450 hover:text-red-500 rounded-sm cursor-pointer transition-all shadow-xs"
-                          title="Delete notification"
-                          aria-label="Delete alert"
+                          onClick={() => markReadMutation.mutate(item.id)}
+                          className="p-1.5 border border-neutral-200 hover:border-success hover:bg-success/5 text-neutral-450 hover:text-success rounded-sm cursor-pointer transition-all shadow-xs"
+                          title="Mark as read"
+                          aria-label="Mark alert read"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Check className="w-3.5 h-3.5" />
                         </button>
-                      </div>
-                    )}
+                      )}
+                      <button
+                        onClick={() => handleDeleteIndividual(item.id, item.isActivity)}
+                        className="p-1.5 border border-neutral-200 hover:border-red-250 hover:bg-red-50 text-neutral-450 hover:text-red-500 rounded-sm cursor-pointer transition-all shadow-xs"
+                        title={item.isActivity ? "Delete activity log" : "Delete notification"}
+                        aria-label="Delete item"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );

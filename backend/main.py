@@ -1446,6 +1446,24 @@ async def get_activity_log(db: Client = Depends(get_supabase)):
     return res.data
 
 
+@app.delete("/api/v1/activity_log/{id}")
+async def delete_activity_log(id: str, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    res = db.table("activity_log").delete().eq("id", id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Activity log not found")
+    return {"status": "success"}
+
+
+@app.delete("/api/v1/activity_log")
+async def delete_all_activity_logs(db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    db.table("activity_log").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    return {"status": "success"}
+
+
 @app.get("/api/v1/notifications")
 async def get_notifications(db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
     if not user_id:
@@ -1479,6 +1497,14 @@ async def delete_notification(id: str, db: Client = Depends(get_supabase), user_
     res = db.table("notifications").delete().eq("id", id).eq("recruiter_id", user_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Notification not found")
+    return {"status": "success"}
+
+
+@app.delete("/api/v1/notifications")
+async def delete_all_notifications(db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    db.table("notifications").delete().eq("recruiter_id", user_id).execute()
     return {"status": "success"}
 
 
@@ -1704,7 +1730,7 @@ def generate_candidate_query_response(job: dict, query_text: str) -> str:
     return f"Thank you for your question regarding the {title} position{client_str}. We have recorded your query and forwarded it to our hiring team for review."
 
 
-def send_email(to_email: str, subject: str, html_body: str):
+def send_email(to_email: str, subject: str, html_body: str, reply_to: Optional[str] = None, sender_name: Optional[str] = None):
     import smtplib
     import os
     import re
@@ -1719,12 +1745,12 @@ def send_email(to_email: str, subject: str, html_body: str):
     smtp_from = os.getenv("SMTP_FROM", smtp_user or "noreply@kozker.ai")
     
     # Log to console & requests.log for local audit
-    log_msg = f"\n========================================\n[EMAIL DISPATCH] To: {to_email}\nSubject: {subject}\nBody:\n{html_body}\n========================================\n"
+    log_msg = f"\n========================================\n[EMAIL DISPATCH] To: {to_email}\nSubject: {subject}\nReply-To: {reply_to}\nSender-Name: {sender_name}\nBody:\n{html_body}\n========================================\n"
     logger.info(log_msg)
     
     try:
         with open("requests.log", "a") as f:
-            f.write(f"[{datetime.utcnow().isoformat()}] EMAIL To: {to_email} | Subject: {subject}\n{html_body}\n\n")
+            f.write(f"[{datetime.utcnow().isoformat()}] EMAIL To: {to_email} | Subject: {subject} | Reply-To: {reply_to}\n{html_body}\n\n")
     except Exception as le:
         logger.error(f"Failed to write email to requests.log: {le}")
         
@@ -1732,8 +1758,13 @@ def send_email(to_email: str, subject: str, html_body: str):
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            msg["From"] = smtp_from
+            if sender_name:
+                msg["From"] = f"{sender_name} <{smtp_from}>"
+            else:
+                msg["From"] = smtp_from
             msg["To"] = to_email
+            if reply_to:
+                msg["Reply-To"] = reply_to
             
             text_body = re.sub('<[^<]+?>', '', html_body)
             
@@ -1920,7 +1951,7 @@ async def get_all_candidate_queries(db: Client = Depends(get_supabase), user_id:
 
 
 @app.post("/api/v1/queries/{query_id}/answer")
-async def answer_candidate_query(query_id: str, payload: AnswerQueryModel, db: Client = Depends(get_supabase)):
+async def answer_candidate_query(query_id: str, payload: AnswerQueryModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
     updated_query = None
     try:
         res = db.table("candidate_queries").update({
@@ -1960,6 +1991,18 @@ async def answer_candidate_query(query_id: str, payload: AnswerQueryModel, db: C
         except Exception as je:
             logger.warning(f"Failed to fetch job title for email notification: {je}")
             
+        # Fetch recruiter details if user_id is present
+        recruiter_email = None
+        recruiter_name = None
+        if user_id:
+            try:
+                prof_res = db.table("profiles").select("email, full_name").eq("id", user_id).execute()
+                if prof_res.data:
+                    recruiter_email = prof_res.data[0].get("email")
+                    recruiter_name = prof_res.data[0].get("full_name")
+            except Exception as pe:
+                logger.warning(f"Failed to fetch recruiter profile for email metadata: {pe}")
+            
         subject = f"Answer to your query regarding the {job_title} position"
         html_body = f"""
         <html>
@@ -1981,7 +2024,7 @@ async def answer_candidate_query(query_id: str, payload: AnswerQueryModel, db: C
                         {ans_text}
                     </div>
                     
-                    <p style="margin-top: 25px;">Best regards,<br/>The Hiring Team</p>
+                    <p style="margin-top: 25px;">Best regards,<br/>{recruiter_name or 'The Hiring Team'}</p>
                 </div>
                 <div style="border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; font-size: 11px; color: #718096;">
                     This is an automated notification from Kozker Recruiter AI Workspace.
@@ -1989,7 +2032,7 @@ async def answer_candidate_query(query_id: str, payload: AnswerQueryModel, db: C
             </body>
         </html>
         """
-        send_email(cand_email, subject, html_body)
+        send_email(cand_email, subject, html_body, reply_to=recruiter_email, sender_name=recruiter_name)
     except Exception as e:
         logger.error(f"Failed to construct or send query response email: {e}")
 

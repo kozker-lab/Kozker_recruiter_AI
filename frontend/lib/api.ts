@@ -1438,6 +1438,17 @@ async function handleMockRequest<T>(
           query.is_resolved = data.is_resolved !== undefined ? data.is_resolved : true;
           return resolve(query as unknown as T);
         }
+        if (path.startsWith("/queries/") && path.endsWith("/answer") && method === "POST") {
+          const queryId = path.split("/")[2];
+          const query = mockDb.candidateQueries.find(q => q.id === queryId);
+          if (!query) return reject(new Error("Query not found"));
+          query.ai_response = data.response_text;
+          query.is_resolved = true;
+          
+          console.log(`[MOCK EMAIL DISPATCH] To: ${query.candidate_email} | Subject: Answer to your query | Body: ${data.response_text}`);
+          
+          return resolve(query as unknown as T);
+        }
         if (path.startsWith("/jobs/") && path.endsWith("/candidates") && method === "GET") {
           const id = path.split("/")[2];
           const job = mockDb.jobOpenings.find(j => j.id === id && (j.created_by === currentUserId || mockDb.requirements.some(r => r.id === j.requirement_id && r.created_by === currentUserId)));
@@ -2198,6 +2209,11 @@ async function handleMockRequest<T>(
           return resolve(list as unknown as T);
         }
 
+        if (path === "/notifications" && method === "DELETE") {
+          mockDb.notifications = mockDb.notifications.filter(n => n.recruiter_id !== currentUserId);
+          return resolve({ success: true } as unknown as T);
+        }
+
         if (path === "/notifications/read-all" && method === "POST") {
           mockDb.notifications.forEach(n => {
             if (n.recruiter_id === currentUserId) {
@@ -2229,6 +2245,21 @@ async function handleMockRequest<T>(
         if (path === "/activity_log" && method === "GET") {
           const list = mockDb.activityLogs.filter(a => a.actor_id === currentUserId);
           return resolve(list as unknown as T);
+        }
+
+        if (path === "/activity_log" && method === "DELETE") {
+          mockDb.activityLogs = mockDb.activityLogs.filter(a => a.actor_id !== currentUserId);
+          return resolve({ success: true } as unknown as T);
+        }
+
+        if (path.startsWith("/activity_log/") && method === "DELETE") {
+          const id = path.split("/")[2];
+          const index = mockDb.activityLogs.findIndex(a => a.id === id);
+          if (index !== -1) {
+            mockDb.activityLogs.splice(index, 1);
+            return resolve({ success: true } as unknown as T);
+          }
+          return reject(new Error("Activity log not found"));
         }
 
         // Generic 404
