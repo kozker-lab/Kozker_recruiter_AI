@@ -355,3 +355,48 @@ html[data-mode="dark"] textarea[class*="border"] {
   animation: zoom-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Ensure division lines in sidebar are visible in dark mode */
+html[data-mode="dark"] #sidebar-navigation {
+  border-right: 1px solid #44403c !important;
+}
+
+html[data-mode="dark"] #sidebar-navigation div.border-b {
+  border-bottom: 1px solid #44403c !important;
+}
+
+html[data-mode="dark"] #sidebar-navigation .active-workspace-panel {
+  border: 1px solid #44403c !important;
+}
+
+html[data-mode="dark"] #sidebar-navigation div.border-t {
+  border-top: 1px solid #44403c !important;
+}
+
+html[data-mode="dark"] #sidebar-navigation .profile-footer-panel {
+  border-top: 1px solid #44403c !important;
+}
+
+html[data-mode="dark"] #sidebar-navigation .profile-footer-panel button:not(.bg-neutral-900) {
+  border: 1px solid #44403c !important;
+}
+
+/* Ensure division lines and borders on the help page are visible in dark mode */
+html[data-mode="dark"] .help-border {
+  border-color: #44403c !important;
+}
+
+html[data-mode="dark"] .help-border-b {
+  border-bottom: 1px solid #44403c !important;
+}
+
+html[data-mode="dark"] .help-border-t {
+  border-top: 1px solid #44403c !important;
+}
+
+html[data-mode="dark"] .help-border-dashed {
+  border: 1px dashed #44403c !important;
+}
+
+
+
+

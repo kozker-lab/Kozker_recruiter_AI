@@ -184,6 +184,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   // Onboarding Tour States
   const [activeTutorial, setActiveTutorial] = useState(false);
+  const [activeTourType, setActiveTourType] = useState<string>("main");
   const [tourStep, setTourStep] = useState(0);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
@@ -542,23 +543,225 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     }
   }, [profile, pathname, router]);
 
+
+
+  const dashboardTourSteps = [
+    {
+      title: "Dashboard Overview",
+      content: "This is your main command center. Here you can track active pipelines, check overall platform metrics, and monitor background agent activity in real-time.",
+      targetId: "sidebar-navigation",
+      position: "right",
+      path: "/dashboard"
+    },
+    {
+      title: "System Live Status",
+      content: "This status bar shows the live connection health of your backend nodes, database queues, and AI model nodes.",
+      targetId: "header-notifications-toggle",
+      position: "bottom",
+      path: "/dashboard"
+    },
+    {
+      title: "Recruiter Copilot",
+      content: "Use the AI Copilot command panel to audit candidate profiles, check database statistics, or generate custom screening items.",
+      targetId: "header-chatbot-toggle",
+      position: "left-bottom",
+      path: "/dashboard"
+    }
+  ];
+
+  const clientsTourSteps = [
+    {
+      title: "Clients & Mandates Workspace",
+      content: "This workspace lists registered client companies and active hiring requirements. You can search, filter, and track statuses of all requirement descriptions.",
+      targetId: "requirements-search-bar",
+      position: "bottom",
+      path: "/clients"
+    },
+    {
+      title: "Registering Clients",
+      content: "Click this button to quickly add a new client profile (e.g. Stripe, Vercel) and establish hiring channels.",
+      targetId: "add-client-btn",
+      position: "right",
+      path: "/clients"
+    },
+    {
+      title: "Adding Requirements",
+      content: "Upload hiring mandates (PDF/DOCX/TXT) here. Our parsing engine will extract requirement parameters and required skills automatically.",
+      targetId: "add-requirement-btn",
+      position: "left-bottom",
+      path: "/clients"
+    }
+  ];
+
+  const jobsTourSteps = [
+    {
+      title: "AI Job Catalog",
+      content: "Here you can review and publish job openings created by our AI generator. Click any JD row to edit it interactively.",
+      targetId: "nav-jobs",
+      position: "right",
+      path: "/jobs"
+    },
+    {
+      title: "Skills Weighting",
+      content: "You can customize skills weighting parameters for each mandate so that candidates are ranked precisely based on your selection criteria.",
+      targetId: "nav-jobs",
+      position: "right",
+      path: "/jobs"
+    },
+    {
+      title: "Match Scanning",
+      content: "Once configuration is complete, run the match engine to compare applicant resumes and generate fuzzy match scores (0-100%).",
+      targetId: "nav-jobs",
+      position: "right",
+      path: "/jobs"
+    }
+  ];
+
+  const poolTourSteps = [
+    {
+      title: "Sourcing Pool Database",
+      content: "A centralized view of all candidate resumes parsed and stored. You can filter candidates by tags, skills, experience, or search parameters.",
+      targetId: "nav-pool",
+      position: "right",
+      path: "/pool"
+    },
+    {
+      title: "Add Candidates Manually",
+      content: "Click this button to paste resume text summaries or fill out basic candidate credentials manually.",
+      targetId: "add-candidate-btn",
+      position: "left-bottom",
+      path: "/pool"
+    },
+    {
+      title: "Bulk Import CSV",
+      content: "Got a batch of candidate profiles? Use the CSV importer to populate the Sourcing Pool instantly, skipping duplicates.",
+      targetId: "add-candidate-btn",
+      position: "left-bottom",
+      path: "/pool"
+    }
+  ];
+
+  const roundsTourSteps = [
+    {
+      title: "Pipeline Stages Panel",
+      content: "Track interview stages: Screening → Technical → HR → Final. Move candidates along the funnel easily.",
+      targetId: "nav-rounds",
+      position: "right",
+      path: "/rounds"
+    },
+    {
+      title: "Vetting Logs",
+      content: "Record technical notes, feedback scores, and rejection remarks. The AI uses these logs if candidates apply again later.",
+      targetId: "nav-rounds",
+      position: "right",
+      path: "/rounds"
+    }
+  ];
+
+  const qnaTourSteps = [
+    {
+      title: "Candidate Q&A Desk",
+      content: "Review candidate queries sent from the public apply page. You can easily view questions, inspect query contexts, and draft answers.",
+      targetId: "nav-qna",
+      position: "right",
+      path: "/qna"
+    },
+    {
+      title: "Resolving Queries",
+      content: "Click 'Resolve' after answering. This helps candidates get immediate clarification on job requirements or benefits.",
+      targetId: "nav-qna",
+      position: "right",
+      path: "/qna"
+    }
+  ];
+
+  const notificationsTourSteps = [
+    {
+      title: "System Notification logs",
+      content: "Review automated system notifications: JD draft ready alerts, match job completion logs, and pipeline triggers.",
+      targetId: "nav-notifications",
+      position: "right",
+      path: "/notifications"
+    },
+    {
+      title: "System Audit Trail",
+      content: "This logs recruiter action audits, client creations, and error alerts to ensure transparent team operations.",
+      targetId: "nav-notifications",
+      position: "right",
+      path: "/notifications"
+    }
+  ];
+
+  const settingsTourSteps = [
+    {
+      title: "Workspace Profile Settings",
+      content: "Configure your full name, upload email avatars, configure agency subdomains, and manage account preferences.",
+      targetId: "nav-settings",
+      position: "right",
+      path: "/profile"
+    },
+    {
+      title: "Save Profile Preferences",
+      content: "Keep your details updated. Your name is logged as the executor for client creations and candidate matching logs.",
+      targetId: "nav-settings",
+      position: "right",
+      path: "/profile"
+    }
+  ];
+
+  const helpTourSteps = [
+    {
+      title: "Operations Help Desk Center",
+      content: "Redesigned help resource center. View interactive stepper workflow timelines and diagnostics tools.",
+      targetId: "nav-help",
+      position: "right",
+      path: "/help"
+    },
+    {
+      title: "Diagnostics & Modals",
+      content: "Run live system checks via the Diag Terminal, submit support tickets, or review system release logs.",
+      targetId: "nav-help",
+      position: "right",
+      path: "/help"
+    }
+  ];
+
+  const currentSteps = React.useMemo(() => {
+    switch (activeTourType) {
+      case "dashboard": return dashboardTourSteps;
+      case "clients": return clientsTourSteps;
+      case "jobs": return jobsTourSteps;
+      case "pool": return poolTourSteps;
+      case "rounds": return roundsTourSteps;
+      case "qna": return qnaTourSteps;
+      case "notifications": return notificationsTourSteps;
+      case "settings": return settingsTourSteps;
+      case "help": return helpTourSteps;
+      default: return tourSteps;
+    }
+  }, [activeTourType]);
+
   // Check if we should auto-start or resume the tour
   React.useEffect(() => {
     if (profile?.is_onboarded) {
       const showTut = localStorage.getItem("show_kozker_tutorial");
       if (showTut === "true") {
-        const savedStepStr = localStorage.getItem("kozker_tutorial_step");
+        const savedTourType = localStorage.getItem("kozker_active_tour_type") || "main";
+        const stepKey = savedTourType === "main" ? "kozker_tutorial_step" : "kozker_page_tour_step";
+        const savedStepStr = localStorage.getItem(stepKey);
         const savedStep = savedStepStr ? parseInt(savedStepStr, 10) : 0;
+        setActiveTourType(savedTourType);
         setTourStep(savedStep);
         setActiveTutorial(true);
       }
     }
-  }, [profile]);
+  }, [profile, pathname]);
 
   // Bounding rect calculator & DOM Polling
   React.useEffect(() => {
     if (!activeTutorial) return;
-    const step = tourSteps[tourStep];
+    const step = currentSteps[tourStep];
+    if (!step) return;
 
     // Route transition if needed
     if (step.path && pathname !== step.path) {
@@ -614,33 +817,44 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     locateElement();
     const interval = setInterval(locateElement, 300);
     return () => clearInterval(interval);
-  }, [tourStep, activeTutorial, pathname]);
+  }, [tourStep, activeTutorial, pathname, currentSteps]);
 
   const handleSkipTutorial = () => {
     setActiveTutorial(false);
-    localStorage.setItem("kozker_tutorial_skipped", "true");
-    localStorage.setItem("kozker_tutorial_step", tourStep.toString());
     localStorage.removeItem("show_kozker_tutorial");
+    if (activeTourType === "main") {
+      localStorage.setItem("kozker_tutorial_skipped", "true");
+      localStorage.setItem("kozker_tutorial_step", tourStep.toString());
+    } else {
+      localStorage.removeItem("kozker_page_tour_step");
+      localStorage.removeItem("kozker_active_tour_type");
+    }
     router.push("/dashboard");
   };
 
   const handleNextStep = () => {
-    if (tourStep < tourSteps.length - 1) {
+    if (tourStep < currentSteps.length - 1) {
       const nextStep = tourStep + 1;
       setTourStep(nextStep);
-      localStorage.setItem("kozker_tutorial_step", nextStep.toString());
+      const stepKey = activeTourType === "main" ? "kozker_tutorial_step" : "kozker_page_tour_step";
+      localStorage.setItem(stepKey, nextStep.toString());
 
-      const step = tourSteps[nextStep];
+      const step = currentSteps[nextStep];
       if (step.path && pathname !== step.path) {
         router.push(step.path);
       }
     } else {
       setActiveTutorial(false);
-      localStorage.setItem("kozker_tutorial_completed", "true");
-      localStorage.removeItem("kozker_tutorial_skipped");
-      localStorage.removeItem("kozker_tutorial_step");
       localStorage.removeItem("show_kozker_tutorial");
-      router.push("/dashboard");
+      if (activeTourType === "main") {
+        localStorage.setItem("kozker_tutorial_completed", "true");
+        localStorage.removeItem("kozker_tutorial_skipped");
+        localStorage.removeItem("kozker_tutorial_step");
+      } else {
+        localStorage.removeItem("kozker_page_tour_step");
+        localStorage.removeItem("kozker_active_tour_type");
+      }
+      router.push(activeTourType === "main" ? "/dashboard" : pathname);
     }
   };
 
@@ -648,9 +862,10 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     if (tourStep > 0) {
       const prevStep = tourStep - 1;
       setTourStep(prevStep);
-      localStorage.setItem("kozker_tutorial_step", prevStep.toString());
+      const stepKey = activeTourType === "main" ? "kozker_tutorial_step" : "kozker_page_tour_step";
+      localStorage.setItem(stepKey, prevStep.toString());
 
-      const step = tourSteps[prevStep];
+      const step = currentSteps[prevStep];
       if (step.path && pathname !== step.path) {
         router.push(step.path);
       }
@@ -658,15 +873,36 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   };
 
   const handleResumeTutorial = () => {
-    const savedStepStr = localStorage.getItem("kozker_tutorial_step");
+    const savedTourType = localStorage.getItem("kozker_active_tour_type") || "main";
+    const stepKey = savedTourType === "main" ? "kozker_tutorial_step" : "kozker_page_tour_step";
+    const savedStepStr = localStorage.getItem(stepKey);
     const savedStep = savedStepStr ? parseInt(savedStepStr, 10) : 0;
+    
+    setActiveTourType(savedTourType);
     setTourStep(savedStep);
     setActiveTutorial(true);
     localStorage.setItem("show_kozker_tutorial", "true");
     localStorage.removeItem("kozker_tutorial_skipped");
 
-    const step = tourSteps[savedStep];
-    if (step.path && pathname !== step.path) {
+    const stepsList = savedTourType === "main" ? tourSteps : (
+      savedTourType === "dashboard" ? dashboardTourSteps : (
+        savedTourType === "clients" ? clientsTourSteps : (
+          savedTourType === "jobs" ? jobsTourSteps : (
+            savedTourType === "pool" ? poolTourSteps : (
+              savedTourType === "rounds" ? roundsTourSteps : (
+                savedTourType === "qna" ? qnaTourSteps : (
+                  savedTourType === "notifications" ? notificationsTourSteps : (
+                    savedTourType === "settings" ? settingsTourSteps : helpTourSteps
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    );
+    const step = stepsList[savedStep];
+    if (step && step.path && pathname !== step.path) {
       router.push(step.path);
     }
   };
@@ -1096,21 +1332,21 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       />
 
       {/* Onboarding Tour Tooltips */}
-      {activeTutorial && (
+      {activeTutorial && currentSteps[tourStep] && (
         <div className="fixed inset-0 z-50 pointer-events-none">
           {/* Backdrop for welcome/finish steps (no targetId) */}
-          {!tourSteps[tourStep].targetId && (
+          {!currentSteps[tourStep].targetId && (
             <div className="absolute inset-0 bg-neutral-950/40 backdrop-blur-xs pointer-events-auto" />
           )}
 
           {/* Highlight target element (dim surrounding area without blur) */}
-          {tourSteps[tourStep].targetId && (
+          {currentSteps[tourStep].targetId && (
             <div
               className="fixed border-2 border-primary rounded-sm bg-transparent z-50 transition-all duration-300 pointer-events-none"
               style={{
                 boxShadow: "0 0 0 9999px rgba(12, 10, 9, 0.45), 0 0 15px rgba(255,110,48,0.5)",
                 ...(() => {
-                  const el = document.getElementById(tourSteps[tourStep].targetId);
+                  const el = document.getElementById(currentSteps[tourStep].targetId);
                   if (!el) return { display: "none" };
                   const rect = el.getBoundingClientRect();
                   return {
@@ -1134,13 +1370,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           >
             <div className="space-y-1">
               <span className="text-[9px] bg-primary/10 border border-primary/20 text-primary font-mono px-2 py-0.5 rounded-sm uppercase font-bold tracking-wider">
-                Workspace Tour • Step {tourStep + 1} of {tourSteps.length}
+                {activeTourType === "main" ? "Workspace Tour" : `${activeTourType.toUpperCase()} TOUR`} • Step {tourStep + 1} of {currentSteps.length}
               </span>
               <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider pt-1">
-                {tourSteps[tourStep].title}
+                {currentSteps[tourStep].title}
               </h3>
               <p className="text-neutral-500 text-xs leading-relaxed">
-                {tourSteps[tourStep].content}
+                {currentSteps[tourStep].content}
               </p>
             </div>
 
@@ -1164,7 +1400,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                   onClick={handleNextStep}
                   className="px-3.5 py-1 bg-primary hover:bg-primary/95 text-neutral-white rounded-sm cursor-pointer font-semibold text-[10px] tracking-wider uppercase"
                 >
-                  {tourStep === tourSteps.length - 1 ? "Get Started" : "Next"}
+                  {tourStep === currentSteps.length - 1 ? (activeTourType === "main" ? "Get Started" : "Finish") : "Next"}
                 </button>
               </div>
             </div>
@@ -1207,12 +1443,37 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
       {/* Floating Tutorial Progress & Resume Banner */}
       {!activeTutorial && pathname !== "/welcome" && profile?.is_onboarded && !isBannerDismissed && (() => {
+        const savedTourType = localStorage.getItem("kozker_active_tour_type") || "main";
         const isCompleted = localStorage.getItem("kozker_tutorial_completed") === "true";
-        if (isCompleted) return null;
+        if (isCompleted && savedTourType === "main") return null;
 
-        const savedStepStr = localStorage.getItem("kozker_tutorial_step");
+        const isSkipped = localStorage.getItem("kozker_tutorial_skipped") === "true";
+        if (savedTourType === "main" && !isSkipped) return null;
+
+        const stepKey = savedTourType === "main" ? "kozker_tutorial_step" : "kozker_page_tour_step";
+        const savedStepStr = localStorage.getItem(stepKey);
         const savedStep = savedStepStr ? parseInt(savedStepStr, 10) : 0;
-        const progressPercent = Math.round((savedStep / (tourSteps.length - 1)) * 100);
+        
+        const stepsList = savedTourType === "main" ? tourSteps : (
+          savedTourType === "dashboard" ? dashboardTourSteps : (
+            savedTourType === "clients" ? clientsTourSteps : (
+              savedTourType === "jobs" ? jobsTourSteps : (
+                savedTourType === "pool" ? poolTourSteps : (
+                  savedTourType === "rounds" ? roundsTourSteps : (
+                    savedTourType === "qna" ? qnaTourSteps : (
+                      savedTourType === "notifications" ? notificationsTourSteps : (
+                        savedTourType === "settings" ? settingsTourSteps : helpTourSteps
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        );
+
+        if (!stepsList || stepsList.length === 0) return null;
+        const progressPercent = Math.round((savedStep / (stepsList.length - 1)) * 100);
 
         return (
           <div className="fixed bottom-24 right-6 bg-neutral-900 border border-neutral-800 text-neutral-100 p-4 rounded-sm shadow-2xl max-w-sm w-full z-45 flex flex-col gap-3.5 select-none font-sans text-xs">
@@ -1223,10 +1484,10 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                 </div>
                 <div className="space-y-0.5">
                   <h4 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-white">
-                    Walkthrough Progress
+                    {savedTourType === "main" ? "Walkthrough Progress" : `${savedTourType.toUpperCase()} TOUR`}
                   </h4>
                   <p className="text-neutral-400 text-[10px] leading-relaxed">
-                    Resume the interactive walkthrough to learn all features and workflows of Kozker.
+                    Resume the interactive walkthrough to learn all features and workflows.
                   </p>
                 </div>
               </div>
@@ -1243,7 +1504,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             <div className="space-y-1.5">
               <div className="flex justify-between text-[9px] font-mono text-neutral-400">
                 <span>Progress: {progressPercent}%</span>
-                <span>Step {savedStep + 1} of {tourSteps.length}</span>
+                <span>Step {savedStep + 1} of {stepsList.length}</span>
               </div>
               <div className="w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
                 <div
@@ -1256,9 +1517,12 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             <div className="flex gap-2 justify-end pt-1">
               <button
                 onClick={() => {
-                  localStorage.setItem("kozker_tutorial_completed", "true");
+                  if (savedTourType === "main") {
+                    localStorage.setItem("kozker_tutorial_completed", "true");
+                  }
                   localStorage.removeItem("kozker_tutorial_step");
                   localStorage.removeItem("kozker_tutorial_skipped");
+                  localStorage.removeItem("kozker_active_tour_type");
                   setIsBannerDismissed(true);
                 }}
                 className="px-2.5 py-1 border border-neutral-800 hover:bg-neutral-800 text-neutral-450 hover:text-neutral-350 rounded-sm font-mono text-[9px] uppercase tracking-wider cursor-pointer"

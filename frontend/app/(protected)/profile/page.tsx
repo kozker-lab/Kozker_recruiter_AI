@@ -66,6 +66,11 @@ export default function ProfilePage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpValue, setOtpValue] = useState("");
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpTimer, setOtpTimer] = useState(0);
 
   // Load profile and preferences on component mount
   useEffect(() => {
@@ -106,6 +111,16 @@ export default function ProfilePage() {
       setSelectedTheme(localStorage.getItem("kozker_pref_theme") || "sunset");
     }
   }, [profile]);
+
+  // OTP Countdown Timer
+  useEffect(() => {
+    if (otpTimer > 0) {
+      const interval = setInterval(() => {
+        setOtpTimer((prev) => prev - 1);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [otpTimer]);
 
   // Fetch LinkedIn status
   const fetchLinkedinStatus = async () => {
@@ -327,7 +342,9 @@ export default function ProfilePage() {
     }
   };
 
-  // Update password separately
+  const [otpError, setOtpError] = useState("");
+
+  // Update password: request OTP first
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setSuccessMsg("");
@@ -338,21 +355,107 @@ export default function ProfilePage() {
       return;
     }
 
+    if (password.length < 6) {
+      setErrorMsg("Password must be at least 6 characters long.");
+      return;
+    }
+
     setUpdatingPassword(true);
     try {
-      const { error: pwError } = await supabase.auth.updateUser({
-        password: password,
-      });
-      if (pwError) throw pwError;
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      setSuccessMsg("Password updated successfully!");
-      setPassword("");
-      
-      setTimeout(() => setSuccessMsg(""), 4000);
+      const res = await fetch("http://localhost:8000/api/v1/auth/request-password-otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ new_password: password }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to request password OTP.");
+      }
+
+      setOtpModalOpen(true);
+      setOtpValue("");
+      setOtpError("");
+      setOtpTimer(60);
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to update password");
+      setErrorMsg(err.message || "Failed to request password verification.");
     } finally {
       setUpdatingPassword(false);
+    }
+  };
+
+  // Confirm password OTP code
+  const handleConfirmPasswordOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpError("");
+    setVerifyingOtp(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const res = await fetch("http://localhost:8000/api/v1/auth/confirm-password-otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ otp: otpValue }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Verification failed. Invalid or expired OTP.");
+      }
+
+      setOtpModalOpen(false);
+      setSuccessMsg("Password updated successfully!");
+      setPassword("");
+      setOtpValue("");
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (err: any) {
+      setOtpError(err.message || "Failed to confirm password update.");
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
+  // Resend password OTP
+  const handleResendOtp = async () => {
+    if (otpTimer > 0) return;
+    setOtpError("");
+    setSendingOtp(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const res = await fetch("http://localhost:8000/api/v1/auth/request-password-otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ new_password: password }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to resend OTP.");
+      }
+
+      setOtpTimer(60);
+      setOtpError("A new verification code has been sent.");
+    } catch (err: any) {
+      setOtpError(err.message || "Failed to resend OTP.");
+    } finally {
+      setSendingOtp(false);
     }
   };
 
@@ -1078,6 +1181,112 @@ export default function ProfilePage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* OTP Verification Modal */}
+      {otpModalOpen && (
+        <div className="fixed inset-0 bg-neutral-950/45 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in select-none">
+          <div className="bg-white border border-neutral-200 rounded-sm w-full max-w-md p-6 space-y-5 shadow-2xl text-neutral-700 animate-slide-up">
+            
+            {/* Header */}
+            <div className="flex items-center gap-3 border-b border-neutral-100 pb-3">
+              <div className="w-8 h-8 rounded-sm bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                <Shield className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-tight font-black text-sm text-neutral-800 uppercase tracking-wider">Confirm Password Change</h3>
+                <p className="text-[10px] text-neutral-400 font-mono uppercase">Identity Verification</p>
+              </div>
+            </div>
+
+            {/* Description */}
+            <p className="text-neutral-500 text-xs leading-relaxed">
+              For security, we sent a 6-digit One-Time Password (OTP) to your registered email <strong className="text-neutral-850 font-semibold">{user?.email ? user.email.replace(/(.{2})(.*)(?=@)/, (gp1, gp2, gp3) => gp2 + "*".repeat(gp3.length)) : "your email"}</strong>. Please enter the code below to complete the password update.
+            </p>
+
+            {/* Error or Info Feedback */}
+            {otpError && (
+              <div className={`p-2.5 rounded-sm border text-[11px] font-medium flex items-center gap-2 ${
+                otpError.includes("sent") 
+                  ? "bg-indigo-50 text-indigo-700 border-indigo-150" 
+                  : "bg-rose-50 text-rose-800 border-rose-150"
+              }`}>
+                {otpError.includes("sent") ? (
+                  <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                ) : (
+                  <span className="w-1.5 h-1.5 bg-rose-600 rounded-full shrink-0"></span>
+                )}
+                <span>{otpError}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleConfirmPasswordOtp} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">6-Digit Verification Code</label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  required
+                  placeholder="0 0 0 0 0 0"
+                  value={otpValue}
+                  onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, ""))}
+                  className="w-full text-center py-3 bg-neutral-50 border border-neutral-250 rounded-sm text-lg font-mono font-bold tracking-widest text-neutral-900 placeholder:text-neutral-300 focus:border-primary transition-all outline-hidden"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtpModalOpen(false);
+                    setErrorMsg("");
+                    setSuccessMsg("");
+                  }}
+                  className="flex-1 py-2 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 font-bold uppercase tracking-wider text-[10px] cursor-pointer text-center transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={verifyingOtp || otpValue.length < 6}
+                  className="flex-1 py-2 bg-primary hover:bg-primary/95 text-neutral-white font-bold uppercase tracking-wider text-[10px] rounded-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                >
+                  {verifyingOtp ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-neutral-white border-t-transparent rounded-full animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="w-3.5 h-3.5" />
+                      Verify & Update
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+
+            {/* Resend Options */}
+            <div className="text-center pt-2 border-t border-neutral-100 flex items-center justify-between text-[11px] font-mono text-neutral-450">
+              <span>Didn't receive the email?</span>
+              {otpTimer > 0 ? (
+                <span>Resend in <strong className="text-primary font-bold">{otpTimer}s</strong></span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={sendingOtp}
+                  className="text-primary hover:text-primary/80 font-bold uppercase tracking-wider text-[10px] cursor-pointer disabled:opacity-50"
+                >
+                  {sendingOtp ? "Sending..." : "Resend OTP"}
+                </button>
+              )}
+            </div>
+
           </div>
         </div>
       )}

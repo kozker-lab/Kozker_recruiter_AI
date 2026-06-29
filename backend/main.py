@@ -46,6 +46,9 @@ LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI", f"{BACKEND_BASE_URL}/
 # Global backup in-memory storage for candidate queries fallback
 in_memory_queries: Dict[str, List[Dict[str, Any]]] = {}
 
+# Global memory cache for pending password updates & verification OTPs
+password_otps: Dict[str, Dict[str, Any]] = {}
+
 # Initialize FastAPI
 app = FastAPI(title="Kozker Recruiter AI Backend", version="1.0.0")
 
@@ -636,6 +639,13 @@ class ResolveQueryModel(BaseModel):
 class AnswerQueryModel(BaseModel):
     response_text: str
 
+
+class PasswordOtpRequestModel(BaseModel):
+    new_password: str
+
+
+class PasswordOtpConfirmModel(BaseModel):
+    otp: str
 
 
 # ============================================================
@@ -4275,6 +4285,112 @@ async def share_job_linkedin(job_id: str, payload: SharePostModel, db: Client = 
     except Exception as e:
         logger.error(f"Error sharing job on LinkedIn: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to post to LinkedIn: {str(e)}")
+
+
+@app.post("/api/v1/auth/request-password-otp")
+async def request_password_otp(payload: PasswordOtpRequestModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Get user email and full name from the profiles table
+    try:
+        prof_res = db.table("profiles").select("email, full_name").eq("id", user_id).execute()
+        if not prof_res.data:
+            raise HTTPException(status_code=404, detail="Recruiter profile not found")
+        
+        user_email = prof_res.data[0].get("email")
+        user_name = prof_res.data[0].get("full_name") or "Recruiter"
+    except Exception as e:
+        logger.error(f"Failed to fetch profile details for password OTP: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch user profile details")
+
+    if not user_email:
+        raise HTTPException(status_code=400, detail="User email not found in profile")
+
+    # Generate 6-digit numeric OTP
+    import random
+    otp_code = f"{random.randint(100000, 999999)}"
+    
+    # Store OTP in cache (expires in 5 minutes)
+    password_otps[user_id] = {
+        "otp": otp_code,
+        "new_password": payload.new_password,
+        "expires_at": time.time() + 300
+    }
+    
+    # Send email
+    subject = "Confirm Your Password Change Request - Kozker AI"
+    html_body = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 4px;">
+            <div style="background-color: #ff7e5f; padding: 15px; border-radius: 4px 4px 0 0; text-align: center;">
+                <h2 style="color: #ffffff; margin: 0; font-size: 18px; text-transform: uppercase; letter-spacing: 1px;">Kozker Security</h2>
+            </div>
+            <div style="padding: 20px 10px; text-align: center;">
+                <p style="font-size: 14px; color: #4a5568;">Hi {user_name},</p>
+                <p style="font-size: 14px; color: #4a5568;">You requested a password change. Please use the following One-Time Password (OTP) to confirm your identity:</p>
+                <div style="background-color: #f7fafc; border: 1px dashed #cbd5e0; padding: 15px; margin: 20px auto; font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #ff7e5f; display: inline-block; border-radius: 4px;">
+                    {otp_code}
+                </div>
+                <p style="font-size: 12px; color: #718096; margin-top: 10px;">This OTP is valid for 5 minutes. If you did not request this change, please ignore this email and secure your account immediately.</p>
+            </div>
+            <div style="border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; font-size: 11px; color: #718096;">
+                This is a secure automated notification from Kozker Recruiter AI.
+            </div>
+        </body>
+    </html>
+    """
+    try:
+        send_email(user_email, subject, html_body, sender_name="Kozker Security")
+    except Exception as e:
+        logger.error(f"Failed to dispatch password change OTP email: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send verification email")
+
+    return {"status": "success", "message": "OTP has been sent to your registered email."}
+
+
+@app.post("/api/v1/auth/confirm-password-otp")
+async def confirm_password_otp(payload: PasswordOtpConfirmModel, request: Request, user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    otp_data = password_otps.get(user_id)
+    if not otp_data:
+        raise HTTPException(status_code=400, detail="No pending password change request found or OTP expired.")
+    
+    if time.time() > otp_data["expires_at"]:
+        password_otps.pop(user_id, None)
+        raise HTTPException(status_code=400, detail="OTP code has expired. Please request a new one.")
+        
+    if otp_data["otp"] != payload.otp.strip():
+        raise HTTPException(status_code=400, detail="Invalid OTP code. Please check and try again.")
+        
+    new_password = otp_data["new_password"]
+    
+    # Retrieve user's JWT from Authorization header
+    auth_header = request.headers.get("Authorization", "")
+    jwt_token = ""
+    if auth_header:
+        if auth_header.startswith("Bearer "):
+            jwt_token = auth_header.split(" ")[1]
+        elif auth_header.startswith("eyJ"):
+            jwt_token = auth_header
+            
+    if not jwt_token:
+        raise HTTPException(status_code=401, detail="Missing authorization token")
+        
+    # Update password using user-specific client
+    try:
+        user_client = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+        user_client.auth.update_user(attributes={"password": new_password})
+        
+        # Evict from cache
+        password_otps.pop(user_id, None)
+    except Exception as e:
+        logger.error(f"User password update failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update password: {str(e)}")
+        
+    return {"status": "success", "message": "Password updated successfully."}
 
 
 # Simple index status check
