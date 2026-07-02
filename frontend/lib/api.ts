@@ -5,8 +5,10 @@ import {
 } from "../types";
 import { createClient } from "./supabase/client";
 
-// Base Configuration - Updated for Tunnel Support
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+// Base Configuration - Dynamic Browser/Server Resolving
+const isBrowser = typeof window !== "undefined";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
+  || (isBrowser ? `${window.location.origin}/api/v1` : "http://backend:8000/api/v1");
 
 // Persistent memory-store for mock fallback
 // Serves as a local stateful database to make the UI completely interactive

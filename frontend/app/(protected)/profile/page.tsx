@@ -10,6 +10,7 @@ import { useCurrentUser, useProfile, useUpdateProfile } from "@/lib/hooks/useAut
 import { createClient } from "@/lib/supabase/client";
 import { useSearchParams } from "next/navigation";
 import UserAvatar, { GRADIENTS, ICONS } from "@/components/UserAvatar";
+import { API_BASE_URL } from "@/lib/api";
 
 const THEMES = [
   { id: "sunset", name: "Sunset Orange", color: "#FF6E30" },
@@ -128,7 +129,7 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       
-      const res = await fetch("http://localhost:8000/api/v1/integrations/linkedin/status", {
+      const res = await fetch(`${API_BASE_URL}/integrations/linkedin/status`, {
         headers: token ? { "Authorization": `Bearer ${token}` } : {},
       });
       if (res.ok) {
@@ -170,7 +171,7 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       
-      const res = await fetch(`http://localhost:8000/api/v1/integrations/linkedin/authorize?t=${Date.now()}`, {
+      const res = await fetch(`${API_BASE_URL}/integrations/linkedin/authorize?t=${Date.now()}`, {
         headers: token ? { "Authorization": `Bearer ${token}` } : {},
       });
       if (!res.ok) {
@@ -194,7 +195,7 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       
-      const res = await fetch("http://localhost:8000/api/v1/integrations/linkedin/disconnect", {
+      const res = await fetch(`${API_BASE_URL}/integrations/linkedin/disconnect`, {
         method: "POST",
         headers: token ? { "Authorization": `Bearer ${token}` } : {},
       });
@@ -222,7 +223,7 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       
-      const res = await fetch("http://localhost:8000/api/v1/integrations/linkedin/company-page", {
+      const res = await fetch(`${API_BASE_URL}/integrations/linkedin/company-page`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -281,7 +282,7 @@ export default function ProfilePage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("http://localhost:8000/upload-avatar", {
+      const res = await fetch(API_BASE_URL.replace("/api/v1", "") + "/upload-avatar", {
         method: "POST",
         headers: token ? { "Authorization": `Bearer ${token}` } : {},
         body: formData,
@@ -365,7 +366,7 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
-      const res = await fetch("http://localhost:8000/api/v1/auth/request-password-otp", {
+      const res = await fetch(`${API_BASE_URL}/auth/request-password-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -400,7 +401,7 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
-      const res = await fetch("http://localhost:8000/api/v1/auth/confirm-password-otp", {
+      const res = await fetch(`${API_BASE_URL}/auth/confirm-password-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -436,7 +437,7 @@ export default function ProfilePage() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
-      const res = await fetch("http://localhost:8000/api/v1/auth/request-password-otp", {
+      const res = await fetch(`${API_BASE_URL}/auth/request-password-otp`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
