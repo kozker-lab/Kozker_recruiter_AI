@@ -412,7 +412,7 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
               <div className="flex items-center gap-4 bg-neutral-50 p-4 border border-neutral-200 rounded-sm">
                 <div className="text-center space-y-1">
                   <span className="text-[28px] font-tight font-bold text-primary tracking-tight block">
-                    {app.match_score || app.fuzzy_score}%
+                    {app.fuzzy_score}%
                   </span>
                   <span className="text-[9px] uppercase tracking-wider text-neutral-400 font-bold font-mono">Fuzzy Fit</span>
                 </div>

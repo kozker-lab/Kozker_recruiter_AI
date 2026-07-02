@@ -2441,11 +2441,14 @@ async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase))
                     application_id = app_rec["id"]
                     db.table("job_candidates").update({"application_id": application_id}).eq("id", row["id"]).execute()
                     
+        # Resolve fuzzy score from application record if available, fallback to job_candidate table score
+        fuzzy_score = app_rec.get("fuzzy_score") if (app_rec and app_rec.get("fuzzy_score") is not None) else (row.get("fuzzy_score") or 0.0)
+
         formatted.append({
             "id": row["id"],
             "job_opening_id": row["job_opening_id"],
             "application_id": application_id,
-            "fuzzy_score": row["fuzzy_score"],
+            "fuzzy_score": fuzzy_score,
             "rank_order": row["rank_order"],
             "candidate_id": row["candidate_id"],
             "candidate_name": cand.get("full_name", "Unknown"),
