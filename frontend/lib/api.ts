@@ -540,83 +540,49 @@ function calculateMockFuzzyMatchScore(cand: Candidate, jobId: string) {
   };
 }
 
-// API fetch wrapper with defensive logging and mock fallbacks
+// API fetch wrapper with absolute error propagation (no mock fallback)
 export async function apiRequest<T>(
-  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   data?: any
 ): Promise<T> {
-  let serverReached = false;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  
+  // Retrieve Supabase token if available
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    
-    // Retrieve Supabase token if available
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        headers["Authorization"] = `Bearer ${session.access_token}`;
-      }
-    } catch (tokenErr) {
-      console.warn("Could not retrieve supabase token for API request", tokenErr);
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      headers["Authorization"] = `Bearer ${session.access_token}`;
     }
-    
-    // Attempt real backend call
+  } catch (tokenErr) {
+    console.warn("Could not retrieve supabase token for API request", tokenErr);
+  }
+  
+  try {
     const res = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers,
       body: data ? JSON.stringify(data) : undefined,
     });
-    serverReached = true;
     
-    if (res.ok) {
-      return await res.json() as T;
-    }
-    
-    if (res.status === 418 || res.status === 404 || res.status === 500 || res.status === 503) {
-      const errBody = await res.json().catch(() => ({}));
-      const errMsg = errBody.detail || `Request failed with status ${res.status}`;
-      
-      const hasUuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(path);
-      if (hasUuid) {
-        throw new Error(errMsg);
-      }
-      
-      const isCandidatePath = path.startsWith("/candidates/");
-      const candidateId = isCandidatePath ? path.split("/")[2] : null;
-      const isMockCandidate = candidateId ? candidateId.startsWith("cand-") : false;
-      
-      if (isCandidatePath && !isMockCandidate) {
-        console.error(`Backend candidate API call failed: ${errMsg}`);
-        throw new Error(`Backend candidate API call failed: ${errMsg}`);
-      }
-      
-      console.warn(`API returned status ${res.status} (${errMsg}). Falling back to persisted mock database.`);
-    } else {
+    if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       const errMsg = errBody.detail || `Request failed with status ${res.status}`;
       throw new Error(errMsg);
     }
+    
+    return await res.json() as T;
   } catch (err) {
-    const hasUuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(path);
-    if (hasUuid) {
-      if (!serverReached) {
-        throw new Error(`Backend server not reached. Please check if your backend is running. (${err instanceof Error ? err.message : err})`);
-      } else {
-        throw err;
-      }
-    }
-    if (err instanceof Error && !err.message.includes("Request failed with status") && !err.message.includes("Backend candidate API call failed")) {
-      console.warn("Backend server not reached. Serving data from static mock storage fallback.", err);
-    } else {
-      throw err;
-    }
+    console.error(`API Request to ${path} failed:`, err);
+    throw new Error(
+      err instanceof Error 
+        ? err.message 
+        : "Failed to connect to the backend server. Please make sure the service is online."
+    );
   }
-
-  // Persisted Mock Database Handlers
-  return handleMockRequest<T>(method, path, data);
 }
 
 // Route matching patterns for the mock layer
