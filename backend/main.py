@@ -55,12 +55,23 @@ app = FastAPI(title="Kozker Recruiter AI Backend", version="1.0.0")
 # CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_origin_regex=r"https://.*\.trycloudflare\.com",
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost",
+        "http://127.0.0.1",
+        "http://kozker.localhost",
+        "http://api.localhost",
+        "https://localhost",
+        "https://kozker.localhost",
+        "https://api.localhost"
+    ],
+    allow_origin_regex=r"https://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.exception_handler(APIError)
 async def postgrest_api_error_handler(request: Request, exc: APIError):

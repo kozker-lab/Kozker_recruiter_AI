@@ -1,15 +1,41 @@
-version: '3.8'
-
 services:
+  traefik:
+    image: traefik:v3.6
+    container_name: traefik_proxy
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Auto-redirect all HTTP (port 80) requests to HTTPS (port 443)
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080" # Traefik dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    environment:
+      - DOCKER_API_VERSION=1.40
+    restart: always
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: kozker_backend
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     env_file:
       - ./backend/.env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls=true"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
     restart: always
 
   frontend:
@@ -20,12 +46,18 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://covhcpsyliesrgkjxhai.supabase.co}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b}
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.localhost/api/v1}
     container_name: kozker_frontend
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     env_file:
       - ./frontend/.env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`localhost`) || Host(`kozker.localhost`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
     restart: always
     depends_on:
       - backend
