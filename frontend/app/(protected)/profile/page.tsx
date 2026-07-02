@@ -73,6 +73,33 @@ export default function ProfilePage() {
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
 
+  const [customDialog, setCustomDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    isConfirm: boolean;
+    onConfirm?: () => void;
+  } | null>(null);
+
+  const showCustomConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setCustomDialog({
+      isOpen: true,
+      title,
+      message,
+      isConfirm: true,
+      onConfirm
+    });
+  };
+
+  const showCustomAlert = (title: string, message: string) => {
+    setCustomDialog({
+      isOpen: true,
+      title,
+      message,
+      isConfirm: false
+    });
+  };
+
   // Load profile and preferences on component mount
   useEffect(() => {
     if (profile) {
@@ -187,31 +214,36 @@ export default function ProfilePage() {
   };
 
   const handleDisconnectLinkedin = async () => {
-    if (!confirm("Are you sure you want to disconnect your LinkedIn account?")) return;
-    setSuccessMsg("");
-    setErrorMsg("");
-    setDisconnectingLinkedin(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      
-      const res = await fetch(`${API_BASE_URL}/integrations/linkedin/disconnect`, {
-        method: "POST",
-        headers: token ? { "Authorization": `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        throw new Error("Failed to disconnect LinkedIn account");
+    showCustomConfirm(
+      "Disconnect Account",
+      "Are you sure you want to disconnect your LinkedIn account?",
+      async () => {
+        setSuccessMsg("");
+        setErrorMsg("");
+        setDisconnectingLinkedin(true);
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token;
+          
+          const res = await fetch(`${API_BASE_URL}/integrations/linkedin/disconnect`, {
+            method: "POST",
+            headers: token ? { "Authorization": `Bearer ${token}` } : {},
+          });
+          if (!res.ok) {
+            throw new Error("Failed to disconnect LinkedIn account");
+          }
+          setLinkedinConnected(false);
+          setLinkedinMemberId(null);
+          setLinkedinCompanyPageId("");
+          setSuccessMsg("LinkedIn account disconnected successfully.");
+          setTimeout(() => setSuccessMsg(""), 4000);
+        } catch (err: any) {
+          setErrorMsg(err.message || "Failed to disconnect LinkedIn");
+        } finally {
+          setDisconnectingLinkedin(false);
+        }
       }
-      setLinkedinConnected(false);
-      setLinkedinMemberId(null);
-      setLinkedinCompanyPageId("");
-      setSuccessMsg("LinkedIn account disconnected successfully.");
-      setTimeout(() => setSuccessMsg(""), 4000);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to disconnect LinkedIn");
-    } finally {
-      setDisconnectingLinkedin(false);
-    }
+    );
   };
 
   const handleSaveCompanyPage = async (e: React.FormEvent) => {
@@ -1292,6 +1324,49 @@ export default function ProfilePage() {
         </div>
       )}
 
+      {customDialog && customDialog.isOpen && (
+        <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-xs flex items-center justify-center z-[9999] animate-fade-in font-sans p-4 select-none">
+          <div className="bg-neutral-900 border border-neutral-800 max-w-sm w-full p-5 space-y-4 shadow-xl rounded-sm">
+            <div className="flex items-center gap-2 text-primary">
+              <Sparkles className="w-4 h-4" />
+              <span className="font-tight font-bold text-[10px] uppercase tracking-wider">{customDialog.title}</span>
+            </div>
+            
+            <p className="text-neutral-300 text-xs leading-relaxed">
+              {customDialog.message}
+            </p>
+            
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              {customDialog.isConfirm ? (
+                <>
+                  <button
+                    onClick={() => setCustomDialog(null)}
+                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (customDialog.onConfirm) customDialog.onConfirm();
+                      setCustomDialog(null);
+                    }}
+                    className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                  >
+                    Confirm
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setCustomDialog(null)}
+                  className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                >
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

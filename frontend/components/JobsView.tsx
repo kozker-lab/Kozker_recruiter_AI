@@ -333,6 +333,33 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const [activeTab, setActiveTab] = useState<"jd" | "skills" | "candidates" | "queries">("jd");
   const [queryFilter, setQueryFilter] = useState<"all" | "pending" | "resolved">("all");
 
+  const [customDialog, setCustomDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    isConfirm: boolean;
+    onConfirm?: () => void;
+  } | null>(null);
+
+  const showCustomConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setCustomDialog({
+      isOpen: true,
+      title,
+      message,
+      isConfirm: true,
+      onConfirm
+    });
+  };
+
+  const showCustomAlert = (title: string, message: string) => {
+    setCustomDialog({
+      isOpen: true,
+      title,
+      message,
+      isConfirm: false
+    });
+  };
+
   React.useEffect(() => {
     if (initialJobId) {
       setSelectedJobId(initialJobId);
@@ -618,7 +645,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     },
     onError: (err: any) => {
       console.error("updateJobMutation failed:", err);
-      alert(`Failed to save job opening: ${err.message || err}`);
+      showCustomAlert("Error", `Failed to save job opening: ${err.message || err}`);
     }
   });
 
@@ -629,7 +656,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       queryClient.invalidateQueries({ queryKey: ["activity_log"] });
     },
     onError: (err: any) => {
-      alert(`Failed to update status: ${err.message || err}`);
+      showCustomAlert("Error", `Failed to update status: ${err.message || err}`);
     }
   });
 
@@ -654,7 +681,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     },
     onError: (err: any) => {
       console.error("scanPublishMutation failed:", err);
-      alert(err.message || "Failed to trigger skill extraction webhook.");
+      showCustomAlert("Error", err.message || "Failed to trigger skill extraction webhook.");
     }
   });
 
@@ -685,7 +712,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     },
     onError: (err: any) => {
       console.error("saveSkillsMutation failed:", err);
-      alert(err.message || "Failed to save skill weights and rank candidates.");
+      showCustomAlert("Error", err.message || "Failed to save skill weights and rank candidates.");
     }
   });
 
@@ -708,10 +735,10 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       queryClient.invalidateQueries({ queryKey: ["activity_log"] });
       setIsAddCandOpen(false);
       setSelectedCandId("");
-      alert("Candidate linked and ranked successfully.");
+      showCustomAlert("Success", "Candidate linked and ranked successfully.");
     },
     onError: (err: any) => {
-      alert(err.message || "Failed to link candidate.");
+      showCustomAlert("Error", err.message || "Failed to link candidate.");
     }
   });
   const deleteJobMutation = useMutation({
@@ -720,18 +747,21 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["activity_log"] });
       setSelectedJobId(null);
-      alert("Job opening deleted successfully.");
+      showCustomAlert("Success", "Job opening deleted successfully.");
     },
     onError: (err: any) => {
-      alert(err.message || "Failed to delete job opening.");
+      showCustomAlert("Error", err.message || "Failed to delete job opening.");
     }
   });
 
   const handleDeleteJob = () => {
-    const confirmed = window.confirm("Are you sure you want to delete this job opening? This action cannot be undone.");
-    if (confirmed) {
-      deleteJobMutation.mutate();
-    }
+    showCustomConfirm(
+      "Confirm Action",
+      "Are you sure you want to delete this job opening? This action cannot be undone.",
+      () => {
+        deleteJobMutation.mutate();
+      }
+    );
   };
   const handlePublishJob = (e: React.FormEvent) => {
     e.preventDefault();
@@ -780,7 +810,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       const jobCands = await apiRequest<any[]>("GET", `/jobs/${jobId}/candidates`);
       
       if (jobCands.length === 0) {
-        alert("No applicant responses found to export for this mandate.");
+        showCustomAlert("System Message", "No applicant responses found to export for this mandate.");
         return;
       }
 
@@ -891,7 +921,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       document.body.removeChild(link);
     } catch (err) {
       console.error("Failed to export responses sheet:", err);
-      alert("Failed to export responses sheet. Please try again.");
+      showCustomAlert("Error", "Failed to export responses sheet. Please try again.");
     }
   };
 
@@ -2515,6 +2545,49 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               >
                 Close Comparison
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {customDialog && customDialog.isOpen && (
+        <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-xs flex items-center justify-center z-[9999] animate-fade-in font-sans p-4 select-none">
+          <div className="bg-neutral-900 border border-neutral-800 max-w-sm w-full p-5 space-y-4 shadow-xl rounded-sm">
+            <div className="flex items-center gap-2 text-primary">
+              <Sparkles className="w-4 h-4" />
+              <span className="font-tight font-bold text-[10px] uppercase tracking-wider">{customDialog.title}</span>
+            </div>
+            
+            <p className="text-neutral-300 text-xs leading-relaxed">
+              {customDialog.message}
+            </p>
+            
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              {customDialog.isConfirm ? (
+                <>
+                  <button
+                    onClick={() => setCustomDialog(null)}
+                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (customDialog.onConfirm) customDialog.onConfirm();
+                      setCustomDialog(null);
+                    }}
+                    className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                  >
+                    Confirm
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setCustomDialog(null)}
+                  className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                >
+                  OK
+                </button>
+              )}
             </div>
           </div>
         </div>

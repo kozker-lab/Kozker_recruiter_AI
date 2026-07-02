@@ -92,6 +92,33 @@ export default function ClientsView() {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(initialClientId);
   const [expandedReqId, setExpandedReqId] = useState<string | null>(initialReqId);
 
+  const [customDialog, setCustomDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    isConfirm: boolean;
+    onConfirm?: () => void;
+  } | null>(null);
+
+  const showCustomConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setCustomDialog({
+      isOpen: true,
+      title,
+      message,
+      isConfirm: true,
+      onConfirm
+    });
+  };
+
+  const showCustomAlert = (title: string, message: string) => {
+    setCustomDialog({
+      isOpen: true,
+      title,
+      message,
+      isConfirm: false
+    });
+  };
+
   React.useEffect(() => {
     if (initialClientId) {
       setSelectedClientId(initialClientId);
@@ -594,18 +621,21 @@ export default function ClientsView() {
       queryClient.invalidateQueries({ queryKey: ["requirements"] });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["activity_log"] });
-      alert("Hiring mandate requirement and associated job openings deleted successfully.");
+      showCustomAlert("System Alert", "Hiring mandate requirement and associated job openings deleted successfully.");
     },
     onError: (err: any) => {
-      alert(err.message || "Failed to delete requirement.");
+      showCustomAlert("Error", err.message || "Failed to delete requirement.");
     }
   });
 
   const handleDeleteRequirement = (id: string) => {
-    const confirmed = window.confirm("Are you sure you want to delete this hiring mandate? This will also soft-delete all generated job openings.");
-    if (confirmed) {
-      deleteReqMutation.mutate(id);
-    }
+    showCustomConfirm(
+      "Confirm Action",
+      "Are you sure you want to delete this hiring mandate? This will also soft-delete all generated job openings.",
+      () => {
+        deleteReqMutation.mutate(id);
+      }
+    );
   };
 
   const resetRequirementForm = () => {
@@ -691,9 +721,13 @@ export default function ClientsView() {
     if (editingReqId) {
       updateReqMutation.mutate({ id: editingReqId, data: payload });
     } else {
-      const confirmed = window.confirm("Are you sure you want to create this new requirement? AI will immediately begin generating draft JD posts.");
-      if (!confirmed) return;
-      createReqMutation.mutate(payload);
+      showCustomConfirm(
+        "Confirm Action",
+        "Are you sure you want to create this new requirement? AI will immediately begin generating draft JD posts.",
+        () => {
+          createReqMutation.mutate(payload);
+        }
+      );
     }
   };
 
@@ -1735,6 +1769,49 @@ export default function ClientsView() {
                   <span>Share Link</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {customDialog && customDialog.isOpen && (
+        <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-xs flex items-center justify-center z-[9999] animate-fade-in font-sans p-4 select-none">
+          <div className="bg-neutral-900 border border-neutral-800 max-w-sm w-full p-5 space-y-4 shadow-xl rounded-sm">
+            <div className="flex items-center gap-2 text-primary">
+              <BrainCircuit className="w-4 h-4" />
+              <span className="font-tight font-bold text-[10px] uppercase tracking-wider">{customDialog.title}</span>
+            </div>
+            
+            <p className="text-neutral-300 text-xs leading-relaxed">
+              {customDialog.message}
+            </p>
+            
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              {customDialog.isConfirm ? (
+                <>
+                  <button
+                    onClick={() => setCustomDialog(null)}
+                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (customDialog.onConfirm) customDialog.onConfirm();
+                      setCustomDialog(null);
+                    }}
+                    className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                  >
+                    Confirm
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setCustomDialog(null)}
+                  className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                >
+                  OK
+                </button>
+              )}
             </div>
           </div>
         </div>

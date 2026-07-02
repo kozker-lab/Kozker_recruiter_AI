@@ -221,6 +221,33 @@ function CandidateRow({
   const [isReuploading, setIsReuploading] = useState(false);
   const queryClient = useQueryClient();
 
+  const [customDialog, setCustomDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    isConfirm: boolean;
+    onConfirm?: () => void;
+  } | null>(null);
+
+  const showCustomConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setCustomDialog({
+      isOpen: true,
+      title,
+      message,
+      isConfirm: true,
+      onConfirm
+    });
+  };
+
+  const showCustomAlert = (title: string, message: string) => {
+    setCustomDialog({
+      isOpen: true,
+      title,
+      message,
+      isConfirm: false
+    });
+  };
+
   const updateSummaryMutation = useMutation({
     mutationFn: (updatedSummary: string) => {
       return apiRequest("PUT", `/candidates/${c.id}`, {
@@ -241,7 +268,7 @@ function CandidateRow({
       queryClient.invalidateQueries({ queryKey: ["activity_log"] });
     },
     onError: (err: any) => {
-      alert(err.message || "Failed to delete candidate.");
+      showCustomAlert("Error", err.message || "Failed to delete candidate.");
     }
   });
 
@@ -280,13 +307,13 @@ function CandidateRow({
         });
         queryClient.invalidateQueries({ queryKey: ["candidates"] });
         queryClient.invalidateQueries({ queryKey: ["candidate", c.id] });
-        alert("Resume re-uploaded and candidate details extracted successfully!");
+        showCustomAlert("Success", "Resume re-uploaded and candidate details extracted successfully!");
       } else {
         throw new Error("No text content could be extracted from this resume.");
       }
     } catch (err: any) {
       console.error(err);
-      alert("Failed to parse/re-upload resume: " + (err.message || err));
+      showCustomAlert("Error", "Failed to parse/re-upload resume: " + (err.message || err));
     } finally {
       setIsReuploading(false);
     }
@@ -483,9 +510,13 @@ function CandidateRow({
           <div className="flex justify-end pt-2 border-t border-neutral-150">
             <button
               onClick={() => {
-                if (confirm(`Are you sure you want to remove candidate ${c.full_name}?`)) {
-                  deleteCandidateMutation.mutate();
-                }
+                showCustomConfirm(
+                  "Remove Candidate",
+                  `Are you sure you want to remove candidate ${c.full_name}?`,
+                  () => {
+                    deleteCandidateMutation.mutate();
+                  }
+                );
               }}
               disabled={deleteCandidateMutation.isPending}
               className="px-2.5 py-1 text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50/50 border border-red-200 hover:border-red-300 rounded-sm font-semibold flex items-center gap-1 transition-all cursor-pointer bg-neutral-white"
@@ -500,6 +531,49 @@ function CandidateRow({
           </div>
         </div>
       )}
+      {customDialog && customDialog.isOpen && (
+        <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-xs flex items-center justify-center z-[9999] animate-fade-in font-sans p-4 select-none">
+          <div className="bg-neutral-900 border border-neutral-800 max-w-sm w-full p-5 space-y-4 shadow-xl rounded-sm">
+            <div className="flex items-center gap-2 text-primary">
+              <Sparkles className="w-4 h-4" />
+              <span className="font-tight font-bold text-[10px] uppercase tracking-wider">{customDialog.title}</span>
+            </div>
+            
+            <p className="text-neutral-300 text-xs leading-relaxed">
+              {customDialog.message}
+            </p>
+            
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              {customDialog.isConfirm ? (
+                <>
+                  <button
+                    onClick={() => setCustomDialog(null)}
+                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (customDialog.onConfirm) customDialog.onConfirm();
+                      setCustomDialog(null);
+                    }}
+                    className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                  >
+                    Confirm
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setCustomDialog(null)}
+                  className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                >
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -509,6 +583,33 @@ export default function PoolView() {
   // Filter states
   const [showFilters, setShowFilters] = useState(false);
   const [selectedEducation, setSelectedEducation] = useState("All");
+
+  const [customDialog, setCustomDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    isConfirm: boolean;
+    onConfirm?: () => void;
+  } | null>(null);
+
+  const showCustomConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setCustomDialog({
+      isOpen: true,
+      title,
+      message,
+      isConfirm: true,
+      onConfirm
+    });
+  };
+
+  const showCustomAlert = (title: string, message: string) => {
+    setCustomDialog({
+      isOpen: true,
+      title,
+      message,
+      isConfirm: false
+    });
+  };
   const [selectedWorkingStatus, setSelectedWorkingStatus] = useState("All");
   const [experienceRange, setExperienceRange] = useState("All");
   const [skillsFilter, setSkillsFilter] = useState("");
@@ -758,7 +859,7 @@ export default function PoolView() {
       setResumeFileName("");
     },
     onError: (err: any) => {
-      alert(err.message || "Failed to add candidate. Duplicate email?");
+      showCustomAlert("Error", err.message || "Failed to add candidate. Duplicate email?");
     }
   });
 
@@ -1438,7 +1539,7 @@ export default function PoolView() {
                           }
                         } catch (err: any) {
                           console.error("Resume extraction failed:", err);
-                          alert("Failed to parse resume file: " + (err.message || err));
+                          showCustomAlert("Error", "Failed to parse resume file: " + (err.message || err));
                         } finally {
                           setIsExtracting(false);
                         }
@@ -1536,6 +1637,49 @@ export default function PoolView() {
         </div>
       )}
 
+      {customDialog && customDialog.isOpen && (
+        <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-xs flex items-center justify-center z-[9999] animate-fade-in font-sans p-4 select-none">
+          <div className="bg-neutral-900 border border-neutral-800 max-w-sm w-full p-5 space-y-4 shadow-xl rounded-sm">
+            <div className="flex items-center gap-2 text-primary">
+              <Sparkles className="w-4 h-4" />
+              <span className="font-tight font-bold text-[10px] uppercase tracking-wider">{customDialog.title}</span>
+            </div>
+            
+            <p className="text-neutral-300 text-xs leading-relaxed">
+              {customDialog.message}
+            </p>
+            
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              {customDialog.isConfirm ? (
+                <>
+                  <button
+                    onClick={() => setCustomDialog(null)}
+                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (customDialog.onConfirm) customDialog.onConfirm();
+                      setCustomDialog(null);
+                    }}
+                    className="px-3.5 py-1.5 bg-primary hover:bg-primary/90 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                  >
+                    Confirm
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setCustomDialog(null)}
+                  className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+                >
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
