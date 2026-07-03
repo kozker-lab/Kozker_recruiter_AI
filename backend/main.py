@@ -1298,6 +1298,14 @@ async def update_requirement(req_id: str, req: RequirementUpdateModel, backgroun
     
     if not update_data:
         return old_req
+
+    # Check if any structural fields are being updated
+    structural_fields = {"title", "description", "skills", "experience_min", "experience_max", "budget_min", "budget_max", "seniority", "num_posts_requested"}
+    has_structural_change = any(f in update_data for f in structural_fields)
+    
+    if has_structural_change:
+        # Soft delete existing job openings first so they are replaced by the new generation
+        db.table("job_openings").update({"is_deleted": True}).eq("requirement_id", req_id).execute()
         
     # Check status transitions and job existence
     new_status = update_data.get("status") or old_req.get("status")
