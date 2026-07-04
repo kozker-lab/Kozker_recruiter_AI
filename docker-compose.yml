@@ -6,17 +6,8 @@ services:
     container_name: kozker_backend
     expose:
       - "8000"
-    environment:
-      - SUPABASE_URL
-      - SUPABASE_KEY
-      - BACKEND_BASE_URL
-      - USE_N8N
-      - N8N_GENERATE_JOBS_URL
-      - N8N_EXTRACT_SKILLS_URL
-      - N8N_MATCH_CANDIDATES_URL
-      - N8N_GENERATE_QUESTIONS_URL
-      - N8N_REGENERATE_JOBS_URL
-      - N8N_REFINE_QUESTION_URL
+    env_file:
+      - .env
     restart: always
 
   frontend:
@@ -31,11 +22,8 @@ services:
     container_name: kozker_frontend
     expose:
       - "3000"
-    environment:
-      - NEXT_PUBLIC_SUPABASE_URL
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY
-      - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-      - NEXT_PUBLIC_API_URL
+    env_file:
+      - .env
     restart: always
     depends_on:
       - backend
