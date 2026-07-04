@@ -37,6 +37,7 @@ N8N_REFINE_QUESTION_URL = os.getenv("N8N_REFINE_QUESTION_URL")
 CALLBACK_SECRET = os.getenv("CALLBACK_SECRET")
 
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
 MATCH_THRESHOLD = float(os.getenv("MATCH_THRESHOLD", "30.0"))
 
 LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
@@ -4029,7 +4030,7 @@ async def linkedin_callback(code: str, state: str):
         "your_linkedin" in LINKEDIN_CLIENT_SECRET.lower()
     )
     
-    frontend_redirect_success = "http://localhost:3000/profile?tab=integrations&status=success"
+    frontend_redirect_success = f"{FRONTEND_BASE_URL}/profile?tab=integrations&status=success"
     
     try:
         db_admin = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
@@ -4104,7 +4105,7 @@ async def linkedin_callback(code: str, state: str):
         import urllib.parse
         err_msg = urllib.parse.quote(str(e))
         return RedirectResponse(
-            url=f"http://localhost:3000/profile?tab=integrations&status=error&message={err_msg}"
+            url=f"{FRONTEND_BASE_URL}/profile?tab=integrations&status=error&message={err_msg}"
         )
 
 @app.get("/api/v1/integrations/linkedin/status")
