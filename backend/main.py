@@ -66,7 +66,7 @@ app.add_middleware(
         "https://kozker.localhost",
         "https://api.localhost"
     ],
-    allow_origin_regex=r"https://.*",
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
