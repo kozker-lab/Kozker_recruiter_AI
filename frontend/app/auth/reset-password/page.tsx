@@ -7,6 +7,9 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 export default function ResetPasswordPage() {
+  const [supabase] = useState(() => createClient());
+  const router = useRouter();
+
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -14,9 +17,32 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
-  
-  const supabase = createClient();
-  const router = useRouter();
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
+
+  useEffect(() => {
+    // Listen for auth state change (Supabase parses hash asynchronously)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        setHasSession(true);
+      } else {
+        setHasSession(false);
+      }
+      setCheckingSession(false);
+    });
+
+    // Direct session check on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setHasSession(true);
+      }
+      setCheckingSession(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   // Next.js client component - if we wanted to verify token from URL we could,
   // but Supabase handles the token hash automatically in the URL fragment.
@@ -63,6 +89,31 @@ export default function ResetPasswordPage() {
       setLoading(false);
     }
   };
+
+  if (checkingSession) {
+    return (
+      <div className="space-y-6 text-center animate-in fade-in duration-500 py-8">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-neutral-400 text-xs">Verifying reset token...</p>
+      </div>
+    );
+  }
+
+  if (!hasSession) {
+    return (
+      <div className="space-y-6 text-center animate-in fade-in duration-500 py-4">
+        <div className="p-3 bg-error/10 border border-error/20 text-error text-xs rounded-sm font-mono">
+          Reset session missing or expired. Please request a new password reset link.
+        </div>
+        <Link 
+          href="/auth/forgot-password"
+          className="text-primary hover:underline text-xs block font-medium"
+        >
+          Go to Forgot Password
+        </Link>
+      </div>
+    );
+  }
 
   if (success) {
     return (
