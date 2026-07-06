@@ -385,7 +385,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           if (Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
             new Notification(n.title, {
               body: n.message,
-              icon: "/favicon.ico"
+              icon: "/favicon.svg"
             });
           }
         }

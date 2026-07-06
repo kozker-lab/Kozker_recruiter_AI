@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Kozker Recruiter AI - Enterprise ATS Hub",
   description: "Enterprise ATS powered by Machine Intelligence. High-density talent sourcing, JD auto-generation, skills matching, and custom screening questions.",
   icons: {
-    icon: "/favicon.ico",
+    icon: "/favicon.svg",
   }
 };
 
