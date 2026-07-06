@@ -4392,22 +4392,10 @@ async def confirm_password_otp(payload: PasswordOtpConfirmModel, request: Reques
         
     new_password = otp_data["new_password"]
     
-    # Retrieve user's JWT from Authorization header
-    auth_header = request.headers.get("Authorization", "")
-    jwt_token = ""
-    if auth_header:
-        if auth_header.startswith("Bearer "):
-            jwt_token = auth_header.split(" ")[1]
-        elif auth_header.startswith("eyJ"):
-            jwt_token = auth_header
-            
-    if not jwt_token:
-        raise HTTPException(status_code=401, detail="Missing authorization token")
-        
-    # Update password using user-specific client
+    # Update password using Admin API with service role client to bypass auth session state requirements
     try:
-        user_client = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
-        user_client.auth.update_user(attributes={"password": new_password})
+        db_admin = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+        db_admin.auth.admin.update_user_by_id(user_id, attributes={"password": new_password})
         
         # Evict from cache
         password_otps.pop(user_id, None)
