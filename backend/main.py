@@ -133,7 +133,9 @@ def get_safe_supabase_client(url: str, key: str, jwt_token: str = None) -> Clien
     # Patch GoTrue/Auth client headers if auth is used
     if hasattr(client, "auth") and client.auth:
         client.auth._headers["apiKey"] = key
-        if not jwt_token:
+        if jwt_token:
+            client.auth._headers["Authorization"] = f"Bearer {jwt_token}"
+        else:
             client.auth._headers["Authorization"] = f"Bearer {key}"
             
     return client
