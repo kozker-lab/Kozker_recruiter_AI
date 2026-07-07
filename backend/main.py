@@ -2440,7 +2440,14 @@ async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase))
             continue
         seen_candidate_ids.add(cand_id)
         
-        cand = row.get("candidates") or {}
+        cand = row.get("candidates")
+        if not cand:
+            continue
+            
+        full_name = cand.get("full_name") or ""
+        if not full_name or full_name.lower().strip() in ("unknown", "curriculum", "curriculum vitae"):
+            continue
+            
         app_rec = row.get("applications") or {}
         application_id = row.get("application_id")
         
@@ -3831,30 +3838,27 @@ async def callback_candidate_matches(payload: CandidateMatchesCallback):
             continue
         seen_candidate_ids.add(match.candidate_id)
         
-        # Upsert application
-        app_res = db.table("applications").upsert({
-            "candidate_id": match.candidate_id,
-            "job_opening_id": payload.job_opening_id,
-            "fuzzy_score": match.fuzzy_score,
-            "match_score": int(match.fuzzy_score),
-            "match_reason": match.reasoning or "",
-            "strengths": match.strengths[:3],
-            "skill_gaps": match.skill_gaps[:3],
-            "screening_status": "pending"
-        }, on_conflict="candidate_id,job_opening_id").execute()
+        # Query existing application
+        app_res = (
+            db.table("applications")
+              .select("id")
+              .eq("candidate_id", match.candidate_id)
+              .eq("job_opening_id", payload.job_opening_id)
+              .limit(1)
+              .execute()
+        )
         
-        if app_res.data:
-            if match.fuzzy_score >= MATCH_THRESHOLD:
-                scored_candidates.append({
-                    "job_opening_id": payload.job_opening_id,
-                    "candidate_id": match.candidate_id,
-                    "application_id": app_res.data[0]["id"],
-                    "fuzzy_score": match.fuzzy_score,
-                    "rank_order": 1, # updated later
-                    "strengths": match.strengths[:3],
-                    "skill_gaps": match.skill_gaps[:3],
-                    "parsed_resume": cand_resumes.get(match.candidate_id)
-                })
+        if app_res.data and match.fuzzy_score >= MATCH_THRESHOLD:
+            scored_candidates.append({
+                "job_opening_id": payload.job_opening_id,
+                "candidate_id": match.candidate_id,
+                "application_id": app_res.data[0]["id"],
+                "fuzzy_score": match.fuzzy_score,
+                "rank_order": 1, # updated later
+                "strengths": match.strengths[:3],
+                "skill_gaps": match.skill_gaps[:3],
+                "parsed_resume": cand_resumes.get(match.candidate_id)
+            })
             
     # Sort and rank
     scored_candidates.sort(key=lambda x: x["fuzzy_score"], reverse=True)

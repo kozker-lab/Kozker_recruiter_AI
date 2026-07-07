@@ -14,27 +14,120 @@ import {
 
 // Custom ScatterPlot Component
 const ScatterPlot = ({ data }: { data: any[] }) => {
+  const [xAxisKey, setXAxisKey] = useState<string>("fuzzy_score");
+  const [yAxisKey, setYAxisKey] = useState<string>("experience_years");
+
   const width = 500;
-  const height = 300;
-  const margin = { top: 30, right: 35, bottom: 45, left: 50 };
+  const height = 280;
+  const margin = { top: 25, right: 35, bottom: 40, left: 55 };
   
-  const yMax = Math.max(10, ...data.map(d => d.experience_years || 0)) + 2;
-  
-  const xScale = (score: number) => margin.left + (score / 100) * (width - margin.left - margin.right);
-  const yScale = (exp: number) => height - margin.bottom - ((exp / yMax) * (height - margin.top - margin.bottom));
+  const getValue = (cand: any, key: string) => {
+    switch (key) {
+      case "fuzzy_score":
+        return cand.fuzzy_score || 0;
+      case "experience_years":
+        return cand.experience_years || 0;
+      case "skills_count":
+        return cand.skills?.length || 0;
+      case "strengths_count":
+        return cand.strengths?.length || 0;
+      case "gaps_count":
+        return cand.skill_gaps?.length || 0;
+      default:
+        return 0;
+    }
+  };
+
+  const getAxisLabel = (key: string) => {
+    switch (key) {
+      case "fuzzy_score": return "Fuzzy Match Score (%)";
+      case "experience_years": return "Experience (Years)";
+      case "skills_count": return "Core Skills Count";
+      case "strengths_count": return "Strengths Count";
+      case "gaps_count": return "Skill Gaps Count";
+      default: return "";
+    }
+  };
+
+  const getMaxValue = (key: string) => {
+    switch (key) {
+      case "fuzzy_score":
+        return 100;
+      case "experience_years":
+        return Math.max(10, ...data.map(d => d.experience_years || 0)) + 2;
+      case "skills_count":
+        return Math.max(5, ...data.map(d => d.skills?.length || 0)) + 1;
+      case "strengths_count":
+        return Math.max(5, ...data.map(d => d.strengths?.length || 0)) + 1;
+      case "gaps_count":
+        return Math.max(5, ...data.map(d => d.skill_gaps?.length || 0)) + 1;
+      default:
+        return 100;
+    }
+  };
+
+  const getTicks = (key: string, maxVal: number) => {
+    if (key === "fuzzy_score") {
+      return [20, 40, 60, 80, 100];
+    }
+    return Array.from({ length: 6 }, (_, i) => Math.round((maxVal / 5) * i));
+  };
+
+  const xMax = getMaxValue(xAxisKey);
+  const yMax = getMaxValue(yAxisKey);
+
+  const xScale = (val: number) => margin.left + (val / xMax) * (width - margin.left - margin.right);
+  const yScale = (val: number) => height - margin.bottom - ((val / yMax) * (height - margin.top - margin.bottom));
   
   const [hoveredCandidate, setHoveredCandidate] = React.useState<any | null>(null);
   const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0 });
 
-  // Grid tick markers
-  const xTicks = [20, 40, 60, 80, 100];
-  const yTicks = Array.from({ length: 6 }, (_, i) => Math.round((yMax / 5) * i));
+  const xTicks = getTicks(xAxisKey, xMax);
+  const yTicks = getTicks(yAxisKey, yMax);
+
+  const axisOptions = [
+    { value: "fuzzy_score", label: "Match Score (%)" },
+    { value: "experience_years", label: "Experience (Years)" },
+    { value: "skills_count", label: "Skills Count" },
+    { value: "strengths_count", label: "Strengths Count" },
+    { value: "gaps_count", label: "Skill Gaps Count" },
+  ];
 
   return (
     <div className="relative bg-neutral-900 border border-neutral-850 p-4 rounded-sm">
-      <h4 className="text-[10px] font-mono text-neutral-400 uppercase tracking-wider mb-2 text-center">
-        Experience vs. Match Score Plot
-      </h4>
+      {/* Parameter Controls */}
+      <div className="flex items-center justify-between gap-4 mb-3 border-b border-neutral-800 pb-2 flex-wrap">
+        <h4 className="text-[10px] font-mono text-neutral-400 uppercase tracking-wider">
+          Visual Comparison Matrix
+        </h4>
+        <div className="flex items-center gap-3 text-[10px] font-mono">
+          <div className="flex items-center gap-1">
+            <span className="text-neutral-500">X-Axis:</span>
+            <select
+              value={xAxisKey}
+              onChange={(e) => setXAxisKey(e.target.value)}
+              className="bg-neutral-800 text-neutral-300 border border-neutral-700 px-1 py-0.5 rounded-xs text-[9px] focus:outline-none"
+            >
+              {axisOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-neutral-500">Y-Axis:</span>
+            <select
+              value={yAxisKey}
+              onChange={(e) => setYAxisKey(e.target.value)}
+              className="bg-neutral-800 text-neutral-300 border border-neutral-700 px-1 py-0.5 rounded-xs text-[9px] focus:outline-none"
+            >
+              {axisOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
       <div className="flex justify-center">
         <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} className="max-w-xl text-neutral-400">
           {/* Grid Lines */}
@@ -84,11 +177,11 @@ const ScatterPlot = ({ data }: { data: any[] }) => {
             <text
               key={`xl-${tick}`}
               x={xScale(tick)}
-              y={height - margin.bottom + 16}
+              y={height - margin.bottom + 14}
               textAnchor="middle"
               className="text-[9px] font-mono fill-neutral-500"
             >
-              {tick}%
+              {tick}{xAxisKey === "fuzzy_score" ? "%" : ""}
             </text>
           ))}
           {yTicks.map(tick => (
@@ -99,33 +192,33 @@ const ScatterPlot = ({ data }: { data: any[] }) => {
               textAnchor="end"
               className="text-[9px] font-mono fill-neutral-500"
             >
-              {tick}y
+              {tick}{yAxisKey === "fuzzy_score" ? "%" : ""}
             </text>
           ))}
 
           {/* Axis Titles */}
           <text
             x={margin.left + (width - margin.left - margin.right) / 2}
-            y={height - 8}
+            y={height - 6}
             textAnchor="middle"
-            className="text-[10px] font-mono font-semibold fill-neutral-400"
+            className="text-[9px] font-mono font-semibold fill-neutral-400"
           >
-            Fuzzy Match Score (%)
+            {getAxisLabel(xAxisKey)}
           </text>
           <text
             transform={`rotate(-90, 15, ${margin.top + (height - margin.top - margin.bottom) / 2})`}
             x={15}
             y={margin.top + (height - margin.top - margin.bottom) / 2}
             textAnchor="middle"
-            className="text-[10px] font-mono font-semibold fill-neutral-400"
+            className="text-[9px] font-mono font-semibold fill-neutral-400"
           >
-            Experience (Years)
+            {getAxisLabel(yAxisKey)}
           </text>
 
           {/* Points */}
           {data.map((d, index) => {
-            const cx = xScale(d.fuzzy_score || 0);
-            const cy = yScale(d.experience_years || 0);
+            const cx = xScale(getValue(d, xAxisKey));
+            const cy = yScale(getValue(d, yAxisKey));
             const isHovered = hoveredCandidate?.id === d.id;
             
             const colors = [
@@ -396,6 +489,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   // Comparison visualizer state
   const [selectedCandidatesForCompare, setSelectedCandidatesForCompare] = useState<string[]>([]);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [compareTab, setCompareTab] = useState<"visual" | "grid">("visual");
 
   // Editor states
   const [jdTitle, setJdTitle] = useState("");
@@ -2416,132 +2510,161 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       {/* Candidate Comparison Modal */}
       {isCompareOpen && (
         <div className="fixed inset-0 bg-neutral-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-5xl p-6 space-y-6 shadow-2xl my-8">
+          <div className="bg-neutral-white border border-neutral-200 dark:bg-stone-900 dark:border-stone-800 rounded-sm w-full max-w-5xl p-5 space-y-4 shadow-2xl my-4">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-neutral-200 pb-4">
+            <div className="flex items-center justify-between border-b border-neutral-255 dark:border-stone-800 pb-3">
               <div>
-                <h3 className="font-tight font-bold text-sm text-neutral-850 uppercase tracking-wider flex items-center gap-2">
+                <h3 className="font-tight font-bold text-sm text-neutral-850 dark:text-neutral-200 uppercase tracking-wider flex items-center gap-2">
                   <Sliders className="w-4 h-4 text-primary" />
                   Candidate Comparison Visualizer
                 </h3>
-                <p className="text-neutral-450 text-[10px] mt-0.5 font-mono">
+                <p className="text-neutral-450 dark:text-neutral-405 text-[10px] mt-0.5 font-mono">
                   Side-by-side competency comparison and experiential mapping for {activeJob?.title}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsCompareOpen(false)}
-                className="px-2.5 py-1 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 font-mono text-[10px] font-semibold cursor-pointer"
+                className="px-2.5 py-1 border border-neutral-200 hover:bg-neutral-50 dark:border-stone-700 dark:hover:bg-stone-800 rounded-sm text-neutral-500 dark:text-neutral-400 font-mono text-[10px] font-semibold cursor-pointer"
               >
                 Close Visualizer
               </button>
             </div>
 
-            {/* Layout Grid: Scatter plot + AI summary */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-              {/* Left Column: Custom SVG Scatter Plot (7 cols) */}
-              <div className="md:col-span-7">
-                {(() => {
-                  const comparisonData = selectedCandidatesForCompare.map(id => {
-                    const jc = matchedCandidates.find(item => item.id === id);
-                    const c = candidates.find(item => item.id === jc?.candidate_id);
-                    return {
-                      ...jc,
-                      academic_details: c?.academic_details,
-                      achievements: c?.achievements,
-                      education: c?.education,
-                      working_or_not: c?.working_or_not
-                    };
-                  });
-                  return <ScatterPlot data={comparisonData} />;
-                })()}
-              </div>
-
-              {/* Right Column: AI Comparative Summary (5 cols) */}
-              <div className="md:col-span-5 bg-neutral-50 border border-neutral-200 p-4 rounded-sm flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5 mb-3">
-                    <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse" />
-                    <span className="font-tight font-bold text-[10px] uppercase tracking-wider text-neutral-800">AI Comparative Insights</span>
-                  </div>
-                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-                    {(() => {
-                      const comparisonData = selectedCandidatesForCompare.map(id => {
-                        const jc = matchedCandidates.find(item => item.id === id);
-                        const c = candidates.find(item => item.id === jc?.candidate_id);
-                        return {
-                          ...jc,
-                          academic_details: c?.academic_details,
-                          achievements: c?.achievements,
-                          education: c?.education,
-                          working_or_not: c?.working_or_not
-                        };
-                      });
-                      return renderFormattedText(generateAIComparisonText(comparisonData));
-                    })()}
-                  </div>
-                </div>
-                <div className="text-[9px] font-mono text-neutral-400 border-t border-neutral-200/50 pt-2 mt-4">
-                  Note: Evaluation values are derived using semantic match parameters.
-                </div>
-              </div>
+            {/* Segment Tab Controls */}
+            <div className="flex items-center gap-2 border-b border-neutral-200 dark:border-stone-850 pb-2 select-none">
+              <button
+                type="button"
+                onClick={() => setCompareTab("visual")}
+                className={`px-4 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                  compareTab === "visual"
+                    ? "bg-primary text-neutral-white"
+                    : "bg-neutral-100 hover:bg-neutral-200 text-neutral-600 dark:bg-stone-800 dark:hover:bg-stone-750 dark:text-neutral-300"
+                }`}
+              >
+                Visual Matrix & AI Insights
+              </button>
+              <button
+                type="button"
+                onClick={() => setCompareTab("grid")}
+                className={`px-4 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                  compareTab === "grid"
+                    ? "bg-primary text-neutral-white"
+                    : "bg-neutral-100 hover:bg-neutral-200 text-neutral-600 dark:bg-stone-800 dark:hover:bg-stone-750 dark:text-neutral-300"
+                }`}
+              >
+                Detailed Attribute Grid
+              </button>
             </div>
 
-            {/* Side-by-Side Table Comparison */}
-            <div className="border border-neutral-200 rounded-sm overflow-hidden bg-neutral-white shadow-xs">
-              <div className="p-3 border-b border-neutral-200 bg-neutral-50 flex items-center gap-2">
-                <span className="font-tight font-bold text-[10px] uppercase tracking-wider text-neutral-800">Detail Comparison Grid</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-neutral-50/50 border-b border-neutral-200 text-neutral-400 font-mono uppercase text-[9px] tracking-wider">
-                      <th className="p-3 font-semibold w-32 border-r border-neutral-200">Attribute</th>
-                      {selectedCandidatesForCompare.map(id => {
-                        const jc = matchedCandidates.find(item => item.id === id);
-                        return (
-                          <th key={id} className="p-3 font-semibold min-w-[160px] border-r border-neutral-200 last:border-r-0">
-                            {jc?.candidate_name}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-200">
-                    {sideBySideColumns.map((col, idx) => (
-                      <tr key={idx} className="hover:bg-neutral-50/30">
-                        <td className="p-3 font-semibold text-neutral-500 uppercase tracking-wider text-[9px] font-mono border-r border-neutral-200 bg-neutral-50/30">
-                          {col.label}
-                        </td>
-                        {selectedCandidatesForCompare.map(id => {
+            {/* Conditional Tab Body */}
+            {compareTab === "visual" ? (
+              /* Layout Grid: Scatter plot + AI summary */
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                {/* Left Column: Custom SVG Scatter Plot (7 cols) */}
+                <div className="md:col-span-7">
+                  {(() => {
+                    const comparisonData = selectedCandidatesForCompare.map(id => {
+                      const jc = matchedCandidates.find(item => item.id === id);
+                      const c = candidates.find(item => item.id === jc?.candidate_id);
+                      return {
+                        ...jc,
+                        academic_details: c?.academic_details,
+                        achievements: c?.achievements,
+                        education: c?.education,
+                        working_or_not: c?.working_or_not
+                      };
+                    });
+                    return <ScatterPlot data={comparisonData} />;
+                  })()}
+                </div>
+
+                {/* Right Column: AI Comparative Summary (5 cols) */}
+                <div className="md:col-span-5 bg-neutral-50 dark:bg-stone-950 border border-neutral-200 dark:border-stone-850 p-4 rounded-sm flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <Sparkles className="w-3.5 h-3.5 text-primary animate-pulse" />
+                      <span className="font-tight font-bold text-[10px] uppercase tracking-wider text-neutral-800 dark:text-neutral-200">AI Comparative Insights</span>
+                    </div>
+                    <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
+                      {(() => {
+                        const comparisonData = selectedCandidatesForCompare.map(id => {
                           const jc = matchedCandidates.find(item => item.id === id);
                           const c = candidates.find(item => item.id === jc?.candidate_id);
-                          const fullCand = {
+                          return {
                             ...jc,
                             academic_details: c?.academic_details,
                             achievements: c?.achievements,
                             education: c?.education,
                             working_or_not: c?.working_or_not
                           };
+                        });
+                        return renderFormattedText(generateAIComparisonText(comparisonData));
+                      })()}
+                    </div>
+                  </div>
+                  <div className="text-[9px] font-mono text-neutral-400 border-t border-neutral-200/50 dark:border-stone-850 pt-2 mt-4">
+                    Note: Evaluation values are derived using semantic match parameters.
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Side-by-Side Table Comparison */
+              <div className="border border-neutral-200 dark:border-stone-855 rounded-sm overflow-hidden bg-neutral-white dark:bg-stone-950 shadow-xs">
+                <div className="p-3 border-b border-neutral-200 dark:border-stone-850 bg-neutral-50 dark:bg-stone-900 flex items-center gap-2">
+                  <span className="font-tight font-bold text-[10px] uppercase tracking-wider text-neutral-800 dark:text-neutral-200">Detail Comparison Grid</span>
+                </div>
+                <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-neutral-50/50 dark:bg-stone-900/50 border-b border-neutral-200 dark:border-stone-850 text-neutral-400 font-mono uppercase text-[9px] tracking-wider sticky top-0 bg-white dark:bg-stone-900 z-10">
+                        <th className="p-3 font-semibold w-32 border-r border-neutral-200 dark:border-stone-850 bg-neutral-50 dark:bg-stone-900">Attribute</th>
+                        {selectedCandidatesForCompare.map(id => {
+                          const jc = matchedCandidates.find(item => item.id === id);
                           return (
-                            <td key={id} className="p-3 border-r border-neutral-200 last:border-r-0 text-neutral-750 font-sans text-xs">
-                              {col.render(fullCand)}
-                            </td>
+                            <th key={id} className="p-3 font-semibold min-w-[160px] border-r border-neutral-200 dark:border-stone-850 last:border-r-0">
+                              {jc?.candidate_name}
+                            </th>
                           );
                         })}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-200 dark:divide-stone-850">
+                      {sideBySideColumns.map((col, idx) => (
+                        <tr key={idx} className="hover:bg-neutral-50/30 dark:hover:bg-stone-900/30">
+                          <td className="p-3 font-semibold text-neutral-500 dark:text-neutral-450 uppercase tracking-wider text-[9px] font-mono border-r border-neutral-200 dark:border-stone-850 bg-neutral-50 dark:bg-stone-900">
+                            {col.label}
+                          </td>
+                          {selectedCandidatesForCompare.map(id => {
+                            const jc = matchedCandidates.find(item => item.id === id);
+                            const c = candidates.find(item => item.id === jc?.candidate_id);
+                            const fullCand = {
+                              ...jc,
+                              academic_details: c?.academic_details,
+                              achievements: c?.achievements,
+                              education: c?.education,
+                              working_or_not: c?.working_or_not
+                            };
+                            return (
+                              <td key={id} className="p-3 border-r border-neutral-200 dark:border-stone-850 last:border-r-0 text-neutral-750 dark:text-neutral-300 font-sans text-xs">
+                                {col.render(fullCand)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Footer buttons */}
             <div className="flex justify-end pt-2">
               <button
                 type="button"
                 onClick={() => setIsCompareOpen(false)}
-                className="px-4 py-2 bg-neutral-900 hover:bg-neutral-850 text-neutral-white font-medium rounded-sm cursor-pointer text-xs uppercase font-mono font-semibold"
+                className="px-4 py-2 bg-neutral-900 hover:bg-neutral-850 dark:bg-stone-800 dark:hover:bg-stone-750 text-neutral-white font-medium rounded-sm cursor-pointer text-xs uppercase font-mono font-semibold"
               >
                 Close Comparison
               </button>

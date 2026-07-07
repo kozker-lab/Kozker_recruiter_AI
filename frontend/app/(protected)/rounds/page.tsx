@@ -208,13 +208,11 @@ export default function RoundsPage() {
     );
   };
 
-  // 1. Filter out applications without a valid job opening, then apply Text Search Filter
+  // 1. Apply Text Search Filter (allowing unassigned/general applications)
   let filteredApps = applications.filter(app => {
-    if (!app.job_opening_id || !app.job_openings) return false;
-    
     const candName = app.candidates?.full_name || "";
-    const jobTitle = app.job_openings?.title || "";
-    const clientName = app.job_openings?.clients?.name || app.job_openings?.client_name || app.client_name || "";
+    const jobTitle = app.job_openings?.title || "General Application";
+    const clientName = app.job_openings?.clients?.name || app.job_openings?.client_name || app.client_name || "Unassigned Clients";
     const query = searchQuery.toLowerCase();
     return (
       candName.toLowerCase().includes(query) ||
@@ -837,9 +835,9 @@ export default function RoundsPage() {
                             <div className="text-[9px] text-neutral-400 font-mono">Exp: {app.candidates?.experience_years ?? 0} years</div>
                           </td>
                           <td className="p-4">
-                            <div className="font-mono text-[9px] text-neutral-400 uppercase font-semibold">{app.job_openings?.client_name || app.client_name || "Generic"}</div>
-                            <div className="font-medium text-neutral-700 mt-0.5 truncate max-w-[150px]" title={app.job_openings?.title}>
-                              {app.job_openings?.title}
+                            <div className="font-mono text-[9px] text-neutral-400 uppercase font-semibold">{app.job_openings?.client_name || app.client_name || "Unassigned Clients"}</div>
+                            <div className="font-medium text-neutral-700 mt-0.5 truncate max-w-[150px]" title={app.job_openings?.title || "General Application"}>
+                              {app.job_openings?.title || "General Application"}
                             </div>
                           </td>
                           <td className="p-4 text-center">

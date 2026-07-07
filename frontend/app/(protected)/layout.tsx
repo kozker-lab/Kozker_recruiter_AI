@@ -208,11 +208,20 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   // Custom Alert Modal State
   const [customAlert, setCustomAlert] = useState<{ message: string; isOpen: boolean } | null>(null);
 
+  const [subdomain, setSubdomain] = useState("default");
+  const [agencyName, setAgencyName] = useState("Enterprise recruiter");
+
   React.useEffect(() => {
     const savedMode = localStorage.getItem("kozker_pref_mode") as "light" | "dark" | null;
     const initialMode = savedMode || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     setThemeMode(initialMode);
     document.documentElement.setAttribute("data-mode", initialMode);
+
+    // Load workspace settings
+    if (typeof window !== "undefined") {
+      setSubdomain(localStorage.getItem("kozker_workspace_subdomain") || "default");
+      setAgencyName(localStorage.getItem("kozker_workspace_agency") || "Enterprise recruiter");
+    }
 
     // Override browser alert with custom modal dialog
     if (typeof window !== "undefined") {
@@ -220,6 +229,17 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         setCustomAlert({ message: String(message), isOpen: true });
       };
     }
+  }, []);
+
+  React.useEffect(() => {
+    const handleSubdomainChange = () => {
+      if (typeof window !== "undefined") {
+        setSubdomain(localStorage.getItem("kozker_workspace_subdomain") || "default");
+        setAgencyName(localStorage.getItem("kozker_workspace_agency") || "Enterprise recruiter");
+      }
+    };
+    window.addEventListener("kozker_subdomain_changed", handleSubdomainChange);
+    return () => window.removeEventListener("kozker_subdomain_changed", handleSubdomainChange);
   }, []);
 
   // Dismiss custom alert with Enter, Space or Escape keys
@@ -909,6 +929,15 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   const handleOnboard = async () => {
     try {
+      if (typeof window !== "undefined") {
+        if (onboardDomain) {
+          localStorage.setItem("kozker_workspace_subdomain", onboardDomain.toLowerCase().replace(/[^a-z0-9-]/g, ""));
+        }
+        if (onboardAgency) {
+          localStorage.setItem("kozker_workspace_agency", onboardAgency);
+        }
+        window.dispatchEvent(new Event("kozker_subdomain_changed"));
+      }
       await updateProfile.mutateAsync({
         full_name: onboardName,
         is_onboarded: true,
@@ -1065,8 +1094,8 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
           <div className="active-workspace-panel mx-4 mt-4 p-3 bg-neutral-50 border border-neutral-150 rounded-sm font-mono text-[10px]">
             <p className="text-neutral-400 font-semibold uppercase tracking-wider">Active Workspace</p>
-            <p className="font-bold text-neutral-800 mt-0.5 truncate">{"Enterprise recruiter"}</p>
-            <p className="text-primary font-bold mt-1 text-[9px]">@{"default"}.kozker.ai</p>
+            <p className="font-bold text-neutral-800 mt-0.5 truncate">{agencyName}</p>
+            <p className="text-primary font-bold mt-1 text-[9px]">@{subdomain}.kozker.ai</p>
           </div>
 
           <nav className="mt-6 px-3 space-y-1 text-xs">
@@ -1297,19 +1326,6 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         
-        {/* Top Notification Bar */}
-        <div className="bg-primary/5 border-b border-primary/10 px-6 py-2 flex items-center justify-between text-[10px] text-neutral-600 font-sans select-none animate-fade-in z-10 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 bg-success rounded-full animate-ping"></span>
-            <span className="font-semibold text-neutral-700">System Live:</span>
-            <span>All background matching agents and parsed pipeline queues are active.</span>
-          </div>
-          <div className="flex items-center gap-3 font-mono text-[9px] text-neutral-400">
-            <span>Supabase: Connected</span>
-            <span className="w-1 h-3 bg-neutral-200"></span>
-            <span>Claude AI: Ready</span>
-          </div>
-        </div>
 
         <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
           {children}

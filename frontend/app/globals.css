@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-primary: #FF6E30;
   --color-success: #16A34A;
@@ -38,35 +40,35 @@
   --foreground: #292524;
 }
 
-html[data-theme="sunset"] {
+[data-theme="sunset"] {
   --color-primary: #FF6E30;
 }
 
-html[data-theme="ocean"] {
+[data-theme="ocean"] {
   --color-primary: #0EA5E9;
 }
 
-html[data-theme="forest"] {
+[data-theme="forest"] {
   --color-primary: #10B981;
 }
 
-html[data-theme="pine"] {
+[data-theme="pine"] {
   --color-primary: #2F5A27;
 }
 
-html[data-theme="cosmic"] {
+[data-theme="cosmic"], [data-theme="cyber"] {
   --color-primary: #8B5CF6;
 }
 
-html[data-theme="rose"] {
+[data-theme="rose"] {
   --color-primary: #F43F5E;
 }
 
-html[data-theme="amber"] {
+[data-theme="amber"] {
   --color-primary: #F59E0B;
 }
 
-html[data-theme="midnight"] {
+[data-theme="midnight"], [data-theme="indigo"] {
   --color-primary: #6366F1;
 }
 
