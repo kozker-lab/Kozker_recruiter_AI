@@ -284,7 +284,8 @@ async def dispatch_n8n_webhook(url: str, payload: dict, context_label: str) -> b
     logger.info(f"Dispatching outbound webhook to {url} for {context_label}")
     try:
         async with httpx.AsyncClient() as client:
-            res = await client.post(url, json=payload, timeout=30.0)
+            # Increased timeout from 30.0s to 180.0s to allow async LLM matching workloads to finish
+            res = await client.post(url, json=payload, timeout=180.0)
             if res.status_code in (200, 201, 202, 204):
                 logger.info(f"Successfully dispatched webhook for {context_label} (status: {res.status_code})")
                 return True
@@ -2183,13 +2184,27 @@ def evaluate_candidate_matching_with_history(db: Client, cand_id: str, job_id: s
     skill_gaps = []
     
     for sk in approved_skills:
-        sk_name = sk["skill_name"].lower()
-        sk_weight = float(sk["weight"])
+        if not sk:
+            continue
+        if isinstance(sk, str):
+            sk_name = sk.lower()
+            sk_weight = 10.0
+        elif isinstance(sk, dict):
+            sk_name = (sk.get("skill_name") or sk.get("name") or "").lower()
+            if not sk_name:
+                continue
+            try:
+                sk_weight = float(sk.get("weight") if sk.get("weight") is not None else 10.0)
+            except Exception:
+                sk_weight = 10.0
+        else:
+            continue
+
         if sk_name in cand_skills or sk_name in cand_raw_text.lower():
             matched_score += (sk_weight * 0.5)
-            strengths.append(sk["skill_name"])
+            strengths.append(sk.get("skill_name") if isinstance(sk, dict) else sk)
         else:
-            skill_gaps.append(sk["skill_name"])
+            skill_gaps.append(sk.get("skill_name") if isinstance(sk, dict) else sk)
             
     matched_score = min(matched_score, 100.0)
     
@@ -2210,7 +2225,12 @@ def evaluate_candidate_matching_with_history(db: Client, cand_id: str, job_id: s
     perf_summaries = []
     
     for app in other_apps:
-        job_title = app.get("job_openings", {}).get("title", "Other Job")
+        job_data = app.get("job_openings")
+        if isinstance(job_data, list) and job_data:
+            job_data = job_data[0]
+        elif not isinstance(job_data, dict):
+            job_data = {}
+        job_title = job_data.get("title", "Other Job")
         app_stage = app.get("stage")
         app_status = app.get("stage_status")
         app_notes = app.get("stage_notes")
@@ -2268,15 +2288,25 @@ def match_candidates_background(job_id: str, jwt_token: str):
         # Fetch job and approved skills
         job_res = db.table("job_openings").select("*").eq("id", job_id).execute()
         skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
-        candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
         
-        if not job_res.data or not skills_res.data or not candidates_res.data:
+        # Get candidate IDs that are already linked to this job via applications
+        linked_apps_res = db.table("applications").select("candidate_id").eq("job_opening_id", job_id).execute()
+        linked_cand_ids = [a["candidate_id"] for a in linked_apps_res.data or []]
+        
+        # Only query candidates assigned to this job or already linked to it
+        if linked_cand_ids:
+            candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
+            candidates = [c for c in candidates_res.data or [] if c.get("job_id") == job_id or c.get("id") in linked_cand_ids]
+        else:
+            candidates_res = db.table("candidates").select("*").eq("job_id", job_id).eq("is_deleted", False).execute()
+            candidates = candidates_res.data or []
+        
+        if not job_res.data or not skills_res.data or not candidates:
             db.table("job_openings").update({"processing_status": "ready"}).eq("id", job_id).execute()
             return
             
         job = job_res.data[0]
         approved_skills = skills_res.data[0].get("skills", []) if skills_res.data else []
-        candidates = candidates_res.data
         for cand in candidates:
             if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
                 if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
@@ -3776,17 +3806,27 @@ async def callback_candidate_matches(payload: CandidateMatchesCallback):
     # Clear existing job candidates
     db.table("job_candidates").delete().eq("job_opening_id", payload.job_opening_id).execute()
     
-    # Fetch candidates' parsed_resume_json
+    # Fetch candidates' parsed_resume_json and filter by job_id or linked applications
     cand_ids = [match.candidate_id for match in payload.matches]
+    valid_cand_ids = set()
     cand_resumes = {}
     if cand_ids:
-        cands_res = db.table("candidates").select("id, parsed_resume_json").in_("id", cand_ids).execute()
+        # Get candidate IDs that are already linked to this job via applications
+        linked_apps_res = db.table("applications").select("candidate_id").eq("job_opening_id", payload.job_opening_id).execute()
+        linked_cand_ids = set(a["candidate_id"] for a in linked_apps_res.data or [])
+        
+        cands_res = db.table("candidates").select("id, job_id, parsed_resume_json").in_("id", cand_ids).eq("is_deleted", False).execute()
         if cands_res.data:
-            cand_resumes = {c["id"]: c.get("parsed_resume_json") for c in cands_res.data}
+            for c in cands_res.data:
+                if c.get("job_id") == payload.job_opening_id or c["id"] in linked_cand_ids:
+                    valid_cand_ids.add(c["id"])
+                    cand_resumes[c["id"]] = c.get("parsed_resume_json")
             
     seen_candidate_ids = set()
     scored_candidates = []
     for idx, match in enumerate(payload.matches):
+        if match.candidate_id not in valid_cand_ids:
+            continue
         if match.candidate_id in seen_candidate_ids:
             continue
         seen_candidate_ids.add(match.candidate_id)

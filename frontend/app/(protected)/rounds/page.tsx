@@ -208,11 +208,13 @@ export default function RoundsPage() {
     );
   };
 
-  // 1. Text Search Filter
+  // 1. Filter out applications without a valid job opening, then apply Text Search Filter
   let filteredApps = applications.filter(app => {
+    if (!app.job_opening_id || !app.job_openings) return false;
+    
     const candName = app.candidates?.full_name || "";
     const jobTitle = app.job_openings?.title || "";
-    const clientName = app.job_openings?.clients?.name || app.client_name || "";
+    const clientName = app.job_openings?.clients?.name || app.job_openings?.client_name || app.client_name || "";
     const query = searchQuery.toLowerCase();
     return (
       candName.toLowerCase().includes(query) ||
@@ -823,8 +825,9 @@ export default function RoundsPage() {
                   </thead>
                   <tbody className="divide-y divide-neutral-150">
                     {filteredApps.map((app) => {
-                      const activeStageName = app.stage === "hired" ? "Hired" : app.stage === "rejected" ? "Rejected" : app.stage.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
-                      const statusInfo = getRoundStatus(app, app.stage, app.job_openings);
+                      const currentStage = app.stage || "screening";
+                      const activeStageName = currentStage === "hired" ? "Hired" : currentStage === "rejected" ? "Rejected" : currentStage.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+                      const statusInfo = getRoundStatus(app, currentStage, app.job_openings);
                       
                       return (
                         <tr key={app.id} className="hover:bg-neutral-50/50 transition-colors">
