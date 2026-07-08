@@ -148,6 +148,22 @@ export default function PublicApplyPage() {
   // By default, if accessed with edit=true, load designer. Otherwise load candidate view.
   const [mode, setMode] = useState<"design" | "preview">("preview");
 
+  const [darkThemeMode, setDarkThemeMode] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const savedMode = localStorage.getItem("kozker_pref_mode") as "light" | "dark" | null;
+    const initialMode = savedMode || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    setDarkThemeMode(initialMode);
+    document.documentElement.setAttribute("data-mode", initialMode);
+  }, []);
+
+  const toggleDarkThemeMode = () => {
+    const nextMode = darkThemeMode === "dark" ? "light" : "dark";
+    setDarkThemeMode(nextMode);
+    localStorage.setItem("kozker_pref_mode", nextMode);
+    document.documentElement.setAttribute("data-mode", nextMode);
+  };
+
   // Load configuration from local storage or set defaults
   const [fields, setFields] = useState<FormFieldConfig[]>([]);
   const [selectedTheme, setSelectedTheme] = useState<"pine" | "indigo" | "dark" | "amber" | "rose" | "cyber" | "ocean" | "sunset">("sunset");
@@ -816,6 +832,19 @@ export default function PublicApplyPage() {
 
           {/* Mode Switcher Toggle */}
           <div className="flex items-center gap-4">
+            {/* Dark Mode Toggle */}
+            <button
+              onClick={toggleDarkThemeMode}
+              className="p-1.5 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded-sm cursor-pointer border border-neutral-700 transition-all"
+              title={darkThemeMode === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            >
+              {darkThemeMode === "dark" ? (
+                <Sun className="w-3.5 h-3.5 text-amber-500 fill-amber-500/25" />
+              ) : (
+                <Moon className="w-3.5 h-3.5" />
+              )}
+            </button>
+
             <div className="bg-neutral-900/60 p-0.5 rounded-sm flex border border-neutral-800">
               <button
                 onClick={() => setMode("design")}
