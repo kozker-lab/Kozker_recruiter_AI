@@ -471,6 +471,16 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     }
   }, [selectedJobId, router]);
 
+  // Scroll main content container back to top when switching jobs or tabs
+  React.useEffect(() => {
+    if (typeof document !== "undefined") {
+      const container = document.getElementById("main-scroll-container");
+      if (container) {
+        container.scrollTop = 0;
+      }
+    }
+  }, [selectedJobId, activeTab]);
+
   // View mode and filtering states
   const [viewMode, setViewMode] = useState<"tree" | "accordion" | "table">("tree");
   const [searchQuery, setSearchQuery] = useState("");
@@ -1608,6 +1618,18 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           </button>
         </div>
       </div>
+
+      {activeJob?.processing_status === "error" && activeJob?.error_message && (
+        <div className="bg-rose-50 border border-rose-200 rounded-sm p-4 text-rose-800 text-xs flex items-start gap-2.5 shadow-xs animate-fade-in">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+          <div className="space-y-1 w-full">
+            <h4 className="font-bold uppercase tracking-wider font-mono text-[10px]">AI Pipeline Processing Failure</h4>
+            <p className="font-mono text-[11px] leading-relaxed break-words bg-rose-100/40 p-2 border border-rose-200/50 rounded-xs">
+              {activeJob.error_message}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Interactive Status Bar */}
       <div className="bg-neutral-50 border border-neutral-200 rounded-sm p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

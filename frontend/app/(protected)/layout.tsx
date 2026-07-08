@@ -1327,7 +1327,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         </header>
         
 
-        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+        <div id="main-scroll-container" className="flex-1 overflow-y-auto p-6 scrollbar-thin">
           {children}
         </div>
       </main>

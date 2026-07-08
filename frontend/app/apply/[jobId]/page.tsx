@@ -509,8 +509,8 @@ export default function PublicApplyPage() {
     handleSaveConfig(updated);
   };
 
-  // Delete custom field
-  const handleDeleteCustomField = (id: string) => {
+  // Delete field (both standard non-core and custom fields)
+  const handleDeleteField = (id: string) => {
     const updated = fields.filter(f => f.id !== id);
     setFields(updated);
     handleSaveConfig(updated);
@@ -819,79 +819,61 @@ export default function PublicApplyPage() {
     <div className={`min-h-screen ${resolvedBgClass} font-sans flex flex-col transition-colors duration-250`}>
       {/* Studio Header (Only shown when edit=true is present to manage form) */}
       {isEditMode && (
-        <div className={`px-6 py-3 flex items-center justify-between border-b ${theme.studioHeader} transition-colors duration-250`}>
+        <div className="px-6 py-3.5 flex items-center justify-between border-b border-[#251e3a] bg-[#0c0a12] text-white transition-colors duration-250 select-none">
           <div className="flex items-center gap-2.5">
-            <div className="bg-emerald-600 text-white w-6 h-6 rounded-xs flex items-center justify-center text-xs font-black">
+            <div className="bg-[#7C3AED] text-white w-6 h-6 rounded flex items-center justify-center text-xs font-black shadow-md shadow-purple-500/25">
               FS
             </div>
             <div>
-              <h2 className="font-tight font-black text-xs uppercase tracking-wider">Kozker Form Studio</h2>
-              <p className="text-[9px] font-mono text-neutral-400 uppercase">Hiring Mandate Form Editor & AI Assistent</p>
+              <h2 className="font-tight font-black text-xs uppercase tracking-wider text-white">Kozker Form Studio</h2>
+              <p className="text-[9px] font-mono text-[#9333ea] uppercase tracking-wider">Hiring Mandate Form Editor & AI Assistant</p>
             </div>
           </div>
 
-          {/* Mode Switcher Toggle */}
-          <div className="flex items-center gap-4">
-            {/* Dark Mode Toggle */}
+          {/* Switcher & Actions */}
+          <div className="flex items-center gap-3">
             <button
-              onClick={toggleDarkThemeMode}
-              className="p-1.5 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded-sm cursor-pointer border border-neutral-700 transition-all"
-              title={darkThemeMode === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              onClick={() => setMode("design")}
+              className={`px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition-all flex items-center gap-1.5 cursor-pointer ${
+                mode === "design" 
+                  ? "bg-[#7C3AED] text-white shadow-md shadow-purple-500/25" 
+                  : "border border-[#7C3AED] text-[#7C3AED] hover:bg-[#7C3AED]/10"
+              }`}
             >
-              {darkThemeMode === "dark" ? (
-                <Sun className="w-3.5 h-3.5 text-amber-500 fill-amber-500/25" />
-              ) : (
-                <Moon className="w-3.5 h-3.5" />
-              )}
+              <Settings className="w-3.5 h-3.5" />
+              Designer
+            </button>
+            <button
+              onClick={() => setMode("preview")}
+              className={`px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition-all flex items-center gap-1.5 cursor-pointer ${
+                mode === "preview" 
+                  ? "bg-[#7C3AED] text-white shadow-md shadow-purple-500/25" 
+                  : "border border-[#7C3AED] text-[#7C3AED] hover:bg-[#7C3AED]/10"
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Live Preview
             </button>
 
-            <div className="bg-neutral-900/60 p-0.5 rounded-sm flex border border-neutral-800">
+            {saveSuccess ? (
+              <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-3.5 py-1.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 shadow-md shadow-emerald-500/10">
+                <Check className="w-3.5 h-3.5" /> Saved
+              </span>
+            ) : (
               <button
-                onClick={() => setMode("design")}
-                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-xs transition-all flex items-center gap-1 cursor-pointer ${
-                  mode === "design" 
-                    ? "bg-neutral-800 text-white shadow-xs" 
-                    : "text-neutral-400 hover:text-neutral-200"
-                }`}
+                onClick={() => handleSaveConfig()}
+                className="px-3.5 py-1.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer shadow-md shadow-purple-500/20"
               >
-                <Settings className="w-3 h-3" />
-                Designer
+                Save Config
               </button>
-              <button
-                onClick={() => setMode("preview")}
-                className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-xs transition-all flex items-center gap-1 cursor-pointer ${
-                  mode === "preview" 
-                    ? "bg-neutral-800 text-white shadow-xs" 
-                    : "text-neutral-400 hover:text-neutral-200"
-                }`}
-              >
-                <Eye className="w-3 h-3" />
-                Live Preview
-              </button>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="flex items-center gap-2">
-              {saveSuccess ? (
-                <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-1 rounded-sm text-[9.5px] font-mono font-bold flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" /> Saved
-                </span>
-              ) : (
-                <button
-                  onClick={() => handleSaveConfig()}
-                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-xs transition-colors cursor-pointer"
-                >
-                  Save Config
-                </button>
-              )}
-              <button
-                onClick={handleResetToDefault}
-                className="px-2 py-1 border border-neutral-700 hover:bg-neutral-800 text-neutral-300 text-[10px] font-bold uppercase tracking-wider rounded-xs transition-colors cursor-pointer"
-                title="Reset to default fields"
-              >
-                Reset
-              </button>
-            </div>
+            )}
+            <button
+              onClick={handleResetToDefault}
+              className="px-3.5 py-1.5 text-white/80 hover:text-white text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
+              title="Reset to default fields"
+            >
+              Reset
+            </button>
           </div>
         </div>
       )}
@@ -899,89 +881,26 @@ export default function PublicApplyPage() {
       {/* Main Container */}
       <div className="flex-1 flex flex-col lg:flex-row">
         
-        {/* DESIGNER PANEL VIEW: 3-column view */}
+        {/* DESIGNER PANEL VIEW: 2-column view */}
         {mode === "design" && isEditMode ? (
-          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0">
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0 bg-[#0c0a12]">
             
-            {/* COLUMN 1: Job Details & AI Insights (Col span: 4) */}
-            <div className="lg:col-span-4 border-r border-neutral-200 p-5 space-y-5 bg-white/50 backdrop-blur-xs overflow-y-auto max-h-[calc(100vh-56px)] select-none">
-              <div className="space-y-1.5">
-                <span className="px-2 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-sm">
-                  Active Target Opening
-                </span>
-                <h3 className="font-tight font-black text-sm text-neutral-800 leading-tight">
-                  {job.title}
-                </h3>
-                {job.client_name && (
-                  <div className="flex items-center gap-1 text-[11px] text-neutral-500 font-mono">
-                    <Building2 className="w-3.5 h-3.5 text-neutral-450" />
-                    <span>{job.client_name}</span>
+            {/* COLUMN 2: Interactive Form Canvas Editor (Col span: 8) */}
+            <div className="lg:col-span-8 border-r border-[#251e3a] p-6 space-y-4 overflow-y-auto max-h-[calc(100vh-56px)] bg-[#0c0a12]">
+              <div className="border-b border-[#251e3a] pb-4 flex flex-col md:flex-row md:items-center justify-between gap-3 select-none">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider bg-purple-950 text-purple-400 border border-purple-900 rounded">
+                      Form Target
+                    </span>
+                    <span className="text-[11px] font-mono text-[#7d7593] truncate">
+                      {job.client_name ? `${job.client_name} • ` : ""}{job.title}
+                    </span>
                   </div>
-                )}
-              </div>
-
-              {/* AI-Insights Block */}
-              {aiInsights && (
-                <div className="space-y-4">
-                  <div className="border-t border-neutral-200 pt-4">
-                    <h4 className="text-[10px] font-black text-neutral-450 uppercase tracking-widest font-mono flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                      AI Optimization Insights
-                    </h4>
-                    
-                    <div className="mt-2.5 space-y-2">
-                      {aiInsights.insights.map((insight, idx) => (
-                        <div key={idx} className="p-3 bg-amber-50/75 border border-amber-200/50 rounded-sm text-amber-900 text-xs leading-relaxed">
-                          {insight}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Custom Questions Suggestions */}
-                  <div className="border-t border-neutral-200 pt-4">
-                    <h4 className="text-[10px] font-black text-neutral-450 uppercase tracking-widest font-mono flex items-center gap-1 mb-2">
-                      <Sparkle className="w-3.5 h-3.5 text-emerald-600" />
-                      AI Screening Recommendations
-                    </h4>
-                    <p className="text-neutral-400 text-[10.5px] leading-relaxed italic mb-3">
-                      Add these tailored custom screening fields based on the job requirements to filter applications:
-                    </p>
-
-                    <div className="space-y-2">
-                      {aiInsights.suggestions.map((sug, idx) => (
-                        <div key={idx} className="p-3 bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 rounded-sm flex flex-col justify-between gap-2.5 transition-colors">
-                          <div className="space-y-1">
-                            <span className="px-1.5 py-0.5 text-[8.5px] font-mono font-bold uppercase tracking-wider text-neutral-500 bg-neutral-200 border border-neutral-250 rounded-xs">
-                              {sug.type}
-                            </span>
-                            <p className="text-neutral-700 text-xs font-semibold leading-relaxed">
-                              {sug.label}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleAddSuggestedQuestion(sug.label, sug.type, sug.options)}
-                            className="self-end px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-250 hover:border-emerald-350 text-[9.5px] font-bold uppercase tracking-wider rounded-xs transition-all cursor-pointer flex items-center gap-1"
-                          >
-                            <Plus className="w-3 h-3" /> Add to Form
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <h3 className="font-tight font-black text-xs uppercase tracking-wider text-white">Form Designer Canvas</h3>
+                  <p className="text-[10px] text-[#7d7593]">Order, enable, or require fields dynamically.</p>
                 </div>
-              )}
-            </div>
-
-            {/* COLUMN 2: Interactive Form Canvas Editor (Col span: 5) */}
-            <div className="lg:col-span-5 border-r border-neutral-200 p-5 space-y-4 overflow-y-auto max-h-[calc(100vh-56px)] bg-neutral-50/50">
-              <div className="border-b border-neutral-200 pb-3 flex items-center justify-between">
-                <div>
-                  <h3 className="font-tight font-black text-xs uppercase tracking-wider text-neutral-800">Form Designer Canvas</h3>
-                  <p className="text-[10px] text-neutral-400">Order, enable, or require fields dynamically.</p>
-                </div>
-                <Layout className="w-5 h-5 text-neutral-400" />
+                <Layout className="w-5 h-5 text-[#7d7593] shrink-0" />
               </div>
 
               {/* Drag/Reorder Canvas Container */}
@@ -989,240 +908,237 @@ export default function PublicApplyPage() {
                 {fields.map((field, idx) => {
                   const isCore = field.id === "full_name" || field.id === "email";
                   const isEditing = editingFieldId === field.id;
-
                   if (isEditing) {
-                    return (
-                      <div 
-                        key={field.id} 
-                        className="p-3.5 rounded-sm border bg-white border-emerald-600 shadow-md space-y-3"
-                      >
-                        <div className="space-y-2 text-xs">
-                          <div>
-                            <label className="text-[9px] uppercase font-mono text-neutral-450 block font-bold mb-0.5">Field Label</label>
-                            <input
-                              type="text"
-                              value={editingLabel}
-                              onChange={(e) => setEditingLabel(e.target.value)}
-                              className="w-full px-2.5 py-1 text-xs border border-neutral-200 rounded-xs text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
-                            />
-                          </div>
-
-                          {field.isCustom && (
-                            <div>
-                              <label className="text-[9px] uppercase font-mono text-neutral-450 block font-bold mb-0.5">Field Type</label>
-                              <select
-                                value={editingType}
-                                onChange={(e) => setEditingType(e.target.value)}
-                                className="w-full px-2.5 py-1 text-xs border border-neutral-200 bg-white rounded-xs text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+                            return (
+                              <div 
+                                key={field.id} 
+                                className="p-4 rounded border bg-[#181622] border-[#7C3AED] shadow-lg space-y-3.5 select-none"
                               >
-                                <option value="text">Short Text</option>
-                                <option value="textarea">Paragraph</option>
-                                <option value="number">Number</option>
-                                <option value="select">Dropdown</option>
-                                <option value="checkbox">Checkbox</option>
-                              </select>
+                                <div className="space-y-2 text-xs">
+                                  <div>
+                                    <label className="text-[9px] uppercase font-mono text-[#7d7593] block font-bold mb-0.5">Field Label</label>
+                                    <input
+                                      type="text"
+                                      value={editingLabel}
+                                      onChange={(e) => setEditingLabel(e.target.value)}
+                                      className="w-full px-2.5 py-1.5 text-xs border border-[#251e3a] bg-[#0c0a12] rounded text-white focus:outline-hidden focus:border-[#7C3AED]"
+                                    />
+                                  </div>
+        
+                                  {field.isCustom && (
+                                    <div>
+                                      <label className="text-[9px] uppercase font-mono text-[#7d7593] block font-bold mb-0.5">Field Type</label>
+                                      <select
+                                        value={editingType}
+                                        onChange={(e) => setEditingType(e.target.value)}
+                                        className="w-full px-2.5 py-1.5 text-xs border border-[#251e3a] bg-[#0c0a12] rounded text-white focus:outline-hidden focus:border-[#7C3AED]"
+                                      >
+                                        <option value="text">Short Text</option>
+                                        <option value="textarea">Paragraph</option>
+                                        <option value="number">Number</option>
+                                        <option value="select">Dropdown</option>
+                                        <option value="checkbox">Checkbox</option>
+                                      </select>
+                                    </div>
+                                  )}
+        
+                                  {(editingType === "select" || (!field.isCustom && field.type === "select")) && (
+                                    <div>
+                                      <label className="text-[9px] uppercase font-mono text-[#7d7593] block font-bold mb-0.5">Dropdown Options (Comma separated)</label>
+                                      <input
+                                        type="text"
+                                        value={editingOptions}
+                                        onChange={(e) => setEditingOptions(e.target.value)}
+                                        placeholder="e.g. Option 1, Option 2, Option 3"
+                                        className="w-full px-2.5 py-1.5 text-xs border border-[#251e3a] bg-[#0c0a12] rounded text-white focus:outline-hidden focus:border-[#7C3AED]"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+        
+                                <div className="flex gap-2 justify-end pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = fields.map(f => {
+                                        if (f.id === field.id) {
+                                          const opts = (editingType === "select" || (!f.isCustom && f.type === "select"))
+                                            ? editingOptions.split(",").map(o => o.trim()).filter(Boolean)
+                                            : f.options;
+                                          return {
+                                            ...f,
+                                            label: editingLabel.trim() || f.label,
+                                            type: f.isCustom ? editingType : f.type,
+                                            options: opts
+                                          };
+                                        }
+                                        return f;
+                                      });
+                                      setFields(updated);
+                                      handleSaveConfig(updated);
+                                      setEditingFieldId(null);
+                                    }}
+                                    className="px-3 py-1 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-mono font-bold text-[9px] uppercase rounded cursor-pointer transition-colors"
+                                  >
+                                    Done
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingFieldId(null)}
+                                    className="px-3 py-1 border border-[#251e3a] text-[#7d7593] hover:text-white font-mono text-[9px] uppercase rounded cursor-pointer transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+        
+                          return (
+                            <div 
+                              key={field.id} 
+                              className={`p-4 rounded border transition-all flex items-center justify-between bg-[#120f1e] border-[#251e3a] hover:border-[#382d56] ${
+                                !field.enabled && "opacity-50"
+                              }`}
+                            >
+                              <div className="space-y-1.5 flex-1 min-w-0 pr-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-xs text-white truncate">
+                                    {field.label}
+                                  </span>
+                                  
+                                  {field.required && (
+                                    <span className="text-red-500 text-xs font-bold" title="Required">*</span>
+                                  )}
+                                  
+                                  {field.isCustom && (
+                                    <span className="px-1.5 py-0.5 text-[8px] font-mono font-bold uppercase tracking-wider bg-purple-950 text-purple-400 border border-purple-900 rounded">
+                                      Custom
+                                    </span>
+                                  )}
+                                </div>
+                                
+                                <div className="flex items-center gap-2 text-[9px] font-mono text-[#7d7593] uppercase tracking-wider">
+                                  <span>ID: {field.id.toUpperCase()}</span>
+                                  <span>•</span>
+                                  <span>Type: {field.type.toUpperCase()}</span>
+                                </div>
+                              </div>
+        
+                              {/* Field Controls */}
+                              <div className="flex items-center gap-2 shrink-0">
+                                {/* Edit card label/options details */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingFieldId(field.id);
+                                    setEditingLabel(field.label);
+                                    setEditingType(field.type);
+                                    setEditingOptions(field.options ? field.options.join(", ") : "");
+                                  }}
+                                  className="p-1.5 hover:bg-[#181622] text-[#7d7593] hover:text-white border border-[#251e3a] hover:border-[#7c3aed] bg-[#0c0a12] rounded transition-all cursor-pointer"
+                                  title="Edit Card Details"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                
+                                {/* Order Reordering */}
+                                <div className="flex flex-col gap-0.5">
+                                  <button
+                                    onClick={() => moveField(idx, "up")}
+                                    disabled={idx === 0}
+                                    className="p-0.5 hover:bg-[#181622] disabled:opacity-20 text-[#7d7593] hover:text-white border border-[#251e3a] hover:border-[#7c3aed] bg-[#0c0a12] rounded transition-all cursor-pointer"
+                                    title="Move Up"
+                                  >
+                                    <ArrowUp className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => moveField(idx, "down")}
+                                    disabled={idx === fields.length - 1}
+                                    className="p-0.5 hover:bg-[#181622] disabled:opacity-20 text-[#7d7593] hover:text-white border border-[#251e3a] hover:border-[#7c3aed] bg-[#0c0a12] rounded transition-all cursor-pointer"
+                                    title="Move Down"
+                                  >
+                                    <ArrowDown className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+        
+                                {/* Toggles */}
+                                <div className="flex flex-col gap-1 pl-1">
+                                  {/* Enabled Toggle */}
+                                  <label className="flex items-center gap-1.5 cursor-pointer text-[9.5px] font-mono font-bold text-[#7d7593]">
+                                    <input
+                                      type="checkbox"
+                                      checked={field.enabled}
+                                      disabled={isCore}
+                                      onChange={() => toggleFieldProp(field.id, "enabled")}
+                                      className="w-3.5 h-3.5 accent-[#7c3aed] rounded border-[#251e3a] cursor-pointer"
+                                    />
+                                    <span>Show</span>
+                                  </label>
+        
+                                  {/* Required Toggle */}
+                                  <label className="flex items-center gap-1.5 cursor-pointer text-[9.5px] font-mono font-bold text-[#7d7593]">
+                                    <input
+                                      type="checkbox"
+                                      checked={field.required}
+                                      disabled={isCore || !field.enabled}
+                                      onChange={() => toggleFieldProp(field.id, "required")}
+                                      className="w-3.5 h-3.5 accent-[#7c3aed] rounded border-[#251e3a] cursor-pointer"
+                                    />
+                                    <span>Require</span>
+                                  </label>
+                                </div>
+        
+                                {/* Option to delete non-core fields */}
+                                {!isCore && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteField(field.id)}
+                                    className="p-1.5 text-[#7d7593] hover:text-red-500 border border-[#251e3a] hover:border-red-550/30 bg-[#0c0a12] hover:bg-red-500/10 rounded transition-all cursor-pointer ml-1"
+                                    title="Delete Field"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                          )}
-
-                          {(editingType === "select" || (!field.isCustom && field.type === "select")) && (
-                            <div>
-                              <label className="text-[9px] uppercase font-mono text-neutral-450 block font-bold mb-0.5">Dropdown Options (Comma separated)</label>
-                              <input
-                                type="text"
-                                value={editingOptions}
-                                onChange={(e) => setEditingOptions(e.target.value)}
-                                placeholder="e.g. Option 1, Option 2, Option 3"
-                                className="w-full px-2.5 py-1 text-xs border border-neutral-200 rounded-xs text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex gap-2 justify-end pt-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = fields.map(f => {
-                                if (f.id === field.id) {
-                                  const opts = (editingType === "select" || (!f.isCustom && f.type === "select"))
-                                    ? editingOptions.split(",").map(o => o.trim()).filter(Boolean)
-                                    : f.options;
-                                  return {
-                                    ...f,
-                                    label: editingLabel.trim() || f.label,
-                                    type: f.isCustom ? editingType : f.type,
-                                    options: opts
-                                  };
-                                }
-                                return f;
-                              });
-                              setFields(updated);
-                              handleSaveConfig(updated);
-                              setEditingFieldId(null);
-                            }}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-bold text-[9px] uppercase rounded-xs cursor-pointer"
-                          >
-                            Done
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingFieldId(null)}
-                            className="px-2.5 py-1 border border-neutral-200 text-neutral-500 hover:bg-neutral-50 font-mono text-[9px] uppercase rounded-xs cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div 
-                      key={field.id} 
-                      className={`p-3.5 rounded-sm border transition-all flex items-center justify-between ${
-                        field.enabled 
-                          ? "bg-white border-neutral-200 shadow-xs" 
-                          : "bg-neutral-100 border-neutral-200/60 opacity-60"
-                      }`}
-                    >
-                      <div className="space-y-1.5 flex-1 min-w-0 pr-4">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-neutral-800 truncate">
-                            {field.label}
-                          </span>
-                          
-                          {field.required && (
-                            <span className="text-red-500 text-xs font-bold" title="Required">*</span>
-                          )}
-                          
-                          {field.isCustom && (
-                            <span className="px-1.5 py-0.5 text-[8px] font-mono font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 rounded-xs">
-                              Custom
-                            </span>
-                          )}
-                        </div>
-                        
-                        <div className="flex items-center gap-2 text-[9px] font-mono text-neutral-400 uppercase">
-                          <span>ID: {field.id}</span>
-                          <span>•</span>
-                          <span>Type: {field.type}</span>
-                        </div>
-                      </div>
-
-                      {/* Field Controls */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {/* Edit card label/options details */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingFieldId(field.id);
-                            setEditingLabel(field.label);
-                            setEditingType(field.type);
-                            setEditingOptions(field.options ? field.options.join(", ") : "");
-                          }}
-                          className="p-1 hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700 rounded-sm border border-neutral-200 transition-colors cursor-pointer"
-                          title="Edit Card Details"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        
-                        {/* Order Reordering */}
-                        <div className="flex flex-col gap-0.5">
-                          <button
-                            onClick={() => moveField(idx, "up")}
-                            disabled={idx === 0}
-                            className="p-0.5 bg-neutral-50 hover:bg-neutral-100 disabled:opacity-30 rounded-xs text-neutral-500 border border-neutral-200 cursor-pointer"
-                            title="Move Up"
-                          >
-                            <ArrowUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => moveField(idx, "down")}
-                            disabled={idx === fields.length - 1}
-                            className="p-0.5 bg-neutral-50 hover:bg-neutral-100 disabled:opacity-30 rounded-xs text-neutral-500 border border-neutral-200 cursor-pointer"
-                            title="Move Down"
-                          >
-                            <ArrowDown className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        {/* Toggles */}
-                        <div className="flex flex-col gap-1 pl-1">
-                          {/* Enabled Toggle */}
-                          <label className="flex items-center gap-1.5 cursor-pointer text-[9.5px] font-mono font-bold text-neutral-500">
-                            <input
-                              type="checkbox"
-                              checked={field.enabled}
-                              disabled={isCore}
-                              onChange={() => toggleFieldProp(field.id, "enabled")}
-                              className="w-3 h-3 accent-emerald-600 rounded-sm border-neutral-350 cursor-pointer"
-                            />
-                            <span>Show</span>
-                          </label>
-
-                          {/* Required Toggle */}
-                          <label className="flex items-center gap-1.5 cursor-pointer text-[9.5px] font-mono font-bold text-neutral-500">
-                            <input
-                              type="checkbox"
-                              checked={field.required}
-                              disabled={isCore || !field.enabled}
-                              onChange={() => toggleFieldProp(field.id, "required")}
-                              className="w-3 h-3 accent-emerald-600 rounded-sm border-neutral-350 cursor-pointer"
-                            />
-                            <span>Require</span>
-                          </label>
-                        </div>
-
-                        {/* Custom Fields - Delete option */}
-                        {field.isCustom && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteCustomField(field.id)}
-                            className="p-2 ml-1 text-neutral-400 hover:text-red-650 hover:bg-red-50 rounded-sm transition-colors border border-transparent hover:border-red-200 cursor-pointer"
-                            title="Delete Custom Field"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-neutral-450 hover:text-red-550" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
+                          );
                 })}
               </div>
             </div>
 
-            {/* COLUMN 3: Toolbox & Custom Field Inserter (Col span: 3) */}
-            <div className="lg:col-span-3 p-5 space-y-6 overflow-y-auto max-h-[calc(100vh-56px)] bg-white select-none">
+            {/* COLUMN 3: Toolbox & Custom Field Inserter (Col span: 4) */}
+            <div className="lg:col-span-4 p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-56px)] bg-[#0a0812] select-none border-l border-[#251e3a]">
               
               {/* Insert Custom Field */}
               <div className="space-y-4">
-                <div className="border-b border-neutral-200 pb-2.5">
-                  <h3 className="font-tight font-black text-xs uppercase tracking-wider text-neutral-800 flex items-center gap-1.5">
-                    <Plus className="w-4 h-4 text-primary" />
+                <div className="border-b border-[#251e3a] pb-2.5">
+                  <h3 className="font-tight font-black text-xs uppercase tracking-wider text-white flex items-center gap-1.5">
+                    <Plus className="w-4 h-4 text-[#7C3AED]" />
                     Insert Custom Field
                   </h3>
-                  <p className="text-[10px] text-neutral-400">Append custom questions to candidate forms.</p>
+                  <p className="text-[10px] text-[#7d7593]">Append custom questions to candidate forms.</p>
                 </div>
 
                 <form onSubmit={handleAddCustomField} className="space-y-3.5 text-xs">
                   <div className="space-y-1">
-                    <label className="text-neutral-400 uppercase tracking-wider block font-bold text-[9px] font-mono">Field Name / Question Label *</label>
+                    <label className="text-[#FF6E30] uppercase tracking-wider block font-bold text-[9px] font-mono">Field Name / Question Label *</label>
                     <input
                       type="text"
                       placeholder="e.g. Notice Period"
                       required
                       value={newFieldName}
                       onChange={(e) => setNewFieldName(e.target.value)}
-                      className="w-full px-2.5 py-1.5 border border-neutral-200 rounded-sm text-neutral-800 placeholder:text-neutral-400 focus:ring-1 focus:ring-primary focus:outline-hidden"
+                      className="w-full px-3 py-2 border border-[#251e3a] bg-[#0c0a12] rounded text-white placeholder:text-[#524b64] focus:outline-hidden focus:border-[#7C3AED]"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-neutral-400 uppercase tracking-wider block font-bold text-[9px] font-mono">Field Input Type</label>
+                    <label className="text-[#7d7593] uppercase tracking-wider block font-bold text-[9px] font-mono">Field Input Type</label>
                     <select
                       value={newFieldType}
                       onChange={(e) => setNewFieldType(e.target.value)}
-                      className="w-full px-2.5 py-1.5 border border-neutral-200 rounded-sm text-neutral-800 bg-white focus:ring-1 focus:ring-primary focus:outline-hidden"
+                      className="w-full px-3 py-2 border border-[#251e3a] bg-[#0c0a12] rounded text-white focus:outline-hidden focus:border-[#7C3AED]"
                     >
                       <option value="text">Short Text (Text Input)</option>
                       <option value="textarea">Paragraph (Textarea)</option>
@@ -1234,21 +1150,21 @@ export default function PublicApplyPage() {
 
                   {newFieldType === "select" && (
                     <div className="space-y-1">
-                      <label className="text-neutral-400 uppercase tracking-wider block font-bold text-[9px] font-mono">Dropdown Options (Comma separated) *</label>
+                      <label className="text-[#FF6E30] uppercase tracking-wider block font-bold text-[9px] font-mono">Dropdown Options (Comma separated) *</label>
                       <input
                         type="text"
                         placeholder="Option 1, Option 2, Option 3"
                         required
                         value={newFieldOptions}
                         onChange={(e) => setNewFieldOptions(e.target.value)}
-                        className="w-full px-2.5 py-1.5 border border-neutral-200 rounded-sm text-neutral-800 placeholder:text-neutral-400 focus:ring-1 focus:ring-primary focus:outline-hidden"
+                        className="w-full px-3 py-2 border border-[#251e3a] bg-[#0c0a12] rounded text-white placeholder:text-[#524b64] focus:outline-hidden focus:border-[#7C3AED]"
                       />
                     </div>
                   )}
 
                   <button
                     type="submit"
-                    className="w-full py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[10px] uppercase tracking-wider rounded-sm transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs"
+                    className="w-full py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[10px] uppercase tracking-wider rounded transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-purple-500/20"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Insert Field Card
@@ -1256,134 +1172,88 @@ export default function PublicApplyPage() {
                 </form>
               </div>
 
+              {/* Screening Suggestions */}
+              {aiInsights && (
+                <div className="space-y-3 border-t border-[#251e3a] pt-5">
+                  <h3 className="font-tight font-black text-xs uppercase tracking-wider text-white flex items-center gap-1.5">
+                    <Sparkle className="w-4 h-4 text-[#7C3AED]" />
+                    Screening Recommendations
+                  </h3>
+                  <p className="text-[10px] text-[#7d7593] leading-relaxed">
+                    Tailored custom fields based on job requirements:
+                  </p>
+                  <div className="space-y-2">
+                    {aiInsights.suggestions.map((sug, idx) => (
+                      <div key={idx} className="p-3 bg-[#120f1e] hover:bg-[#181622] border border-[#251e3a] hover:border-[#382d56] rounded flex items-center justify-between gap-2.5 transition-colors">
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <span className="px-1.5 py-0.5 text-[8px] font-mono font-bold uppercase tracking-wider bg-purple-950 text-purple-400 border border-purple-900 rounded inline-block">
+                            {sug.type}
+                          </span>
+                          <p className="text-white text-xs font-semibold leading-relaxed truncate" title={sug.label}>
+                            {sug.label}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAddSuggestedQuestion(sug.label, sug.type, sug.options)}
+                          className="px-2.5 py-1.5 bg-[#7C3AED]/10 hover:bg-[#7C3AED] hover:text-white text-[#7C3AED] border border-[#7C3AED]/35 hover:border-[#7C3AED] text-[9.5px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                          title="Add field to form"
+                        >
+                          <Plus className="w-3 h-3" /> Add
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Form Theme Customizer */}
-              <div className="space-y-3.5 border-t border-neutral-200 pt-5">
-                <div className="border-b border-neutral-200 pb-2">
-                  <h3 className="font-tight font-black text-xs uppercase tracking-wider text-neutral-800">Form Aesthetic Theme</h3>
-                  <p className="text-[10px] text-neutral-400">Match form aesthetics with company branding.</p>
+              <div className="space-y-3.5 border-t border-[#251e3a] pt-5">
+                <div className="border-b border-[#251e3a] pb-2">
+                  <h3 className="font-tight font-black text-xs uppercase tracking-wider text-white">Form Aesthetic Theme</h3>
+                  <p className="text-[10px] text-[#7d7593]">Match form aesthetics with company branding.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
-                  <button
-                    onClick={() => {
-                      setSelectedTheme("pine");
-                      handleSaveConfig(fields, "pine");
-                    }}
-                    className={`p-2 border rounded-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                      selectedTheme === "pine"
-                        ? "border-emerald-600 bg-emerald-50 text-emerald-800 font-bold"
-                        : "border-neutral-200 hover:bg-neutral-50 text-neutral-500"
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-700"></span>
-                    Pine Green
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedTheme("indigo");
-                      handleSaveConfig(fields, "indigo");
-                    }}
-                    className={`p-2 border rounded-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                      selectedTheme === "indigo"
-                        ? "border-indigo-600 bg-indigo-50 text-indigo-700 font-bold"
-                        : "border-neutral-200 hover:bg-neutral-50 text-neutral-500"
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
-                    Indigo
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedTheme("dark");
-                      handleSaveConfig(fields, "dark");
-                    }}
-                    className={`p-2 border rounded-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                      selectedTheme === "dark"
-                        ? "border-slate-400 bg-slate-800 text-slate-200 font-bold"
-                        : "border-neutral-200 hover:bg-neutral-50 text-neutral-500"
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                    Kozker Dark
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedTheme("amber");
-                      handleSaveConfig(fields, "amber");
-                    }}
-                    className={`p-2 border rounded-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                      selectedTheme === "amber"
-                        ? "border-amber-600 bg-amber-50 text-amber-800 font-bold"
-                        : "border-neutral-200 hover:bg-neutral-50 text-neutral-500"
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-amber-600"></span>
-                    Amber
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedTheme("rose");
-                      handleSaveConfig(fields, "rose");
-                    }}
-                    className={`p-2 border rounded-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                      selectedTheme === "rose"
-                        ? "border-rose-600 bg-rose-50 text-rose-800 font-bold"
-                        : "border-neutral-200 hover:bg-neutral-50 text-neutral-500"
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-rose-600"></span>
-                    Rose Petal
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedTheme("cyber");
-                      handleSaveConfig(fields, "cyber");
-                    }}
-                    className={`p-2 border rounded-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                      selectedTheme === "cyber"
-                        ? "border-purple-600 bg-purple-50 text-purple-800 font-bold"
-                        : "border-neutral-200 hover:bg-neutral-50 text-neutral-500"
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-purple-600"></span>
-                    Neon Cyber
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedTheme("ocean");
-                      handleSaveConfig(fields, "ocean");
-                    }}
-                    className={`p-2 border rounded-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                      selectedTheme === "ocean"
-                        ? "border-cyan-600 bg-cyan-50 text-cyan-800 font-bold"
-                        : "border-neutral-200 hover:bg-neutral-50 text-neutral-500"
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-cyan-700"></span>
-                    Ocean Teal
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedTheme("sunset");
-                      handleSaveConfig(fields, "sunset");
-                    }}
-                    className={`p-2 border rounded-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                      selectedTheme === "sunset"
-                        ? "border-orange-600 bg-orange-50 text-orange-850 font-bold"
-                        : "border-neutral-200 hover:bg-neutral-50 text-neutral-500"
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-orange-600"></span>
-                    Sunset Coral
-                  </button>
+                  {[
+                    { id: "sunset", label: "Sunset Coral", color: "bg-[#ea580c]" },
+                    { id: "pine", label: "Pine Green", color: "bg-[#047857]" },
+                    { id: "indigo", label: "Indigo", color: "bg-[#4f46e5]" },
+                    { id: "dark", label: "Kozker Dark", color: "bg-[#94a3b8]" },
+                    { id: "amber", label: "Amber", color: "bg-[#d97706]" },
+                    { id: "rose", label: "Rose Petal", color: "bg-[#db2777]" },
+                    { id: "cyber", label: "Neon Cyber", color: "bg-[#a855f7]" },
+                    { id: "ocean", label: "Ocean Teal", color: "bg-[#0891b2]" },
+                  ].map((themeItem) => {
+                    const isActive = selectedTheme === themeItem.id;
+                    const buttonClass = isActive
+                      ? themeItem.id === "cyber"
+                        ? "p-2 border border-white bg-white text-[#7C3AED] font-bold rounded flex items-center justify-start gap-1.5 shadow-md transition-all cursor-pointer"
+                        : "p-2 border border-[#7C3AED] bg-[#181622] text-white font-bold rounded flex items-center justify-start gap-1.5 shadow-md transition-all cursor-pointer"
+                      : "p-2 border border-[#251e3a] bg-transparent hover:bg-[#181622] text-[#7d7593] hover:text-white rounded flex items-center justify-start gap-1.5 transition-colors cursor-pointer";
+                    return (
+                      <button
+                        key={themeItem.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTheme(themeItem.id as any);
+                          handleSaveConfig(fields, themeItem.id as any);
+                        }}
+                        className={buttonClass}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${themeItem.color}`}></span>
+                        {themeItem.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Form Background Mode Customizer */}
-              <div className="space-y-3.5 border-t border-neutral-200 pt-5">
-                <div className="border-b border-neutral-200 pb-2">
-                  <h3 className="font-tight font-black text-xs uppercase tracking-wider text-neutral-800">Form Background Mode</h3>
-                  <p className="text-[10px] text-neutral-400">Choose between light and dark backgrounds.</p>
+              <div className="space-y-3.5 border-t border-[#251e3a] pt-5">
+                <div className="border-b border-[#251e3a] pb-2">
+                  <h3 className="font-tight font-black text-xs uppercase tracking-wider text-white">Form Background Mode</h3>
+                  <p className="text-[10px] text-[#7d7593]">Choose between light and dark backgrounds.</p>
                 </div>
 
                 <div className="flex gap-2 text-[10px] font-mono">
@@ -1393,14 +1263,14 @@ export default function PublicApplyPage() {
                       setBgMode("light");
                       handleSaveConfig(fields, selectedTheme, "light");
                     }}
-                    className={`flex-1 p-2.5 border rounded-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                    className={`flex-1 p-2.5 border rounded flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                       bgMode === "light"
-                        ? "border-emerald-600 bg-emerald-50 text-emerald-800 font-bold"
-                        : "border-neutral-200 hover:bg-neutral-50 text-neutral-500"
+                        ? "border-[#7C3AED] bg-[#181622] text-white font-bold"
+                        : "border-[#251e3a] bg-transparent text-[#7d7593] hover:text-white"
                     }`}
                   >
                     <Sun className="w-3.5 h-3.5 text-amber-500" />
-                    Light Background
+                    Light Mode
                   </button>
                   <button
                     type="button"
@@ -1408,14 +1278,14 @@ export default function PublicApplyPage() {
                       setBgMode("dark");
                       handleSaveConfig(fields, selectedTheme, "dark");
                     }}
-                    className={`flex-1 p-2.5 border rounded-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                    className={`flex-1 p-2.5 border rounded flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                       bgMode === "dark"
-                        ? "border-slate-600 bg-slate-900 text-slate-100 font-bold"
-                        : "border-neutral-200 hover:bg-neutral-50 text-neutral-500"
+                        ? "border-[#7C3AED] bg-[#181622] text-white font-bold"
+                        : "border-[#251e3a] bg-transparent text-[#7d7593] hover:text-white"
                     }`}
                   >
-                    <Moon className="w-3.5 h-3.5 text-indigo-400" />
-                    Dark Background
+                    <Moon className="w-3.5 h-3.5 text-[#a855f7]" />
+                    Dark Mode
                   </button>
                 </div>
               </div>

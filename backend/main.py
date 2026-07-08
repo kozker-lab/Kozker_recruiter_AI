@@ -240,6 +240,26 @@ async def upload_avatar(
         raise HTTPException(status_code=500, detail=str(e))
 
 def create_system_notification(db: Client, recruiter_id: str, title: str, message: str, type: str, metadata: dict = None):
+    if not recruiter_id and db and hasattr(db, "options") and db.options and hasattr(db.options, "headers"):
+        auth_header = db.options.headers.get("Authorization") or db.options.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            if token and not token.endswith(".key") and token.startswith("eyJ"):
+                try:
+                    payload = jwt.decode(token, options={"verify_signature": False})
+                    recruiter_id = payload.get("sub")
+                except Exception as jwt_err:
+                    logger.debug(f"Failed to decode Authorization header in create_system_notification: {jwt_err}")
+
+    if not recruiter_id:
+        try:
+            p_res = db.table("profiles").select("id").limit(1).execute()
+            if p_res.data:
+                recruiter_id = p_res.data[0].get("id")
+                logger.info(f"Fallback recruiter ID resolved from profiles table: {recruiter_id}")
+        except Exception as pe:
+            logger.warning(f"Failed to lookup fallback profile: {pe}")
+            
     if not recruiter_id:
         logger.warning(f"Could not insert notification '{title}' because recruiter_id is empty")
         return
@@ -2135,8 +2155,8 @@ async def get_all_candidate_queries(db: Client = Depends(get_supabase), user_id:
         jobs_res = db.table("job_openings").select("id").eq("is_deleted", False).execute()
         recruiter_job_ids = {j["id"] for j in jobs_res.data} if jobs_res.data else set()
 
-        # Fetch from Supabase candidate_queries table, joined with job details if possible
-        res = db.table("candidate_queries").select("*, job_openings(id, title)").order("created_at", desc=True).execute()
+        # Fetch from Supabase candidate_queries table, joined with job and client details if possible
+        res = db.table("candidate_queries").select("*, job_openings(id, title, requirements(id, title, clients(name)))").order("created_at", desc=True).execute()
         db_queries = res.data or []
         
         # Explicit python-side filtering to match recruiter job IDs
@@ -2558,24 +2578,38 @@ def match_candidates_background(job_id: str, jwt_token: str):
         except Exception as resolve_err:
             logger.error(f"Failed to resolve recruiter_id in match_candidates_background: {resolve_err}")
             
-        if recruiter_id:
-            create_system_notification(
-                db,
-                recruiter_id,
-                "Candidate Matching Completed",
-                f"Candidate matching completed (local fallback) for job '{job_title}'. Found {len(scored_candidates)} matches.",
-                "candidate_matching",
-                {"job_opening_id": job_id, "job_title": job_title, "matches_count": len(scored_candidates)}
-            )
-            log_activity_event(
-                db,
-                action="candidate_matching_completed",
-                entity_type="job_openings",
-                entity_id=job_id,
-                actor_name="System",
-                actor_id=recruiter_id,
-                metadata={"job_title": job_title, "matches_count": len(scored_candidates)}
-            )
+        if not recruiter_id and jwt_token:
+            try:
+                payload = jwt.decode(jwt_token, options={"verify_signature": False})
+                recruiter_id = payload.get("sub")
+            except Exception as jwt_err:
+                logger.error(f"Failed to decode jwt_token in match_candidates_background: {jwt_err}")
+                
+        if not recruiter_id:
+            try:
+                p_res = db.table("profiles").select("id").limit(1).execute()
+                if p_res.data:
+                    recruiter_id = p_res.data[0].get("id")
+            except Exception as pe:
+                logger.warning(f"Failed to lookup fallback profile: {pe}")
+                
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Candidate Matching Completed",
+            f"Candidate matching completed (local fallback) for job '{job_title}'. Found {len(scored_candidates)} matches.",
+            "candidate_matching",
+            {"job_opening_id": job_id, "job_title": job_title, "matches_count": len(scored_candidates)}
+        )
+        log_activity_event(
+            db,
+            action="candidate_matching_completed",
+            entity_type="job_openings",
+            entity_id=job_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"job_title": job_title, "matches_count": len(scored_candidates)}
+        )
         
     except Exception as e:
         logger.error(f"Error matching candidates: {e}")
@@ -2594,24 +2628,38 @@ def match_candidates_background(job_id: str, jwt_token: str):
         except Exception as resolve_err:
             logger.error(f"Failed to resolve recruiter_id for error matching candidates: {resolve_err}")
             
-        if recruiter_id:
-            create_system_notification(
-                db,
-                recruiter_id,
-                "Candidate Matching Failed",
-                f"Candidate matching failed for job '{job_title}': {e}",
-                "error",
-                {"job_opening_id": job_id, "job_title": job_title, "error": str(e)}
-            )
-            log_activity_event(
-                db,
-                action="candidate_matching_failed",
-                entity_type="job_openings",
-                entity_id=job_id,
-                actor_name="System",
-                actor_id=recruiter_id,
-                metadata={"job_title": job_title, "error": str(e)}
-            )
+        if not recruiter_id and jwt_token:
+            try:
+                payload = jwt.decode(jwt_token, options={"verify_signature": False})
+                recruiter_id = payload.get("sub")
+            except Exception as jwt_err:
+                logger.error(f"Failed to decode jwt_token for error notification: {jwt_err}")
+                
+        if not recruiter_id:
+            try:
+                p_res = db.table("profiles").select("id").limit(1).execute()
+                if p_res.data:
+                    recruiter_id = p_res.data[0].get("id")
+            except Exception as pe:
+                logger.warning(f"Failed to lookup fallback profile: {pe}")
+                
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Candidate Matching Failed",
+            f"Candidate matching failed for job '{job_title}': {e}",
+            "error",
+            {"job_opening_id": job_id, "job_title": job_title, "error": str(e)}
+        )
+        log_activity_event(
+            db,
+            action="candidate_matching_failed",
+            entity_type="job_openings",
+            entity_id=job_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"job_title": job_title, "error": str(e)}
+        )
 
 @app.get("/api/v1/jobs/{job_id}/candidates")
 async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase)):
