@@ -171,6 +171,14 @@ export default function ClientsView() {
   const [reqSearchQuery, setReqSearchQuery] = useState("");
   const [reqStatusFilter, setReqStatusFilter] = useState<string>("all");
 
+  // Option selection / Sub-requirement states
+  const [isEditOptionsOpen, setIsEditOptionsOpen] = useState(false);
+  const [selectedEditReq, setSelectedEditReq] = useState<any | null>(null);
+  const [isSubReqModalOpen, setIsSubReqModalOpen] = useState(false);
+  const [subReqDescription, setSubReqDescription] = useState("");
+  const [subReqNumJobs, setSubReqNumJobs] = useState(1);
+  const [isSubmittingSubReq, setIsSubmittingSubReq] = useState(false);
+
   // Forms inputs
   const [clientNameInput, setClientNameInput] = useState("");
   const [reqTitle, setReqTitle] = useState("");
@@ -674,6 +682,43 @@ export default function ClientsView() {
     setIsReqModalOpen(true);
   };
 
+  const handleEditButtonClick = (r: Requirement) => {
+    setSelectedEditReq(r);
+    setIsEditOptionsOpen(true);
+  };
+
+  const handleStartAddJobs = (r: Requirement) => {
+    setSelectedEditReq(r);
+    setSubReqDescription("");
+    setSubReqNumJobs(1);
+    setIsSubReqModalOpen(true);
+  };
+
+  const handleAppendJobs = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEditReq || !subReqDescription.trim()) return;
+    
+    try {
+      setIsSubmittingSubReq(true);
+      const res = await apiRequest<any>("POST", `/requirements/${selectedEditReq.id}/append-jobs`, {
+        additional_description: subReqDescription.trim(),
+        num_posts_to_add: subReqNumJobs
+      });
+      
+      setIsSubReqModalOpen(false);
+      setSelectedEditReq(null);
+      queryClient.invalidateQueries({ queryKey: ["requirements"] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      
+      alert("AI job appending has been triggered in the background! The mandate status is now generating.");
+    } catch (err: any) {
+      console.error("Failed to append jobs:", err);
+      alert(err.message || "Failed to trigger job appending.");
+    } finally {
+      setIsSubmittingSubReq(false);
+    }
+  };
+
   const handleUpdateStatus = (id: string, newStatus: string) => {
     const req = requirements.find(r => r.id === id);
     if (!req) return;
@@ -943,7 +988,7 @@ export default function ClientsView() {
 
                     {/* Edit button */}
                     <button
-                      onClick={() => handleStartEdit(r)}
+                      onClick={() => handleEditButtonClick(r)}
                       className="p-1 hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700 rounded-sm border border-neutral-200 transition-colors cursor-pointer"
                       title="Edit Requirement"
                     >
@@ -1577,6 +1622,189 @@ export default function ClientsView() {
                 >
                   {(createReqMutation.isPending || updateReqMutation.isPending) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {editingReqId ? "Save Changes" : "Generate Job Openings"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Options Panel Modal */}
+      {isEditOptionsOpen && selectedEditReq && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-md p-6 space-y-4 shadow-xl font-sans">
+            <div className="space-y-1">
+              <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider flex items-center gap-1.5">
+                <BrainCircuit className="w-4 h-4 text-primary" />
+                Mandate Options: {selectedEditReq.title}
+              </h3>
+              <p className="text-neutral-400 text-xs">
+                Select whether to revamp the mandate completely or append additional job openings.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-1 gap-3 pt-2">
+              {/* Option A: Add Jobs */}
+              <button
+                onClick={() => {
+                  setIsEditOptionsOpen(false);
+                  handleStartAddJobs(selectedEditReq);
+                }}
+                className="p-4 border border-neutral-200 hover:border-primary/50 bg-neutral-50/50 hover:bg-primary/5 rounded-sm text-left transition-all group cursor-pointer"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="bg-emerald-100 text-emerald-800 p-2 rounded-xs group-hover:bg-emerald-200 transition-colors">
+                    <Plus className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-neutral-800 text-xs uppercase tracking-wider">Add More Job Openings</h4>
+                    <p className="text-neutral-400 text-[10.5px] leading-relaxed mt-0.5">
+                      Append new job descriptions based on a new description. Existing jobs will remain preserved.
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              {/* Option B: Revamp */}
+              <button
+                onClick={() => {
+                  setIsEditOptionsOpen(false);
+                  handleStartEdit(selectedEditReq);
+                }}
+                className="p-4 border border-neutral-200 hover:border-primary/50 bg-neutral-50/50 hover:bg-primary/5 rounded-sm text-left transition-all group cursor-pointer"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="bg-primary/10 text-primary p-2 rounded-xs group-hover:bg-primary/20 transition-colors">
+                    <Pencil className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-neutral-800 text-xs uppercase tracking-wider">Revamp Mandate</h4>
+                    <p className="text-neutral-400 text-[10.5px] leading-relaxed mt-0.5">
+                      Modify core requirement parameters (skills, budget, etc.). Existing draft jobs will be regenerated.
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditOptionsOpen(false);
+                  setSelectedEditReq(null);
+                }}
+                className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 cursor-pointer text-xs font-semibold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-Requirement / Append Jobs Modal */}
+      {isSubReqModalOpen && selectedEditReq && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-lg p-6 space-y-4 shadow-xl font-sans text-xs">
+            <div className="space-y-1">
+              <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider flex items-center gap-1.5">
+                <Plus className="w-4 h-4 text-emerald-600 animate-pulse" />
+                Add More Jobs to Mandate: {selectedEditReq.title}
+              </h3>
+              <p className="text-neutral-400 text-xs">
+                Create a sub-requirement to generate additional job descriptions.
+              </p>
+            </div>
+
+            {/* Parent Mandate Summary */}
+            <div className="bg-neutral-50 border border-neutral-200 p-3 rounded-sm space-y-2">
+              <h4 className="font-bold text-neutral-500 uppercase tracking-widest text-[9.5px]">Parent Requirement Specs</h4>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-neutral-400 font-mono">Skills:</span>{" "}
+                  <span className="font-semibold">{selectedEditReq.skills?.join(", ") || "None"}</span>
+                </div>
+                <div>
+                  <span className="text-neutral-400 font-mono">Seniority:</span>{" "}
+                  <span className="font-semibold uppercase">{selectedEditReq.seniority || "mid"}</span>
+                </div>
+                <div>
+                  <span className="text-neutral-400 font-mono">Experience:</span>{" "}
+                  <span className="font-semibold">{selectedEditReq.experience_min ?? 0} - {selectedEditReq.experience_max ?? 30} yrs</span>
+                </div>
+                <div>
+                  <span className="text-neutral-400 font-mono">Budget:</span>{" "}
+                  <span className="font-semibold">₹{selectedEditReq.budget_min ?? 0} - ₹{selectedEditReq.budget_max ?? 100} LPA</span>
+                </div>
+              </div>
+
+              {/* Existing Jobs List */}
+              <div className="border-t border-neutral-200 pt-2 space-y-1">
+                <span className="text-neutral-400 font-mono text-[9.5px] uppercase block">Existing Active Job Openings:</span>
+                {jobs.filter((j: any) => j.requirement_id === selectedEditReq.id && !j.is_deleted).length === 0 ? (
+                  <p className="text-neutral-400 italic text-[10.5px]">No active job openings created yet.</p>
+                ) : (
+                  <div className="max-h-24 overflow-y-auto divide-y divide-neutral-150 pr-1.5">
+                    {jobs
+                      .filter((j: any) => j.requirement_id === selectedEditReq.id && !j.is_deleted)
+                      .map((job: any) => (
+                        <div key={job.id} className="py-1 flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-neutral-800">{job.title}</span>
+                          <span className="px-1.5 py-0.2 bg-neutral-200 border border-neutral-300 text-neutral-500 rounded-sm font-mono text-[8.5px] uppercase">
+                            {job.status}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <form onSubmit={handleAppendJobs} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Sub-Requirement Description / Additions</label>
+                <textarea
+                  required
+                  rows={4}
+                  placeholder="e.g. We now also need 2 React Native experts with Android experience..."
+                  value={subReqDescription}
+                  onChange={(e) => setSubReqDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 leading-relaxed font-sans focus:ring-1 focus:ring-primary focus:outline-hidden"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Number of Additional Job Descriptions to Generate</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  required
+                  value={subReqNumJobs}
+                  onChange={(e) => setSubReqNumJobs(Math.max(1, Number(e.target.value)))}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 font-sans focus:ring-1 focus:ring-primary focus:outline-hidden"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-neutral-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSubReqModalOpen(false);
+                    setSelectedEditReq(null);
+                  }}
+                  className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingSubReq}
+                  className="px-4 py-1.5 bg-emerald-600 text-neutral-white font-medium hover:bg-emerald-700 rounded-sm cursor-pointer flex items-center gap-1.5"
+                >
+                  {isSubmittingSubReq && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Trigger AI Generation
                 </button>
               </div>
             </form>
