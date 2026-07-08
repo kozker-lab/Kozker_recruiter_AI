@@ -26,6 +26,7 @@ logger = logging.getLogger("backend")
 # Read config
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
 
 USE_N8N = os.getenv("USE_N8N", "False").lower() in ("true", "1", "yes")
 N8N_GENERATE_JOBS_URL = os.getenv("N8N_GENERATE_JOBS_URL")
@@ -139,6 +140,11 @@ def get_safe_supabase_client(url: str, key: str, jwt_token: str = None) -> Clien
             client.auth._headers["Authorization"] = f"Bearer {key}"
             
     return client
+
+def get_admin_supabase_client() -> Client:
+    # Bypasses RLS for system/callback tasks
+    key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY
+    return get_safe_supabase_client(SUPABASE_URL, key)
 
 # Helper: Get Supabase client authenticated as the user
 def get_supabase(authorization: Optional[str] = Header(None)) -> Client:
@@ -3644,7 +3650,7 @@ async def handle_chat_message(
 @app.post("/api/v1/callbacks/job-openings", dependencies=[Depends(verify_callback_secret)])
 async def callback_job_openings(payload: JobOpeningsCallback):
     logger.info(f"Received job openings callback for requirement {payload.requirement_id}")
-    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    db = get_admin_supabase_client()
     
     # Check if requirement exists
     req_res = db.table("requirements").select("*").eq("id", payload.requirement_id).execute()
@@ -3699,7 +3705,7 @@ async def callback_job_openings(payload: JobOpeningsCallback):
 @app.post("/api/v1/callbacks/job-skills", dependencies=[Depends(verify_callback_secret)])
 async def callback_job_skills(payload: JobSkillsCallback):
     logger.info(f"Received job skills callback for job {payload.job_opening_id}")
-    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    db = get_admin_supabase_client()
     
     skills_list = []
     for idx, sk in enumerate(payload.skills, 1):
@@ -3758,7 +3764,7 @@ async def callback_job_skills(payload: JobSkillsCallback):
 @app.post("/api/v1/callbacks/job-openings/regenerate", dependencies=[Depends(verify_callback_secret)])
 async def callback_regenerate_job(payload: JobRegenerateCallback):
     logger.info(f"Received job openings callback for requirement {payload.job_opening_id}")
-    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    db = get_admin_supabase_client()
     
     job_res = db.table("job_openings").select("*").eq("id", payload.job_opening_id).execute()
     if not job_res.data:
@@ -3801,7 +3807,7 @@ async def callback_regenerate_job(payload: JobRegenerateCallback):
 @app.post("/api/v1/callbacks/candidate-matches", dependencies=[Depends(verify_callback_secret)])
 async def callback_candidate_matches(payload: CandidateMatchesCallback):
     logger.info(f"Received candidate matches callback for job {payload.job_opening_id}")
-    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    db = get_admin_supabase_client()
     
     # Clear existing job candidates
     db.table("job_candidates").delete().eq("job_opening_id", payload.job_opening_id).execute()
@@ -3902,7 +3908,7 @@ async def callback_candidate_matches(payload: CandidateMatchesCallback):
 @app.post("/api/v1/callbacks/screening-questions", dependencies=[Depends(verify_callback_secret)])
 async def callback_screening_questions(payload: ScreeningQuestionsCallback):
     logger.info(f"Received screening questions callback for application {payload.application_id}")
-    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    db = get_admin_supabase_client()
     
     # Verify application exists
     app_res = db.table("applications").select("id, job_opening_id, candidate_id").eq("id", payload.application_id).execute()
@@ -3968,7 +3974,7 @@ async def callback_screening_questions(payload: ScreeningQuestionsCallback):
 @app.post("/api/v1/callbacks/questions/refine", dependencies=[Depends(verify_callback_secret)])
 async def callback_refine_question(payload: QuestionRefineCallback):
     logger.info(f"Received question refinement callback for application {payload.application_id}, question {payload.question_id}")
-    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY)
+    db = get_admin_supabase_client()
     
     # Fetch application and screening_questions
     app_res = db.table("applications").select("id, screening_questions, candidate_id, reviewed_by").eq("id", payload.application_id).execute()
