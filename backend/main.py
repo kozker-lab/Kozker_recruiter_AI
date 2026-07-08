@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, BackgroundTasks, Header, Body
+from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, BackgroundTasks, Header, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.exceptions import RequestValidationError
@@ -616,6 +616,10 @@ class ScreeningQuestionsCallback(BaseModel):
     application_id: str
     questions: List[GeneratedQuestion]
 
+
+class AppendJobsModel(BaseModel):
+    additional_description: str
+    num_posts_to_add: int
 
 class JobRegenerateModel(BaseModel):
     instruction: str
@@ -1288,6 +1292,85 @@ def generate_job_openings_background(req_id: str, client_id: str, req_title: str
             metadata={"req_title": req_title, "job_openings_count": num_posts}
         )
 
+def append_jobs_background_fallback(req_id: str, count: int, additional_desc: str, jwt_token: str):
+    logger.info(f"Starting background job appending (local fallback) for requirement {req_id}")
+    db = get_admin_supabase_client()
+    
+    # Fetch requirement details
+    req_res = db.table("requirements").select("*").eq("id", req_id).execute()
+    if not req_res.data:
+        return
+    requirement = req_res.data[0]
+    
+    # Get current active job count to compute post_index
+    jobs_res = db.table("job_openings").select("id").eq("requirement_id", req_id).eq("is_deleted", False).execute()
+    start_index = len(jobs_res.data) if jobs_res.data else 0
+    
+    for i in range(1, count + 1):
+        try:
+            job_index = start_index + i
+            job_title = f"{requirement['title']} (Additional {i})"
+            job_desc = f"Generated based on sub-requirement: {additional_desc}. Standard details: {requirement['description'] or ''}"
+            responsibilities = [
+                "Understand and implement features defined in sub-requirement.",
+                "Ensure additional modules align with current system layout.",
+                "Support and verify additional deployment constraints."
+            ]
+            qualifications = [
+                f"Core mandate skills: {', '.join(requirement.get('skills', []))}.",
+                f"Additional alignment with sub-requirement goals: {additional_desc[:60]}."
+            ]
+            salary_range = f"₹{int(requirement.get('budget_min') or 0)} - ₹{int(requirement.get('budget_max') or 100)} LPA"
+            
+            db.table("job_openings").insert({
+                "requirement_id": req_id,
+                "post_index": job_index,
+                "title": job_title,
+                "description": job_desc,
+                "responsibilities": responsibilities,
+                "qualifications": qualifications,
+                "keywords": requirement.get("skills") or [],
+                "salary_range": salary_range,
+                "status": "draft",
+                "processing_status": "ready"
+            }).execute()
+        except Exception as e:
+            logger.error(f"Error appending job opening option {i}: {e}")
+            db.table("requirements").update({"status": "ready"}).eq("id", req_id).execute()
+            return
+            
+    # Update requirement total requested jobs and reset status to ready
+    new_total = (requirement.get("num_posts_requested") or 0) + count
+    db.table("requirements").update({
+        "status": "ready",
+        "num_posts_requested": new_total
+    }).eq("id", req_id).execute()
+    
+    logger.info(f"Background job appending completed for requirement {req_id}")
+    
+    # Resolve recruiter_id and req_title for system notification
+    recruiter_id = requirement.get("created_by")
+    req_title = requirement.get("title", "Unknown Requirement")
+    
+    if recruiter_id:
+        create_system_notification(
+            db,
+            recruiter_id,
+            "Job Generation Completed",
+            f"Successfully appended {count} new job openings (local fallback) to mandate '{req_title}'.",
+            "job_generation",
+            {"requirement_id": req_id, "requirement_title": req_title, "job_openings_count": count}
+        )
+        log_activity_event(
+            db,
+            action="job_generation_completed",
+            entity_type="requirements",
+            entity_id=req_id,
+            actor_name="System",
+            actor_id=recruiter_id,
+            metadata={"req_title": req_title, "job_openings_count": count}
+        )
+
 @app.get("/api/v1/requirements")
 async def get_requirements(db: Client = Depends(get_supabase)):
     res = db.table("requirements").select("*").eq("is_deleted", False).execute()
@@ -1383,6 +1466,102 @@ async def update_requirement(req_id: str, req: RequirementUpdateModel, backgroun
             )
             
     return new_req
+
+
+@app.post("/api/v1/requirements/{req_id}/append-jobs")
+async def append_jobs_to_requirement(
+    req_id: str,
+    payload: AppendJobsModel,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    db: Client = Depends(get_supabase),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    # Fetch requirement
+    req_res = db.table("requirements").select("*").eq("id", req_id).execute()
+    if not req_res.data:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    requirement = req_res.data[0]
+    
+    # Update requirement status to generating
+    db.table("requirements").update({"status": "generating"}).eq("id", req_id).execute()
+    
+    # Forward user's JWT token
+    auth_header = request.headers.get("Authorization", "")
+    jwt_token = ""
+    if auth_header:
+        if auth_header.startswith("Bearer "):
+            jwt_token = auth_header.split(" ")[1]
+        elif auth_header.startswith("eyJ"):
+            jwt_token = auth_header
+            
+    # Resolve client name
+    client_name = "Generic Client"
+    try:
+        client_res = db.table("clients").select("name").eq("id", requirement["client_id"]).execute()
+        if client_res.data:
+            client_name = client_res.data[0]["name"]
+    except Exception as e:
+        logger.error(f"Failed to fetch client name: {e}")
+        
+    # Append-mode callback URL passes append_mode=true query parameter
+    callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/job-openings?append_mode=true&posts_to_add={payload.num_posts_to_add}"
+    
+    # Trigger n8n webhook with the new sub-requirement description and requested number of posts
+    dispatch_payload = {
+        "automation_type": "generate_job_openings",
+        "request_id": f"reqjob_{req_id}_append",
+        "callback_url": callback_url,
+        "authorization": f"Bearer {CALLBACK_SECRET}",
+        "auth_header": f"Bearer {CALLBACK_SECRET}",
+        "requirement": {
+            "requirement_id": req_id,
+            "client_id": requirement["client_id"],
+            "client_name": client_name,
+            "title": f"{requirement['title']} (Additional)",
+            "description": payload.additional_description, # Use the new sub-requirement description
+            "skills": requirement["skills"],
+            "experience_min": requirement.get("experience_min") or 0,
+            "experience_max": requirement.get("experience_max") or 30,
+            "budget_min": requirement.get("budget_min") or 0.0,
+            "budget_max": requirement.get("budget_max") or 0.0,
+            "currency": "INR",
+            "seniority": requirement["seniority"],
+            "location": "Bangalore / Remote",
+            "employment_type": "full_time",
+            "notes": f"Parent notes: {requirement.get('notes') or ''}",
+            "num_posts_requested": payload.num_posts_to_add
+        },
+        "ai_instruction": {
+            "instruction": f"Generate {payload.num_posts_to_add} new job openings based on the additional description: {payload.additional_description}",
+            "tone": "professional",
+            "output_language": "en",
+            "must_include": requirement["skills"],
+            "avoid": ["casual wording"]
+        },
+        "metadata": {"append_mode": True}
+    }
+    
+    if USE_N8N:
+        background_tasks.add_task(
+            dispatch_n8n_webhook,
+            N8N_GENERATE_JOBS_URL,
+            dispatch_payload,
+            "generate_jobs_append"
+        )
+    else:
+        background_tasks.add_task(
+            append_jobs_background_fallback,
+            req_id,
+            payload.num_posts_to_add,
+            payload.additional_description,
+            jwt_token
+        )
+        
+    return {"status": "generating"}
 
 
 @app.delete("/api/v1/requirements/{req_id}")
@@ -3648,8 +3827,8 @@ async def handle_chat_message(
 # ============================================================
 
 @app.post("/api/v1/callbacks/job-openings", dependencies=[Depends(verify_callback_secret)])
-async def callback_job_openings(payload: JobOpeningsCallback):
-    logger.info(f"Received job openings callback for requirement {payload.requirement_id}")
+async def callback_job_openings(payload: JobOpeningsCallback, append_mode: bool = Query(False), posts_to_add: int = Query(0)):
+    logger.info(f"Received job openings callback for requirement {payload.requirement_id} (append_mode: {append_mode})")
     db = get_admin_supabase_client()
     
     # Check if requirement exists
@@ -3657,14 +3836,20 @@ async def callback_job_openings(payload: JobOpeningsCallback):
     if not req_res.data:
         raise HTTPException(status_code=404, detail="Requirement not found")
         
-    # Clear existing drafts for this requirement
-    db.table("job_openings").delete().eq("requirement_id", payload.requirement_id).eq("status", "draft").execute()
+    if not append_mode:
+        # Clear existing drafts for this requirement
+        db.table("job_openings").delete().eq("requirement_id", payload.requirement_id).eq("status", "draft").execute()
+        
+    start_index = 0
+    if append_mode:
+        jobs_res = db.table("job_openings").select("id").eq("requirement_id", payload.requirement_id).eq("is_deleted", False).execute()
+        start_index = len(jobs_res.data) if jobs_res.data else 0
     
     # Save job opening drafts
     for idx, jo in enumerate(payload.job_openings, 1):
         db.table("job_openings").insert({
             "requirement_id": payload.requirement_id,
-            "post_index": idx,
+            "post_index": start_index + idx,
             "title": jo.title,
             "description": jo.overview,
             "responsibilities": jo.responsibilities,
@@ -3675,19 +3860,26 @@ async def callback_job_openings(payload: JobOpeningsCallback):
             "processing_status": "ready"
         }).execute()
         
-    # Set requirement status to ready
-    db.table("requirements").update({"status": "ready"}).eq("id", payload.requirement_id).execute()
+    # Set requirement status to ready and increment count if in append_mode
+    req_data = req_res.data[0]
+    update_data = {"status": "ready"}
+    if append_mode and posts_to_add > 0:
+        new_total = (req_data.get("num_posts_requested") or 0) + posts_to_add
+        update_data["num_posts_requested"] = new_total
+        
+    db.table("requirements").update(update_data).eq("id", payload.requirement_id).execute()
     
     # Send notification and log activity
-    req_data = req_res.data[0]
     recruiter_id = req_data.get("created_by")
     req_title = req_data.get("title", "Unknown Requirement")
+    
+    action_verb = "appended" if append_mode else "generated"
     
     create_system_notification(
         db,
         recruiter_id,
         "Job Generation Completed",
-        f"Successfully generated {len(payload.job_openings)} job openings for mandate '{req_title}'.",
+        f"Successfully {action_verb} {len(payload.job_openings)} job openings for mandate '{req_title}'.",
         "job_generation",
         {"requirement_id": payload.requirement_id, "requirement_title": req_title, "job_openings_count": len(payload.job_openings)}
     )
