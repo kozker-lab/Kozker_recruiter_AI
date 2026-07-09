@@ -178,6 +178,8 @@ export default function ClientsView() {
   const [subReqDescription, setSubReqDescription] = useState("");
   const [subReqNumJobs, setSubReqNumJobs] = useState(1);
   const [isSubmittingSubReq, setIsSubmittingSubReq] = useState(false);
+  const [isParsingSubReqFile, setIsParsingSubReqFile] = useState(false);
+  const [subReqFileError, setSubReqFileError] = useState<string | null>(null);
 
   // Forms inputs
   const [clientNameInput, setClientNameInput] = useState("");
@@ -316,6 +318,48 @@ export default function ClientsView() {
     } else {
       setFileError("Supported formats are PDF, DOCX, and TXT");
       setIsParsingFile(false);
+    }
+  };
+
+  const handleSubReqFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsParsingSubReqFile(true);
+    setSubReqFileError(null);
+
+    const ext = file.name.split(".").pop()?.toLowerCase();
+
+    if (ext === "txt") {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setSubReqDescription(event.target.result as string);
+        }
+        setIsParsingSubReqFile(false);
+      };
+      reader.onerror = () => {
+        setSubReqFileError("Failed to read text file");
+        setIsParsingSubReqFile(false);
+      };
+      reader.readAsText(file);
+    } else if (ext === "pdf" || ext === "docx" || ext === "doc") {
+      try {
+        const { apiUploadFile } = await import("../lib/api");
+        const result = await apiUploadFile("/requirements/parse-file", file);
+        if (result && result.text) {
+          setSubReqDescription(result.text);
+        } else {
+          setSubReqFileError("No text content could be extracted from this document.");
+        }
+      } catch (err: any) {
+        setSubReqFileError(err.message || "Failed to parse document. Is the backend running?");
+      } finally {
+        setIsParsingSubReqFile(false);
+      }
+    } else {
+      setSubReqFileError("Supported formats are PDF, DOCX, and TXT");
+      setIsParsingSubReqFile(false);
     }
   };
 
@@ -1763,7 +1807,26 @@ export default function ClientsView() {
 
             <form onSubmit={handleAppendJobs} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Sub-Requirement Description / Additions</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-neutral-400 uppercase tracking-wider block font-semibold">Sub-Requirement Description / Additions</label>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="subreq-file-upload" className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/95 cursor-pointer font-semibold uppercase tracking-wider">
+                      <Upload className="w-3.5 h-3.5" />
+                      {isParsingSubReqFile ? "Extracting..." : "Upload File"}
+                    </label>
+                    <input
+                      id="subreq-file-upload"
+                      type="file"
+                      accept=".txt,.pdf,.docx,.doc"
+                      className="hidden"
+                      onChange={handleSubReqFileUpload}
+                      disabled={isParsingSubReqFile}
+                    />
+                  </div>
+                </div>
+                {subReqFileError && (
+                  <p className="text-red-500 text-[10.5px] font-mono leading-tight">{subReqFileError}</p>
+                )}
                 <textarea
                   required
                   rows={4}
