@@ -396,10 +396,10 @@ export default function ClientsView() {
     queryFn: () => apiRequest<any[]>("GET", "/applications")
   });
 
-  const { data: subCategories = [], refetch: refetchSubCategories } = useQuery<any[]>({
-    queryKey: ["subCategories"],
-    queryFn: () => apiRequest<any[]>("GET", "/sub-categories")
-  });
+  const DEFAULT_SUB_CATEGORIES: Record<string, string[]> = {
+    "technical": ["CI/CD", "Full Stack", "Kotlin Specialist"],
+    "non-technical": ["Sales", "Resource Management", "Higher Management"]
+  };
 
   // Publish current clients & mandates context to AI Copilot
   React.useEffect(() => {
@@ -795,15 +795,7 @@ export default function ClientsView() {
       
       let finalSubCat = tagSubCategory;
       if (showAddCustomSubCat && newCustomSubCatName.trim()) {
-        const cleanedName = newCustomSubCatName.trim();
-        // Insert custom sub-category in db
-        const createdSubCat = await apiRequest<any>("POST", "/sub-categories", {
-          category: tagCategory,
-          name: cleanedName
-        });
-        finalSubCat = createdSubCat.name;
-        // Invalidate queries so categories are refreshed
-        queryClient.invalidateQueries({ queryKey: ["subCategories"] });
+        finalSubCat = newCustomSubCatName.trim();
       }
 
       // Update job openings with tags
@@ -2214,11 +2206,16 @@ export default function ClientsView() {
                       className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden capitalize"
                     >
                       <option value="">Unset / None</option>
-                      {subCategories
-                        .filter((sub: any) => sub.category === tagCategory)
-                        .map((sub: any) => (
-                          <option key={sub.id} value={sub.name}>{sub.name}</option>
-                        ))}
+                      {(() => {
+                        const defaults = DEFAULT_SUB_CATEGORIES[tagCategory] || [];
+                        const fromJobs = jobs
+                          .filter((j: any) => j.category === tagCategory && j.sub_category)
+                          .map((j: any) => j.sub_category);
+                        const allOptions = Array.from(new Set([...defaults, ...fromJobs]));
+                        return allOptions.map((name) => (
+                          <option key={name} value={name}>{name}</option>
+                        ));
+                      })()}
                     </select>
                   ) : (
                     <div className="space-y-2">
