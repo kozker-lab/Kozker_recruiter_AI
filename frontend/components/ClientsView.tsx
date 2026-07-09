@@ -10,7 +10,7 @@ import {
   Building2, Plus, FileText, ChevronRight, CheckCircle2, 
   MapPin, DollarSign, BrainCircuit, Loader2, Award, Upload, Edit, Trash2, Pencil,
   ChevronDown, UserCheck, Code, Users, CheckSquare, XCircle, Activity,
-  Copy, ExternalLink, Check, Download
+  Copy, ExternalLink, Check, Download, Tag
 } from "lucide-react";
 import { RequirementStatus } from "../types";
 
@@ -180,6 +180,15 @@ export default function ClientsView() {
   const [isSubmittingSubReq, setIsSubmittingSubReq] = useState(false);
   const [isParsingSubReqFile, setIsParsingSubReqFile] = useState(false);
   const [subReqFileError, setSubReqFileError] = useState<string | null>(null);
+
+  // Edit Tags Modal States
+  const [isTagsModalOpen, setIsTagsModalOpen] = useState(false);
+  const [selectedTagJob, setSelectedTagJob] = useState<any | null>(null);
+  const [tagCategory, setTagCategory] = useState<"technical" | "non-technical" | "">("");
+  const [tagSubCategory, setTagSubCategory] = useState("");
+  const [showAddCustomSubCat, setShowAddCustomSubCat] = useState(false);
+  const [newCustomSubCatName, setNewCustomSubCatName] = useState("");
+  const [isSavingTags, setIsSavingTags] = useState(false);
 
   // Forms inputs
   const [clientNameInput, setClientNameInput] = useState("");
@@ -385,6 +394,11 @@ export default function ClientsView() {
   const { data: applications = [], isLoading: loadingApps } = useQuery<any[]>({
     queryKey: ["applications"],
     queryFn: () => apiRequest<any[]>("GET", "/applications")
+  });
+
+  const { data: subCategories = [], refetch: refetchSubCategories } = useQuery<any[]>({
+    queryKey: ["subCategories"],
+    queryFn: () => apiRequest<any[]>("GET", "/sub-categories")
   });
 
   // Publish current clients & mandates context to AI Copilot
@@ -763,6 +777,53 @@ export default function ClientsView() {
     }
   };
 
+  const handleOpenTagsModal = (job: any) => {
+    setSelectedTagJob(job);
+    setTagCategory(job.category || "");
+    setTagSubCategory(job.sub_category || "");
+    setShowAddCustomSubCat(false);
+    setNewCustomSubCatName("");
+    setIsTagsModalOpen(true);
+  };
+
+  const handleSaveTags = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTagJob) return;
+
+    try {
+      setIsSavingTags(true);
+      
+      let finalSubCat = tagSubCategory;
+      if (showAddCustomSubCat && newCustomSubCatName.trim()) {
+        const cleanedName = newCustomSubCatName.trim();
+        // Insert custom sub-category in db
+        const createdSubCat = await apiRequest<any>("POST", "/sub-categories", {
+          category: tagCategory,
+          name: cleanedName
+        });
+        finalSubCat = createdSubCat.name;
+        // Invalidate queries so categories are refreshed
+        queryClient.invalidateQueries({ queryKey: ["subCategories"] });
+      }
+
+      // Update job openings with tags
+      await apiRequest<any>("PATCH", `/jobs/${selectedTagJob.id}`, {
+        category: tagCategory || null,
+        sub_category: finalSubCat || null
+      });
+
+      setIsTagsModalOpen(false);
+      setSelectedTagJob(null);
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      alert("Tags updated successfully!");
+    } catch (err: any) {
+      console.error("Failed to update tags:", err);
+      alert(err.message || "Failed to update tags.");
+    } finally {
+      setIsSavingTags(false);
+    }
+  };
+
   const handleUpdateStatus = (id: string, newStatus: string) => {
     const req = requirements.find(r => r.id === id);
     if (!req) return;
@@ -1119,28 +1180,60 @@ export default function ClientsView() {
                           const disqualifiedCount = jobApps.filter(app => app.stage === 'rejected' || app.stage_status === 'failed').length;
                           return (
                             <div key={job.id} className="space-y-3 p-3 bg-neutral-50/50 border border-neutral-150 rounded-sm">
-                              <div className="flex items-center justify-between text-xs font-semibold text-neutral-800 border-b border-neutral-150 pb-1.5">
-                                <Link 
-                                  href={`/jobs?id=${job.id}`}
-                                  className="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer group"
-                                >
-                                  <Activity className="w-3.5 h-3.5 text-primary/70 animate-pulse" />
-                                  <span>
-                                    Post #{job.post_index || 1}: <span className="group-hover:underline">{job.title}</span>
-                                  </span>
-                                </Link>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => handleExportExcel(job.id, job.title)}
-                                    className="text-[9.5px] font-mono text-primary hover:underline cursor-pointer flex items-center gap-1 bg-neutral-100 border border-neutral-200/80 px-1.5 py-0.5 rounded-xs font-bold uppercase transition-colors"
-                                    title="Export applicant responses to Excel/CSV"
+                              <div className="flex flex-col gap-1 border-b border-neutral-150 pb-1.5 w-full">
+                                <div className="flex items-center justify-between text-xs font-semibold text-neutral-800">
+                                  <Link 
+                                    href={`/jobs?id=${job.id}`}
+                                    className="flex items-center gap-1.5 hover:text-primary transition-colors cursor-pointer group"
                                   >
-                                    <Download className="w-3.5 h-3.5 text-primary" />
-                                    <span>Export Sheet</span>
+                                    <Activity className="w-3.5 h-3.5 text-primary/70 animate-pulse" />
+                                    <span>
+                                      Post #{job.post_index || 1}: <span className="group-hover:underline">{job.title}</span>
+                                    </span>
+                                  </Link>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleExportExcel(job.id, job.title)}
+                                      className="text-[9.5px] font-mono text-primary hover:underline cursor-pointer flex items-center gap-1 bg-neutral-100 border border-neutral-200/80 px-1.5 py-0.5 rounded-xs font-bold uppercase transition-colors"
+                                      title="Export applicant responses to Excel/CSV"
+                                    >
+                                      <Download className="w-3.5 h-3.5 text-primary" />
+                                      <span>Export Sheet</span>
+                                    </button>
+                                    <span className="text-[10px] text-neutral-400 font-mono uppercase bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded-sm">
+                                      {job.status}
+                                    </span>
+                                  </div>
+                                </div>
+                                
+                                {/* Tags Badge Row */}
+                                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-neutral-500 font-mono">
+                                  {job.category ? (
+                                    <span className={`px-1.5 py-0.2 rounded-sm border uppercase text-[8px] font-bold ${
+                                      job.category === 'technical' 
+                                        ? 'bg-blue-50 border-blue-200 text-blue-650' 
+                                        : 'bg-orange-50 border-orange-200 text-orange-650'
+                                    }`}>
+                                      {job.category}
+                                    </span>
+                                  ) : (
+                                    <span className="text-neutral-400 italic text-[8.5px]">No Category</span>
+                                  )}
+                                  {job.sub_category ? (
+                                    <span className="px-1.5 py-0.2 rounded-sm border bg-neutral-100 border-neutral-250 text-neutral-600 uppercase text-[8px] font-semibold">
+                                      {job.sub_category}
+                                    </span>
+                                  ) : (
+                                    <span className="text-neutral-400 italic text-[8.5px]">No Sub-category</span>
+                                  )}
+                                  <button
+                                    onClick={() => handleOpenTagsModal(job)}
+                                    className="ml-1 p-0.5 hover:bg-neutral-100 hover:text-neutral-700 rounded-sm border border-neutral-200/85 transition-colors cursor-pointer text-neutral-400 flex items-center gap-0.5 text-[8.5px] uppercase font-bold px-1.5"
+                                    title="Edit Job Tags"
+                                  >
+                                    <Tag className="w-2.5 h-2.5" />
+                                    <span>Edit Tags</span>
                                   </button>
-                                  <span className="text-[10px] text-neutral-400 font-mono uppercase bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded-sm">
-                                    {job.status}
-                                  </span>
                                 </div>
                               </div>
                               
@@ -2064,6 +2157,119 @@ export default function ClientsView() {
           </div>
         </div>
       )}
+      {/* Edit Tags Modal */}
+      {isTagsModalOpen && selectedTagJob && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto font-sans text-xs">
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-6 space-y-4 shadow-xl">
+            <div className="space-y-1">
+              <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider flex items-center gap-1.5">
+                <Tag className="w-4 h-4 text-primary" />
+                Edit Tags: {selectedTagJob.title}
+              </h3>
+              <p className="text-neutral-400 text-xs">
+                Select category and sub-category tags for this job post.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveTags} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-neutral-400 uppercase tracking-wider block font-semibold text-[10px]">Category</label>
+                <select
+                  value={tagCategory}
+                  onChange={(e) => {
+                    setTagCategory(e.target.value as any);
+                    setTagSubCategory("");
+                    setShowAddCustomSubCat(false);
+                  }}
+                  className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+                >
+                  <option value="">Unset / None</option>
+                  <option value="technical">Technical</option>
+                  <option value="non-technical">Non-Technical</option>
+                </select>
+              </div>
+
+              {tagCategory && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-neutral-400 uppercase tracking-wider block font-semibold text-[10px]">Sub-category</label>
+                    {!showAddCustomSubCat && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddCustomSubCat(true);
+                          setTagSubCategory("");
+                        }}
+                        className="text-[9.5px] font-semibold text-primary hover:underline"
+                      >
+                        + Add Custom
+                      </button>
+                    )}
+                  </div>
+                  
+                  {!showAddCustomSubCat ? (
+                    <select
+                      value={tagSubCategory}
+                      onChange={(e) => setTagSubCategory(e.target.value)}
+                      className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden capitalize"
+                    >
+                      <option value="">Unset / None</option>
+                      {subCategories
+                        .filter((sub: any) => sub.category === tagCategory)
+                        .map((sub: any) => (
+                          <option key={sub.id} value={sub.name}>{sub.name}</option>
+                        ))}
+                    </select>
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder="e.g. Kotlin Specialist"
+                        value={newCustomSubCatName}
+                        onChange={(e) => setNewCustomSubCatName(e.target.value)}
+                        className="w-full px-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddCustomSubCat(false);
+                          setNewCustomSubCatName("");
+                        }}
+                        className="text-[10px] text-neutral-400 hover:underline block"
+                      >
+                        Back to List
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-neutral-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsTagsModalOpen(false);
+                    setSelectedTagJob(null);
+                  }}
+                  className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingTags}
+                  className="px-4 py-1.5 bg-primary text-neutral-white font-medium hover:bg-primary/90 rounded-sm cursor-pointer flex items-center gap-1.5"
+                >
+                  {isSavingTags && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Save Tags
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {customDialog && customDialog.isOpen && (
         <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-xs flex items-center justify-center z-[9999] animate-fade-in font-sans p-4 select-none">
           <div className="bg-neutral-900 border border-neutral-800 max-w-sm w-full p-5 space-y-4 shadow-xl rounded-sm">

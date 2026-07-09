@@ -544,6 +544,12 @@ class JobOpeningUpdateModel(BaseModel):
     processing_status: Optional[str] = None
     error_message: Optional[str] = None
     custom_stages: Optional[List[str]] = None
+    category: Optional[str] = None
+    sub_category: Optional[str] = None
+
+class SubCategoryModel(BaseModel):
+    category: str
+    name: str
 
 class SkillsApprovalModel(BaseModel):
     skills: List[Dict[str, Any]]
@@ -1854,6 +1860,10 @@ async def patch_job(job_id: str, job_update: JobOpeningUpdateModel, db: Client =
         update_data["error_message"] = job_update.error_message
     if job_update.custom_stages is not None:
         update_data["custom_stages"] = job_update.custom_stages
+    if job_update.category is not None:
+        update_data["category"] = job_update.category
+    if job_update.sub_category is not None:
+        update_data["sub_category"] = job_update.sub_category
 
     if update_data:
         res = db.table("job_openings").update(update_data).eq("id", job_id).execute()
@@ -1878,6 +1888,24 @@ async def patch_job(job_id: str, job_update: JobOpeningUpdateModel, db: Client =
 async def confirm_job(job_id: str, db: Client = Depends(get_supabase)):
     res = db.table("job_openings").update({"status": "confirmed"}).eq("id", job_id).execute()
     return res.data[0] if res.data else {}
+
+
+@app.get("/api/v1/sub-categories")
+async def get_sub_categories(db: Client = Depends(get_supabase)):
+    res = db.table("job_sub_categories").select("*").execute()
+    return res.data
+
+
+@app.post("/api/v1/sub-categories")
+async def create_sub_category(payload: SubCategoryModel, db: Client = Depends(get_supabase)):
+    res = db.table("job_sub_categories").insert({
+        "category": payload.category,
+        "name": payload.name
+    }).execute()
+    if not res.data:
+        raise HTTPException(status_code=400, detail="Sub-category already exists or failed to create")
+    return res.data[0]
+
 
 @app.post("/api/v1/jobs/{job_id}/scan-publish")
 @app.post("/api/v1/jobs/{job_id}/scan-and-publish")
