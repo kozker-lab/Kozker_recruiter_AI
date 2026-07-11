@@ -602,6 +602,8 @@ class JobOpeningDraft(BaseModel):
     budget: str
     seniority: str
     keywords: List[str]
+    category: Optional[str] = None
+    sub_category: Optional[str] = None
 
 class JobOpeningsCallback(BaseModel):
     requirement_id: str
@@ -656,6 +658,8 @@ class JobRegenerateCallback(BaseModel):
     budget: str
     seniority: str
     keywords: List[str]
+    category: Optional[str] = None
+    sub_category: Optional[str] = None
 
 
 class QuestionRefineCallback(BaseModel):
@@ -866,7 +870,9 @@ async def handle_regenerate_job_dispatch(job: dict, instruction: str, jwt_token:
             "qualifications": job.get("qualifications") or [],
             "salary_range": job.get("salary_range"),
             "keywords": job.get("keywords") or [],
-            "status": job.get("status")
+            "status": job.get("status"),
+            "category": job.get("category"),
+            "sub_category": job.get("sub_category")
         }
     }
     
@@ -998,7 +1004,9 @@ async def handle_refine_question_dispatch(app_id: str, question_id: str, questio
             "description": job.get("description"),
             "responsibilities": job.get("responsibilities"),
             "qualifications": job.get("qualifications"),
-            "keywords": job.get("keywords")
+            "keywords": job.get("keywords"),
+            "category": job.get("category"),
+            "sub_category": job.get("sub_category")
         },
         "requirement_details": {
             "id": req.get("id"),
@@ -1143,6 +1151,8 @@ async def handle_scan_publish_dispatch(job: dict, jwt_token: str):
         "qualifications": job["qualifications"],
         "keywords": job["keywords"],
         "salary_range": job["salary_range"],
+        "category": job.get("category"),
+        "sub_category": job.get("sub_category"),
         "callback_url": callback_url,
         "authorization": f"Bearer {CALLBACK_SECRET}",
         "auth_header": f"Bearer {CALLBACK_SECRET}"
@@ -1155,9 +1165,12 @@ async def handle_scan_publish_dispatch(job: dict, jwt_token: str):
 async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
     try:
-        # Fetch job title
-        job_res = db.table("job_openings").select("title").eq("id", job_id).execute()
-        job_title = job_res.data[0].get("title", "") if job_res.data else ""
+        # Fetch job title and tags
+        job_res = db.table("job_openings").select("title, category, sub_category").eq("id", job_id).execute()
+        job_data = job_res.data[0] if job_res.data else {}
+        job_title = job_data.get("title", "")
+        job_category = job_data.get("category")
+        job_sub_category = job_data.get("sub_category")
 
         # Fetch approved skills
         skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
@@ -1167,7 +1180,9 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
         payload = {
             "job_opening": {
                 "job_opening_id": job_id,
-                "title": job_title
+                "title": job_title,
+                "category": job_category,
+                "sub_category": job_sub_category
             },
             "approved_skills": approved_skills,
             "callback_url": callback_url,
@@ -1204,7 +1219,9 @@ async def handle_generate_questions_dispatch(app_record: dict, cand: dict, job: 
             "description": job.get("description"),
             "responsibilities": job.get("responsibilities"),
             "qualifications": job.get("qualifications"),
-            "keywords": job.get("keywords")
+            "keywords": job.get("keywords"),
+            "category": job.get("category"),
+            "sub_category": job.get("sub_category")
         },
         "requirement_details": {
             "id": req.get("id"),
@@ -3919,7 +3936,9 @@ async def callback_job_openings(payload: JobOpeningsCallback, append_mode: bool 
             "keywords": jo.keywords,
             "salary_range": jo.budget,
             "status": "draft",
-            "processing_status": "ready"
+            "processing_status": "ready",
+            "category": jo.category,
+            "sub_category": jo.sub_category
         }).execute()
         
     # Set requirement status to ready and increment count if in append_mode
@@ -4031,7 +4050,9 @@ async def callback_regenerate_job(payload: JobRegenerateCallback):
         "qualifications": payload.qualifications,
         "salary_range": payload.budget,
         "keywords": payload.keywords,
-        "processing_status": "ready"
+        "processing_status": "ready",
+        "category": payload.category,
+        "sub_category": payload.sub_category
     }).eq("id", payload.job_opening_id).execute()
     
     job_data = job_res.data[0]
