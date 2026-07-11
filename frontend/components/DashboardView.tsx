@@ -514,7 +514,7 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
         <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
           <div className="flex items-center gap-2">
             <h3 className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Pending Candidate Reviews</h3>
-            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-850 font-mono text-[10px] rounded-full font-bold">
+            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-400 font-mono text-[10px] rounded-full font-bold">
               {pendingReviewsCount} action items
             </span>
           </div>

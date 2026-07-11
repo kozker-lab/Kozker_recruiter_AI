@@ -144,6 +144,7 @@ export default function ClientsView() {
       router.replace(url.pathname + url.search, { scroll: false });
     }
   }, [selectedClientId, expandedReqId, router]);
+
   const [clientSearchQuery, setClientSearchQuery] = useState("");
 
   const stages = [
@@ -170,6 +171,49 @@ export default function ClientsView() {
   const [reqStatus, setReqStatus] = useState<RequirementStatus>("ready");
   const [reqSearchQuery, setReqSearchQuery] = useState("");
   const [reqStatusFilter, setReqStatusFilter] = useState<string>("all");
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Clients View State Persistence
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("clients_view_state");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.selectedClientId !== undefined) setSelectedClientId(parsed.selectedClientId);
+          if (parsed.expandedReqId !== undefined) setExpandedReqId(parsed.expandedReqId);
+          if (parsed.clientSearchQuery !== undefined) setClientSearchQuery(parsed.clientSearchQuery);
+          if (parsed.reqSearchQuery !== undefined) setReqSearchQuery(parsed.reqSearchQuery);
+          if (parsed.reqStatusFilter !== undefined) setReqStatusFilter(parsed.reqStatusFilter);
+        } catch (e) {
+          console.error("Error parsing saved clients view state", e);
+        }
+      }
+      setTimeout(() => {
+        setIsLoaded(true);
+      }, 0);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (isLoaded && typeof window !== "undefined") {
+      const stateToSave = {
+        selectedClientId,
+        expandedReqId,
+        clientSearchQuery,
+        reqSearchQuery,
+        reqStatusFilter
+      };
+      localStorage.setItem("clients_view_state", JSON.stringify(stateToSave));
+    }
+  }, [
+    isLoaded,
+    selectedClientId,
+    expandedReqId,
+    clientSearchQuery,
+    reqSearchQuery,
+    reqStatusFilter
+  ]);
 
   // Option selection / Sub-requirement states
   const [isEditOptionsOpen, setIsEditOptionsOpen] = useState(false);
@@ -874,10 +918,10 @@ export default function ClientsView() {
   };
 
   React.useEffect(() => {
-    if (clients.length > 0 && !selectedClientId) {
+    if (isLoaded && clients.length > 0 && !selectedClientId) {
       setSelectedClientId(clients[0].id);
     }
-  }, [clients, selectedClientId]);
+  }, [isLoaded, clients, selectedClientId]);
 
   React.useEffect(() => {
     if (!isClientModalOpen) {

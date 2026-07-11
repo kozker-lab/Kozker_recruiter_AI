@@ -487,6 +487,55 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const [statusFilter, setStatusFilter] = useState("all");
   const [clientFilter, setClientFilter] = useState("all");
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Jobs View State Persistence
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("jobs_view_state");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.selectedJobId !== undefined) setSelectedJobId(parsed.selectedJobId);
+          if (parsed.activeTab !== undefined) setActiveTab(parsed.activeTab);
+          if (parsed.queryFilter !== undefined) setQueryFilter(parsed.queryFilter);
+          if (parsed.viewMode !== undefined) setViewMode(parsed.viewMode);
+          if (parsed.searchQuery !== undefined) setSearchQuery(parsed.searchQuery);
+          if (parsed.statusFilter !== undefined) setStatusFilter(parsed.statusFilter);
+          if (parsed.clientFilter !== undefined) setClientFilter(parsed.clientFilter);
+        } catch (e) {
+          console.error("Error parsing saved jobs view state", e);
+        }
+      }
+      setTimeout(() => {
+        setIsLoaded(true);
+      }, 0);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (isLoaded && typeof window !== "undefined") {
+      const stateToSave = {
+        selectedJobId,
+        activeTab,
+        queryFilter,
+        viewMode,
+        searchQuery,
+        statusFilter,
+        clientFilter
+      };
+      localStorage.setItem("jobs_view_state", JSON.stringify(stateToSave));
+    }
+  }, [
+    isLoaded,
+    selectedJobId,
+    activeTab,
+    queryFilter,
+    viewMode,
+    searchQuery,
+    statusFilter,
+    clientFilter
+  ]);
 
   // State for AI JD Regeneration instruction
   const [regenInstruction, setRegenInstruction] = useState("");

@@ -170,6 +170,48 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
 
+  // Keep track of last visited sub-paths for sidebar navigation
+  const [lastVisitedUrls, setLastVisitedUrls] = useState<Record<string, string>>({});
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedUrls: Record<string, string> = {};
+      const sections = ["dashboard", "clients", "jobs", "pool", "rounds", "qna", "notifications", "help", "settings"];
+      sections.forEach(sec => {
+        const val = localStorage.getItem(`last_visited_${sec}`);
+        if (val) {
+          savedUrls[sec] = val;
+        }
+      });
+      setLastVisitedUrls(savedUrls);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const fullPath = pathname + window.location.search;
+      
+      let sectionId = "";
+      if (pathname.startsWith("/dashboard")) sectionId = "dashboard";
+      else if (pathname.startsWith("/clients")) sectionId = "clients";
+      else if (pathname.startsWith("/jobs")) sectionId = "jobs";
+      else if (pathname.startsWith("/pool")) sectionId = "pool";
+      else if (pathname.startsWith("/rounds")) sectionId = "rounds";
+      else if (pathname.startsWith("/qna")) sectionId = "qna";
+      else if (pathname.startsWith("/notifications")) sectionId = "notifications";
+      else if (pathname.startsWith("/help")) sectionId = "help";
+      else if (pathname.startsWith("/profile") || pathname.startsWith("/settings")) sectionId = "settings";
+
+      if (sectionId) {
+        localStorage.setItem(`last_visited_${sectionId}`, fullPath);
+        setLastVisitedUrls(prev => ({
+          ...prev,
+          [sectionId]: fullPath
+        }));
+      }
+    }
+  }, [pathname]);
+
   // Onboarding Form States
   const [onboardStep, setOnboardStep] = useState<number>(1);
   const [onboardName, setOnboardName] = useState<string>("");
@@ -1107,7 +1149,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                 <React.Fragment key={item.id}>
                   <Link
                     id={`nav-${item.id}`}
-                    href={item.href}
+                    href={lastVisitedUrls[item.id] || item.href}
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm font-medium transition-all cursor-pointer ${isActive
                         ? "bg-neutral-900 border-neutral-800 text-neutral-white font-semibold"
                         : "text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50"

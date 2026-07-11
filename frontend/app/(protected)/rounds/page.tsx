@@ -54,6 +54,58 @@ export default function RoundsPage() {
   const [selectedJob, setSelectedJob] = useState("all");
   const [selectedRound, setSelectedRound] = useState("all");
   const [selectedTopN, setSelectedTopN] = useState("all");
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Rounds page state persistence
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("rounds_view_state");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.selectedAppId !== undefined) setSelectedAppId(parsed.selectedAppId);
+          if (parsed.searchQuery !== undefined) setSearchQuery(parsed.searchQuery);
+          if (parsed.viewMode !== undefined) setViewMode(parsed.viewMode);
+          if (parsed.selectedClient !== undefined) setSelectedClient(parsed.selectedClient);
+          if (parsed.selectedRequirement !== undefined) setSelectedRequirement(parsed.selectedRequirement);
+          if (parsed.selectedJob !== undefined) setSelectedJob(parsed.selectedJob);
+          if (parsed.selectedRound !== undefined) setSelectedRound(parsed.selectedRound);
+          if (parsed.selectedTopN !== undefined) setSelectedTopN(parsed.selectedTopN);
+        } catch (e) {
+          console.error("Error parsing saved rounds view state", e);
+        }
+      }
+      setTimeout(() => {
+        setIsLoaded(true);
+      }, 0);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (isLoaded && typeof window !== "undefined") {
+      const stateToSave = {
+        selectedAppId,
+        searchQuery,
+        viewMode,
+        selectedClient,
+        selectedRequirement,
+        selectedJob,
+        selectedRound,
+        selectedTopN
+      };
+      localStorage.setItem("rounds_view_state", JSON.stringify(stateToSave));
+    }
+  }, [
+    isLoaded,
+    selectedAppId,
+    searchQuery,
+    viewMode,
+    selectedClient,
+    selectedRequirement,
+    selectedJob,
+    selectedRound,
+    selectedTopN
+  ]);
 
   // Stage management state
   const [isStageModalOpen, setIsStageModalOpen] = useState(false);

@@ -320,35 +320,38 @@ function CandidateRow({
   };
 
   return (
-    <div className="hover:bg-neutral-50/20 transition-colors border-b border-neutral-150">
+    <div className="hover:bg-neutral-50/20 transition-colors border-b border-neutral-150 candidate-separator">
       <div 
         onClick={() => router.push(`/pool/${c.id}`)}
-        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer select-none"
+        className="py-2.5 px-4 flex flex-col md:grid md:grid-cols-12 md:items-center gap-4 cursor-pointer select-none text-xs font-sans text-neutral-600"
       >
-        <div className="flex items-center gap-3">
+        {/* Left Column (Col 1 to 5): Caret + Name + Source & Status Badges */}
+        <div className="md:col-span-5 flex items-start gap-3 min-w-0">
           <button
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand();
             }}
             title={isExpanded ? "Collapse Details" : "Expand Details"}
-            className="p-1 hover:bg-neutral-100 border border-neutral-200 rounded-sm text-neutral-450 cursor-pointer flex items-center justify-center"
+            className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-sm text-neutral-450 dark:text-neutral-400 cursor-pointer flex items-center justify-center shrink-0 mt-0.5"
           >
             {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
           </button>
           
-          <div className="space-y-1">
+          <div className="space-y-1.5 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-tight font-bold text-sm text-neutral-850 hover:text-primary transition-colors">{c.full_name}</span>
-              <span className="text-[9px] px-1.5 py-0.2 bg-neutral-100 border border-neutral-250 font-mono text-neutral-500 rounded-sm">
+              <span className="font-tight font-bold text-sm text-neutral-850 dark:text-neutral-200 hover:text-primary dark:hover:text-primary transition-colors truncate">
+                {c.full_name}
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 bg-neutral-100 dark:bg-primary/10 border border-neutral-250 dark:border-primary/20 font-mono text-neutral-500 dark:text-primary rounded-sm uppercase font-semibold">
                 {c.source || "Manual"}
               </span>
               {c.working_or_not === false ? (
-                <span className="text-[9px] px-1.5 py-0.2 bg-warning/10 border border-warning/30 font-mono text-warning rounded-sm font-semibold">
+                <span className="text-[9px] px-1.5 py-0.5 bg-warning/10 border border-warning/30 dark:bg-amber-950/40 dark:border-amber-900/40 text-warning dark:text-amber-400 font-mono rounded-sm font-semibold uppercase">
                   Open to Work
                 </span>
               ) : (
-                <span className="text-[9px] px-1.5 py-0.2 bg-success/10 border border-success/30 font-mono text-success rounded-sm font-semibold">
+                <span className="text-[9px] px-1.5 py-0.5 bg-success/10 border border-success/30 dark:bg-emerald-950/40 dark:border-emerald-900/40 text-success dark:text-emerald-400 font-mono rounded-sm font-semibold uppercase">
                   Employed
                 </span>
               )}
@@ -359,39 +362,65 @@ function CandidateRow({
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
                   title={`PDF Resume: ${c.resume_url}`}
-                  className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-sm text-red-700 transition-colors text-[9px] font-mono font-semibold"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-750 dark:bg-rose-950/40 dark:border-rose-900/40 dark:text-rose-450 dark:hover:bg-rose-950/60 rounded-sm transition-colors text-[9px] font-mono font-semibold"
                 >
-                  <FileText className="w-3 h-3 text-red-500" />
+                  <FileText className="w-3 h-3 text-red-500 dark:text-rose-400" />
                   PDF CV
                 </a>
               )}
             </div>
-            <p className="text-[10px] text-neutral-400 font-mono">{c.email} • {c.phone || "No phone listed"}</p>
             {c.job_id && !hideJobIndicator && (() => {
               const matchedJob = jobs.find(j => j.id === c.job_id);
               if (!matchedJob) return null;
               return (
-                <p className="text-[10px] text-primary/90 font-mono flex items-center gap-1 mt-0.5 select-text" onClick={(e) => e.stopPropagation()}>
-                  <Briefcase className="w-3 h-3 text-primary/60 shrink-0" />
-                  <span>Applied for: <span className="font-semibold">{matchedJob.title}</span> ({matchedJob.client_name})</span>
+                <p className="text-[10px] text-primary font-mono flex items-center gap-1 mt-0.5 select-text" onClick={(e) => e.stopPropagation()}>
+                  <Briefcase className="w-3.5 h-3.5 text-primary/70 shrink-0" />
+                  <span>Applied: <span className="font-bold">{matchedJob.title}</span> ({matchedJob.client_name})</span>
                 </p>
               );
             })()}
           </div>
         </div>
 
-        <div className="flex items-center gap-6 font-mono text-[10px] text-neutral-500">
-          <div>
-            <span className="text-neutral-400 mr-1.5">EXP:</span>
-            <span className="font-bold text-neutral-700">{c.experience_years} Years</span>
+        {/* Middle Column (Col 6 to 8): Contact Info (text-xs) */}
+        <div className="md:col-span-3 space-y-1.5 font-mono text-xs text-neutral-500 dark:text-neutral-800 min-w-0 md:border-l md:border-neutral-150 md:pl-4">
+          <div className="flex items-center gap-1.5 truncate">
+            <Mail className="w-4 h-4 text-primary/60 dark:text-primary/70 shrink-0" />
+            <span className="truncate select-text" onClick={(e) => e.stopPropagation()}>
+              {c.email}
+            </span>
           </div>
-          <div className="flex flex-wrap gap-1 max-w-xs justify-end">
-            {c.skills.slice(0, 4).map((sk, idx) => (
-              <span key={idx} className="text-[8px] bg-neutral-100 text-neutral-600 px-1 py-0.2 border border-neutral-200 rounded-sm">
-                {sk}
+          {c.phone && (
+            <div className="flex items-center gap-1.5">
+              <svg className="w-4 h-4 text-primary/60 dark:text-primary/70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.94.725l.548 2.2a1 1 0 01-.321.988l-1.305.98a10.582 10.582 0 004.872 4.872l.98-1.305a1 1 0 01.988-.321l2.2.548a1 1 0 01.725.94V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              <span className="select-text" onClick={(e) => e.stopPropagation()}>
+                {c.phone}
               </span>
-            ))}
-          </div>
+            </div>
+          )}
+        </div>
+
+        {/* Experience Column (Col 9 to 10) (increased font size to text-xs) */}
+        <div className="md:col-span-2 md:text-center md:border-l md:border-neutral-150">
+          <span className="inline-block font-mono text-xs font-bold text-primary dark:text-primary bg-primary/5 dark:bg-primary/10 border border-primary/15 dark:border-primary/25 px-2.5 py-1 rounded-sm uppercase tracking-wider">
+            {c.experience_years} Years
+          </span>
+        </div>
+
+        {/* Skills Column (Col 11 to 12) (text-[10px]) */}
+        <div className="md:col-span-2 flex flex-wrap gap-1.5 md:justify-end md:pl-2">
+          {c.skills.slice(0, 3).map((sk, idx) => (
+            <span key={idx} className="text-[10px] font-mono bg-neutral-100 dark:bg-neutral-200 border border-neutral-200 dark:border-neutral-300/40 text-neutral-600 dark:text-neutral-700 px-2 py-0.5 rounded-sm font-semibold">
+              {sk}
+            </span>
+          ))}
+          {c.skills.length > 3 && (
+            <span className="text-[10px] font-mono bg-neutral-50 dark:bg-neutral-200/50 border border-neutral-200 dark:border-neutral-300/30 text-neutral-500 dark:text-neutral-500 px-1.5 py-0.5 rounded-sm font-semibold" title={c.skills.slice(3).join(", ")}>
+              +{c.skills.length - 3}
+            </span>
+          )}
         </div>
       </div>
 
@@ -664,12 +693,69 @@ export default function PoolView() {
   // Persistent search query state
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(initialCandidateId);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   React.useEffect(() => {
     if (initialCandidateId) {
       setExpandedCandidateId(initialCandidateId);
     }
   }, [initialCandidateId]);
+
+  // Sourcing Pool State Persistence
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sourcing_pool_state");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.selectedEducation !== undefined) setSelectedEducation(parsed.selectedEducation);
+          if (parsed.selectedWorkingStatus !== undefined) setSelectedWorkingStatus(parsed.selectedWorkingStatus);
+          if (parsed.experienceRange !== undefined) setExperienceRange(parsed.experienceRange);
+          if (parsed.skillsFilter !== undefined) setSkillsFilter(parsed.skillsFilter);
+          if (parsed.emailFilter !== undefined) setEmailFilter(parsed.emailFilter);
+          if (parsed.groupByEmailDomain !== undefined) setGroupByEmailDomain(parsed.groupByEmailDomain);
+          if (parsed.groupByJob !== undefined) setGroupByJob(parsed.groupByJob);
+          if (parsed.searchQuery !== undefined) setSearchQuery(parsed.searchQuery);
+          if (!initialCandidateId && parsed.expandedCandidateId !== undefined) {
+            setExpandedCandidateId(parsed.expandedCandidateId);
+          }
+        } catch (e) {
+          console.error("Error parsing saved sourcing pool state", e);
+        }
+      }
+      setTimeout(() => {
+        setIsLoaded(true);
+      }, 0);
+    }
+  }, [initialCandidateId]);
+
+  React.useEffect(() => {
+    if (isLoaded && typeof window !== "undefined") {
+      const stateToSave = {
+        selectedEducation,
+        selectedWorkingStatus,
+        experienceRange,
+        skillsFilter,
+        emailFilter,
+        groupByEmailDomain,
+        groupByJob,
+        searchQuery,
+        expandedCandidateId
+      };
+      localStorage.setItem("sourcing_pool_state", JSON.stringify(stateToSave));
+    }
+  }, [
+    isLoaded,
+    selectedEducation,
+    selectedWorkingStatus,
+    experienceRange,
+    skillsFilter,
+    emailFilter,
+    groupByEmailDomain,
+    groupByJob,
+    searchQuery,
+    expandedCandidateId
+  ]);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1007,189 +1093,190 @@ export default function PoolView() {
         </div>
       </div>
 
-      {/* Sourced Search input bar & Filters */}
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-neutral-400" />
-            <input
-              type="text"
-              placeholder="Filter sourcing pool by candidate name, resume skills (e.g. Next.js, Rust)..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-xs focus:ring-1 focus:ring-primary text-neutral-800"
-            />
-          </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2 border rounded-sm text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-              showFilters || activeFilterCount > 0
-                ? "bg-primary/5 border-primary/30 text-primary"
-                : "bg-neutral-white border-neutral-200 text-neutral-600 hover:bg-neutral-50"
-            }`}
-          >
-            <Filter className="w-3.5 h-3.5" />
-            Filters
+      {/* Sourced Search input bar & Filters (Always Visible, Compact & Highly Organized) */}
+      <div className="bg-neutral-white border border-neutral-200 p-3.5 rounded-sm space-y-3 shadow-xs text-xs font-sans">
+        {/* Card Header with Section Title & Clear Action */}
+        <div className="flex items-center justify-between border-b border-neutral-150 pb-2">
+          <div className="flex items-center gap-2">
+            <Filter className="w-3.5 h-3.5 text-primary" />
+            <span className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">
+              Search & Filter Candidates
+            </span>
             {activeFilterCount > 0 && (
-              <span className="bg-primary text-neutral-white rounded-full px-1.5 py-0.2 text-[9px] font-bold">
-                {activeFilterCount}
+              <span className="bg-primary/10 border border-primary/20 text-primary rounded-full px-2 py-0.2 text-[9px] font-mono font-bold">
+                {activeFilterCount} Active
               </span>
             )}
-          </button>
+          </div>
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => {
+                setSelectedEducation("All");
+                setSelectedWorkingStatus("All");
+                setExperienceRange("All");
+                setSkillsFilter("");
+                setEmailFilter("");
+                setGroupByEmailDomain(false);
+                setGroupByJob(false);
+              }}
+              className="px-2 py-0.5 text-primary border border-primary/25 bg-primary/5 hover:bg-primary/10 rounded-sm cursor-pointer text-[9px] font-mono font-semibold uppercase tracking-wider transition-colors"
+            >
+              Clear Filters
+            </button>
+          )}
         </div>
 
-        {/* Collapsible Filter Panel */}
-        {showFilters && (
-          <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-sm space-y-4 shadow-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-              {/* Education Filter */}
-              <div className="space-y-1">
-                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Education</label>
-                <select
-                  value={selectedEducation}
-                  onChange={(e) => setSelectedEducation(e.target.value)}
-                  className="w-full p-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
-                >
-                  <option value="All">All Education</option>
-                  <option value="Bachelor's">Bachelor's Degree</option>
-                  <option value="Master's">Master's Degree</option>
-                  <option value="PhD">PhD / Doctorate</option>
-                </select>
-              </div>
+        {/* Global Search Box */}
+        <div className="relative">
+          <Search className="absolute left-3 top-2 h-4 w-4 text-neutral-450" />
+          <input
+            type="text"
+            placeholder="Search candidate profiles by name or skills (e.g. React, TypeScript)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-1.5 border border-neutral-200 bg-neutral-white rounded-sm text-xs focus:ring-1 focus:ring-primary text-neutral-800 font-sans"
+          />
+        </div>
 
-              {/* Employment Status Filter */}
-              <div className="space-y-1">
-                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Employment</label>
-                <select
-                  value={selectedWorkingStatus}
-                  onChange={(e) => setSelectedWorkingStatus(e.target.value)}
-                  className="w-full p-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
-                >
-                  <option value="All">All Statuses</option>
-                  <option value="Employed">Employed (Working)</option>
-                  <option value="Open to Work">Open to Work</option>
-                </select>
-              </div>
-
-              {/* Experience Years Filter */}
-              <div className="space-y-1">
-                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Experience</label>
-                <select
-                  value={experienceRange}
-                  onChange={(e) => setExperienceRange(e.target.value)}
-                  className="w-full p-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
-                >
-                  <option value="All">All Experience</option>
-                  <option value="0-2 years">Entry-level (0-2 years)</option>
-                  <option value="3-5 years">Mid-level (3-5 years)</option>
-                  <option value="6-8 years">Senior (6-8 years)</option>
-                  <option value="9+ years">Lead / Principal (9+ years)</option>
-                </select>
-              </div>
-
-              {/* Skills Filter */}
-              <div className="space-y-1">
-                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Skills (comma-sep)</label>
-                <input
-                  type="text"
-                  placeholder="React, TypeScript..."
-                  value={skillsFilter}
-                  onChange={(e) => setSkillsFilter(e.target.value)}
-                  className="w-full p-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Email & Grouping filter row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-              {/* Email Search */}
-              <div className="space-y-1 md:col-span-2">
-                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-neutral-400" />
-                  <input
-                    type="text"
-                    placeholder="Filter by email or domain (e.g. @gmail.com)..."
-                    value={emailFilter}
-                    onChange={(e) => setEmailFilter(e.target.value)}
-                    className="w-full pl-8 pr-3 p-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Group by Email Domain toggle */}
-              <div className="space-y-1">
-                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Group by Domain</label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGroupByEmailDomain(!groupByEmailDomain);
-                    if (!groupByEmailDomain) {
-                      setGroupByJob(false);
-                    }
-                  }}
-                  className={`w-full p-2 border rounded-sm text-xs font-mono font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
-                    groupByEmailDomain
-                      ? "bg-primary/10 border-primary/30 text-primary"
-                      : "bg-neutral-white border-neutral-200 text-neutral-500 hover:bg-neutral-50"
-                  }`}
-                >
-                  <Layers className="w-3.5 h-3.5" />
-                  {groupByEmailDomain ? "Grouped by Email Domain" : "Group by Email Domain"}
-                </button>
-              </div>
-
-              {/* Group by Job Opening toggle */}
-              <div className="space-y-1">
-                <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[9px] font-mono">Group by Job Opening</label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGroupByJob(!groupByJob);
-                    if (!groupByJob) {
-                      setGroupByEmailDomain(false);
-                    }
-                  }}
-                  className={`w-full p-2 border rounded-sm text-xs font-mono font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
-                    groupByJob
-                      ? "bg-primary/10 border-primary/30 text-primary"
-                      : "bg-neutral-white border-neutral-200 text-neutral-500 hover:bg-neutral-50"
-                  }`}
-                >
-                  <Briefcase className="w-3.5 h-3.5" />
-                  {groupByJob ? "Grouped by Job Opening" : "Group by Job Opening"}
-                </button>
-              </div>
-            </div>
-
-            {activeFilterCount > 0 && (
-              <div className="flex justify-end pt-1 border-t border-neutral-200/50">
-                <button
-                  onClick={() => {
-                    setSelectedEducation("All");
-                    setSelectedWorkingStatus("All");
-                    setExperienceRange("All");
-                    setSkillsFilter("");
-                    setEmailFilter("");
-                    setGroupByEmailDomain(false);
-                    setGroupByJob(false);
-                  }}
-                  className="px-3 py-1 text-primary border border-primary/25 bg-primary/5 hover:bg-primary/10 rounded-sm cursor-pointer text-[10px] font-mono font-semibold"
-                >
-                  Clear Filters
-                </button>
-              </div>
-            )}
+        {/* Filters Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          {/* Education Filter */}
+          <div className="space-y-0.5">
+            <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[8.5px] font-mono">Education Level</label>
+            <select
+              value={selectedEducation}
+              onChange={(e) => setSelectedEducation(e.target.value)}
+              className="w-full py-1 px-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-850 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+            >
+              <option value="All">All Education</option>
+              <option value="Bachelor's">Bachelor's Degree</option>
+              <option value="Master's">Master's Degree</option>
+              <option value="PhD">PhD / Doctorate</option>
+            </select>
           </div>
-        )}
+
+          {/* Employment Status Filter */}
+          <div className="space-y-0.5">
+            <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[8.5px] font-mono">Employment Status</label>
+            <select
+              value={selectedWorkingStatus}
+              onChange={(e) => setSelectedWorkingStatus(e.target.value)}
+              className="w-full py-1 px-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-855 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+            >
+              <option value="All">All Statuses</option>
+              <option value="Employed">Employed (Working)</option>
+              <option value="Open to Work">Open to Work</option>
+            </select>
+          </div>
+
+          {/* Experience Years Filter */}
+          <div className="space-y-0.5">
+            <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[8.5px] font-mono">Years of Experience</label>
+            <select
+              value={experienceRange}
+              onChange={(e) => setExperienceRange(e.target.value)}
+              className="w-full py-1 px-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-855 text-xs focus:ring-1 focus:ring-primary focus:outline-none"
+            >
+              <option value="All">All Experience</option>
+              <option value="0-2 years">Entry-level (0-2 years)</option>
+              <option value="3-5 years">Mid-level (3-5 years)</option>
+              <option value="6-8 years">Senior (6-8 years)</option>
+              <option value="9+ years">Lead / Principal (9+ years)</option>
+            </select>
+          </div>
+
+          {/* Skills Filter */}
+          <div className="space-y-0.5">
+            <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[8.5px] font-mono">Mandatory Skills</label>
+            <input
+              type="text"
+              placeholder="React, Next.js, Rust..."
+              value={skillsFilter}
+              onChange={(e) => setSkillsFilter(e.target.value)}
+              className="w-full py-1 px-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-855 text-xs focus:ring-1 focus:ring-primary focus:outline-none placeholder:text-neutral-400"
+            />
+          </div>
+        </div>
+
+        {/* Email & Layout/Grouping Toggles */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 border-t border-neutral-150 pt-2.5">
+          {/* Email Search */}
+          <div className="space-y-0.5 md:col-span-2">
+            <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[8.5px] font-mono">Email / Domain Search</label>
+            <div className="relative">
+              <Mail className="absolute left-2 top-2 h-3.5 w-3.5 text-neutral-400" />
+              <input
+                type="text"
+                placeholder="Filter by email or domain (e.g. @gmail.com)..."
+                value={emailFilter}
+                onChange={(e) => setEmailFilter(e.target.value)}
+                className="w-full pl-7.5 pr-3 py-1 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-855 text-xs focus:ring-1 focus:ring-primary focus:outline-none placeholder:text-neutral-400"
+              />
+            </div>
+          </div>
+
+          {/* Group by Email Domain toggle */}
+          <div className="space-y-0.5">
+            <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[8.5px] font-mono">Group Candidates by</label>
+            <button
+              type="button"
+              onClick={() => {
+                setGroupByEmailDomain(!groupByEmailDomain);
+                if (!groupByEmailDomain) {
+                  setGroupByJob(false);
+                }
+              }}
+              className={`w-full py-1 px-2 border rounded-sm text-xs font-mono font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                groupByEmailDomain
+                  ? "bg-primary/10 border-primary/30 text-primary"
+                  : "bg-neutral-white border-neutral-200 text-neutral-500 hover:bg-neutral-50 hover:border-neutral-300"
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              {groupByEmailDomain ? "By Domain" : "Email Domain"}
+            </button>
+          </div>
+
+          {/* Group by Job Opening toggle */}
+          <div className="space-y-0.5">
+            <label className="text-neutral-500 uppercase tracking-wider block font-bold text-[8.5px] font-mono">Group Candidates by</label>
+            <button
+              type="button"
+              onClick={() => {
+                setGroupByJob(!groupByJob);
+                if (!groupByJob) {
+                  setGroupByEmailDomain(false);
+                }
+              }}
+              className={`w-full py-1 px-2 border rounded-sm text-xs font-mono font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                groupByJob
+                  ? "bg-primary/10 border-primary/30 text-primary"
+                  : "bg-neutral-white border-neutral-200 text-neutral-500 hover:bg-neutral-50 hover:border-neutral-300"
+              }`}
+            >
+              <Briefcase className="w-3.5 h-3.5" />
+              {groupByJob ? "By Job" : "Job Opening"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Sourcing data pool table */}
-      <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm text-xs font-sans">
-        <div className="p-4 border-b border-neutral-200 bg-neutral-50 flex items-center gap-2">
+      <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-xs text-xs font-sans">
+        <div className="py-2.5 px-4 border-b border-neutral-200 bg-neutral-50 flex items-center gap-2">
           <Database className="w-4 h-4 text-neutral-400" />
           <span className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">Sourcing Talent Index ({filteredCandidates.length})</span>
         </div>
+
+        {/* Table/List Column Headers (visible on md and above) */}
+        {!isLoading && filteredCandidates.length > 0 && !groupByJob && (
+          <div className="hidden md:grid md:grid-cols-12 gap-4 py-1.5 px-4 bg-neutral-50 border-b border-neutral-200 font-mono text-[9px] uppercase tracking-wider font-bold text-neutral-450 select-none candidate-separator">
+            <div className="col-span-5 pl-10">Candidate Profile</div>
+            <div className="col-span-3 pl-4">Contact Details</div>
+            <div className="col-span-2 text-center">Experience</div>
+            <div className="col-span-2 text-right">Top Skills</div>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="text-center py-12 text-xs text-neutral-400 font-mono">Quering deduplicated talent database...</div>

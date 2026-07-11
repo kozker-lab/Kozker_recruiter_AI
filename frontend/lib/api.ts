@@ -570,13 +570,20 @@ export async function apiRequest<T>(
       body: data ? JSON.stringify(data) : undefined,
     });
     
+    const text = await res.text();
+    let responseData: any = {};
+    try {
+      responseData = text ? JSON.parse(text) : {};
+    } catch (parseErr) {
+      responseData = {};
+    }
+
     if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      const errMsg = errBody.detail || `Request failed with status ${res.status}`;
+      const errMsg = responseData.detail || `Request failed with status ${res.status}`;
       throw new Error(errMsg);
     }
     
-    return await res.json() as T;
+    return responseData as T;
   } catch (err) {
     console.error(`API Request to ${path} failed:`, err);
     throw new Error(
@@ -2262,12 +2269,16 @@ export const apiUploadFile = async (path: string, file: File): Promise<{ text: s
       body: formData,
     });
 
+    const text = await res.text();
     if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(errText || "Failed to upload and parse file");
+      throw new Error(text || "Failed to upload and parse file");
     }
 
-    return await res.json();
+    try {
+      return text ? JSON.parse(text) : { text: "" };
+    } catch {
+      throw new Error("Invalid JSON response from server during file upload");
+    }
   } catch (err) {
     console.error("Error in apiUploadFile:", err);
     throw err;
