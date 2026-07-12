@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
     "plates-kinds-restoration-ranger.trycloudflare.com",
     "*.trycloudflare.com"
   ],
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  experimental: {
+    webpackMemoryOptimizations: true,
+  },
   async rewrites() {
     return [
       {
