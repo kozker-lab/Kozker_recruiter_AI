@@ -31,6 +31,36 @@ export default function ProfilePage() {
 
   // Active Tab: "profile" | "preferences" | "workspace" | "integrations"
   const [activeTab, setActiveTab] = useState<"profile" | "preferences" | "workspace" | "integrations">("profile");
+  const [isTabLoaded, setIsTabLoaded] = useState(false);
+
+  // Load active tab from localStorage on mount, respecting query params first
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      const paramTab = searchParams.get("tab");
+      
+      if (paramTab && ["profile", "preferences", "workspace", "integrations"].includes(paramTab)) {
+        setActiveTab(paramTab as any);
+      } else {
+        const savedTab = localStorage.getItem("profile_active_tab");
+        if (savedTab && ["profile", "preferences", "workspace", "integrations"].includes(savedTab)) {
+          setActiveTab(savedTab as any);
+        }
+      }
+      setIsTabLoaded(true);
+    }
+  }, []);
+
+  // Save active tab to localStorage on changes with debounce
+  useEffect(() => {
+    if (isTabLoaded && typeof window !== "undefined") {
+      const handler = setTimeout(() => {
+        localStorage.setItem("profile_active_tab", activeTab);
+      }, 300);
+
+      return () => clearTimeout(handler);
+    }
+  }, [activeTab, isTabLoaded]);
 
   // LinkedIn Integration States
   const [linkedinConnected, setLinkedinConnected] = useState(false);

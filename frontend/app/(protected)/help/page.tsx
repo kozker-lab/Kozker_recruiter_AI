@@ -62,6 +62,43 @@ export default function HelpPage() {
   
   // Workflow stepper state
   const [activeStep, setActiveStep] = useState<number>(0);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Load state from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("help_view_state");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.openFaq !== undefined) setOpenFaq(parsed.openFaq);
+          if (parsed.faqCategory !== undefined) setFaqCategory(parsed.faqCategory);
+          if (parsed.activeStep !== undefined) setActiveStep(parsed.activeStep);
+        } catch (e) {
+          console.error("Error parsing saved help view state", e);
+        }
+      }
+      setTimeout(() => {
+        setIsLoaded(true);
+      }, 0);
+    }
+  }, []);
+
+  // Save state to localStorage on state changes with debounce
+  useEffect(() => {
+    if (isLoaded && typeof window !== "undefined") {
+      const handler = setTimeout(() => {
+        const stateToSave = {
+          openFaq,
+          faqCategory,
+          activeStep
+        };
+        localStorage.setItem("help_view_state", JSON.stringify(stateToSave));
+      }, 500);
+
+      return () => clearTimeout(handler);
+    }
+  }, [isLoaded, openFaq, faqCategory, activeStep]);
 
   // Diagnostics simulation states
   const [diagnosticsRunning, setDiagnosticsRunning] = useState(false);

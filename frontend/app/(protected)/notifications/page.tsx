@@ -167,6 +167,53 @@ export default function NotificationsTimelinePage() {
   const [clientFilter, setClientFilter] = useState("all");
   const [candidateFilter, setCandidateFilter] = useState("all");
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Load state from localStorage on mount
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("notifications_view_state");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.filterTab !== undefined) setFilterTab(parsed.filterTab);
+          if (parsed.searchQuery !== undefined) setSearchQuery(parsed.searchQuery);
+          if (parsed.dateFilter !== undefined) setDateFilter(parsed.dateFilter);
+          if (parsed.customDate !== undefined) setCustomDate(parsed.customDate);
+          if (parsed.typeFilter !== undefined) setTypeFilter(parsed.typeFilter);
+          if (parsed.clientFilter !== undefined) setClientFilter(parsed.clientFilter);
+          if (parsed.candidateFilter !== undefined) setCandidateFilter(parsed.candidateFilter);
+          if (parsed.isAdvancedFiltersOpen !== undefined) setIsAdvancedFiltersOpen(parsed.isAdvancedFiltersOpen);
+        } catch (e) {
+          console.error("Error parsing saved notifications view state", e);
+        }
+      }
+      setTimeout(() => {
+        setIsLoaded(true);
+      }, 0);
+    }
+  }, []);
+
+  // Save state to localStorage on state changes with debounce
+  React.useEffect(() => {
+    if (isLoaded && typeof window !== "undefined") {
+      const handler = setTimeout(() => {
+        const stateToSave = {
+          filterTab,
+          searchQuery,
+          dateFilter,
+          customDate,
+          typeFilter,
+          clientFilter,
+          candidateFilter,
+          isAdvancedFiltersOpen
+        };
+        localStorage.setItem("notifications_view_state", JSON.stringify(stateToSave));
+      }, 500);
+
+      return () => clearTimeout(handler);
+    }
+  }, [isLoaded, filterTab, searchQuery, dateFilter, customDate, typeFilter, clientFilter, candidateFilter, isAdvancedFiltersOpen]);
 
   // States for clear/delete animations
   const [isClearing, setIsClearing] = useState(false);

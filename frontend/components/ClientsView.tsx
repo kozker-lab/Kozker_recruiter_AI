@@ -985,10 +985,10 @@ export default function ClientsView() {
               <div
                 key={c.id}
                 onClick={() => setSelectedClientId(c.id)}
-                className={`w-full text-left p-4 flex items-center justify-between transition-colors cursor-pointer group ${
+                className={`client-item w-full text-left p-4 pl-5 flex items-center justify-between transition-all duration-300 cursor-pointer group ${
                   selectedClientId === c.id 
-                    ? "bg-neutral-50 border-l-2 border-primary" 
-                    : "hover:bg-neutral-50/50"
+                    ? "client-item-selected bg-neutral-50/80 pl-8 text-neutral-white" 
+                    : "hover:bg-neutral-50/30 hover:pl-6 text-neutral-500 hover:text-neutral-850"
                 }`}
               >
                 <div className="space-y-0.5 min-w-0 flex-1">

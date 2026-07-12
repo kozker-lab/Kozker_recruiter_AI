@@ -35,6 +35,7 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
           if (parsed.searchQuery !== undefined) setSearchQuery(parsed.searchQuery);
           if (parsed.clientFilter !== undefined) setClientFilter(parsed.clientFilter);
           if (parsed.statusFilter !== undefined) setStatusFilter(parsed.statusFilter);
+          if (parsed.expandedNodes !== undefined) setExpandedNodes(parsed.expandedNodes);
         } catch (e) {
           console.error("Error parsing saved Q&A view state", e);
         }
@@ -47,16 +48,20 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
 
   React.useEffect(() => {
     if (isLoaded && typeof window !== "undefined") {
-      const stateToSave = {
-        viewMode,
-        searchQuery,
-        clientFilter,
-        statusFilter
-      };
-      localStorage.setItem("qna_view_state", JSON.stringify(stateToSave));
-    }
-  }, [isLoaded, viewMode, searchQuery, clientFilter, statusFilter]);
+      const handler = setTimeout(() => {
+        const stateToSave = {
+          viewMode,
+          searchQuery,
+          clientFilter,
+          statusFilter,
+          expandedNodes
+        };
+        localStorage.setItem("qna_view_state", JSON.stringify(stateToSave));
+      }, 500);
 
+      return () => clearTimeout(handler);
+    }
+  }, [isLoaded, viewMode, searchQuery, clientFilter, statusFilter, expandedNodes]);
   const [answeringQueryId, setAnsweringQueryId] = useState<string | null>(null);
   const [queryAnswerText, setQueryAnswerText] = useState<string>("");
 
