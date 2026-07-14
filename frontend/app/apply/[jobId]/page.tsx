@@ -7,7 +7,7 @@ import { parseResumeTextHeuristically } from "@/components/PoolView";
 import { 
   Upload, Briefcase, GraduationCap, Trophy, Code, 
   CheckCircle, AlertCircle, Calendar, DollarSign, 
-  MapPin, Loader2, ArrowLeft, Building2, Sparkles, Check,
+  MapPin, Loader2, ArrowLeft, Building2, Sparkles, Check, ShieldCheck,
   Eye, Settings, Plus, Trash2, ArrowUp, ArrowDown, Sparkle,
   Copy, ExternalLink, Moon, Sun, Info, Layout, AlignLeft,
   ChevronRight, ChevronDown, CheckSquare, List, RefreshCw, Pencil, MessageSquare, X, HelpCircle
@@ -202,6 +202,7 @@ export default function PublicApplyPage() {
   // Form submission states
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submittedAppId, setSubmittedAppId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
 
@@ -708,7 +709,10 @@ export default function PublicApplyPage() {
     }
 
     try {
-      await apiRequest("POST", "/candidates", payload);
+      const res: any = await apiRequest("POST", "/candidates", payload);
+      if (res && res.application_id) {
+        setSubmittedAppId(res.application_id);
+      }
       setSubmitSuccess(true);
     } catch (err: any) {
       console.error("Failed to submit candidate profile:", err);
@@ -771,18 +775,35 @@ export default function PublicApplyPage() {
                 ? "Form design validation succeeded. This mock application has been successfully compiled and verified."
                 : `Thank you for applying, ${fieldValues.full_name || "Applicant"}. Your profile details have been securely logged in our recruitment engine.`}
             </p>
+            
             <div className="bg-neutral-50 border border-neutral-150 p-3 rounded-sm font-mono text-[11px] text-left text-neutral-600 space-y-1.5 mt-2">
               <div><span className="text-neutral-400 font-semibold uppercase block text-[9px]">Applied For</span> {job.title}</div>
               {job.client_name && (
                 <div><span className="text-neutral-400 font-semibold uppercase block text-[9px] mt-1">Client Org</span> {job.client_name}</div>
               )}
+              {submittedAppId && (
+                <div><span className="text-neutral-400 font-semibold uppercase block text-[9px] mt-1">Application ID</span> <span className="font-bold text-neutral-800 select-all">{submittedAppId}</span></div>
+              )}
             </div>
+
+            {mode !== "design" && (
+              <div className="p-3.5 bg-emerald-50/50 border border-emerald-100/60 rounded-sm flex items-start gap-2.5 text-left text-[11px] text-emerald-800 animate-fadeIn mt-3.5">
+                <ShieldCheck className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold uppercase tracking-wider text-[9px] block">Verification Email Dispatched</span>
+                  <p className="text-neutral-550 text-[10.5px] leading-relaxed">
+                    A confirmation message containing your tracking link and login credentials has been sent to <strong className="text-neutral-700">{fieldValues.email}</strong>. **Please check your spam / junk folder** if it does not arrive shortly.
+                  </p>
+                </div>
+              </div>
+            )}
             
             {mode === "design" ? (
               <button
                 type="button"
                 onClick={() => {
                   setSubmitSuccess(false);
+                  setSubmittedAppId(null);
                   setFieldValues({
                     full_name: "",
                     email: "",
@@ -805,7 +826,7 @@ export default function PublicApplyPage() {
                 Back to Designer
               </button>
             ) : (
-              <p className="text-neutral-450 text-[10px] italic pt-1.5">
+              <p className="text-neutral-450 text-[10.5px] italic pt-1.5">
                 Our automated matching pipeline and screening agents will evaluate your credentials shortly.
               </p>
             )}
