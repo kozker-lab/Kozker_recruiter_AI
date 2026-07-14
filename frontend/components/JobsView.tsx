@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import * as XLSX from "xlsx";
 import { useRouter } from "next/navigation";
 import { apiRequest } from "../lib/api";
 import { JobOpening, JobOpeningSkill, JobCandidate, Candidate, CandidateQuery } from "../types";
@@ -549,6 +550,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const [selectedCandidatesForCompare, setSelectedCandidatesForCompare] = useState<string[]>([]);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [compareTab, setCompareTab] = useState<"visual" | "grid">("visual");
+  const [candidateViewMode, setCandidateViewMode] = useState<"alignment" | "spreadsheet">("alignment");
 
   // Editor states
   const [jdTitle, setJdTitle] = useState("");
@@ -957,6 +959,53 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     setLocalSkills(prev => prev.filter(s => s.id !== id));
   };
 
+  const customQuestionKeysMap = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    if (!selectedJobId) return map;
+
+    // Add custom fields from activeJob if present
+    if (activeJob && activeJob.form_fields && Array.isArray(activeJob.form_fields)) {
+      activeJob.form_fields.forEach((f: any) => {
+        if (f.enabled && f.isCustom) {
+          map[f.id] = f.label;
+        }
+      });
+    } else {
+      // Fallback to localStorage
+      try {
+        const localConfig = localStorage.getItem(`form_config_${selectedJobId}`);
+        if (localConfig) {
+          const fields = JSON.parse(localConfig);
+          fields.forEach((f: any) => {
+            if (f.enabled && f.isCustom) {
+              map[f.id] = f.label;
+            }
+          });
+        }
+      } catch (e) {
+        console.error("Failed to parse form config from local storage in map:", e);
+      }
+    }
+
+    // Scan candidate profiles for any responses that might not be in the active job's fields (as fallback)
+    if (matchedCandidates) {
+      matchedCandidates.forEach(jc => {
+        const fullCand = candidates.find(c => c.id === jc.candidate_id) as any;
+        if (fullCand && fullCand.parsed_resume_json && Array.isArray(fullCand.parsed_resume_json.custom_form_responses)) {
+          fullCand.parsed_resume_json.custom_form_responses.forEach((resp: any) => {
+            if (resp.field_id && resp.question) {
+              map[resp.field_id] = resp.question;
+            }
+          });
+        }
+      });
+    }
+
+    return map;
+  }, [selectedJobId, activeJob, matchedCandidates, candidates]);
+
+  const customFieldIds = React.useMemo(() => Object.keys(customQuestionKeysMap), [customQuestionKeysMap]);
+
   const handleExportExcel = async (jobId: string | null | undefined, jobTitle: string | null | undefined) => {
     if (!jobId || !jobTitle) return;
     try {
@@ -967,69 +1016,23 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
         return;
       }
 
-      const customQuestionKeysMap: Record<string, string> = {};
-      
+      const map: Record<string, string> = { ...customQuestionKeysMap };
+
       jobCands.forEach(jc => {
         const fullCand = candidates.find(c => c.id === jc.candidate_id) as any;
         if (fullCand && fullCand.parsed_resume_json && Array.isArray(fullCand.parsed_resume_json.custom_form_responses)) {
           fullCand.parsed_resume_json.custom_form_responses.forEach((resp: any) => {
             if (resp.field_id && resp.question) {
-              customQuestionKeysMap[resp.field_id] = resp.question;
+              map[resp.field_id] = resp.question;
             }
           });
         }
       });
 
-      try {
-        const localConfig = localStorage.getItem(`form_config_${jobId}`);
-        if (localConfig) {
-          const fields = JSON.parse(localConfig);
-          fields.forEach((f: any) => {
-            if (f.enabled && f.isCustom) {
-              customQuestionKeysMap[f.id] = f.label;
-            }
-          });
-        }
-      } catch (e) {
-        console.error("Failed to read form config from localStorage for export:", e);
-      }
+      const fieldIds = Object.keys(map);
 
-      const customFieldIds = Object.keys(customQuestionKeysMap);
-
-      const headers = [
-        "Rank / Index",
-        "Candidate Name",
-        "Email Address",
-        "Phone Number",
-        "Years of Experience",
-        "Education / Degree",
-        "Employment Status",
-        "Key Skills",
-        "Academic Details",
-        "Achievements",
-        "AI Match Score",
-        "Screening Status",
-        "Current Stage",
-        ...customFieldIds.map(id => customQuestionKeysMap[id])
-      ];
-
-      const escapeCSV = (val: any) => {
-        if (val === null || val === undefined) return "";
-        let strVal = "";
-        if (Array.isArray(val)) {
-          strVal = val.join(", ");
-        } else {
-          strVal = String(val);
-        }
-        if (strVal.includes(",") || strVal.includes('"') || strVal.includes("\n") || strVal.includes("\r")) {
-          return `"${strVal.replace(/"/g, '""')}"`;
-        }
-        return strVal;
-      };
-
-      const csvRows = [headers.map(h => escapeCSV(h)).join(",")];
-
-      jobCands.forEach((jc, index) => {
+      // Build rows for XLSX
+      const dataRows = jobCands.map((jc, index) => {
         const fullCand = (candidates.find(c => c.id === jc.candidate_id) || {}) as any;
         const responsesMap: Record<string, string> = {};
         if (fullCand.parsed_resume_json && Array.isArray(fullCand.parsed_resume_json.custom_form_responses)) {
@@ -1040,38 +1043,48 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           });
         }
 
-        const row = [
-          escapeCSV(index + 1),
-          escapeCSV(jc.candidate_name || "Unknown"),
-          escapeCSV(jc.candidate_email || ""),
-          escapeCSV(jc.candidate_phone || ""),
-          escapeCSV(jc.experience_years !== undefined ? `${jc.experience_years} Years` : ""),
-          escapeCSV(fullCand.education || ""),
-          escapeCSV(fullCand.working_or_not === true ? "Employed" : fullCand.working_or_not === false ? "Open to Work" : ""),
-          escapeCSV(jc.candidate_skills || ""),
-          escapeCSV(fullCand.academic_details || ""),
-          escapeCSV(fullCand.achievements || ""),
-          escapeCSV(jc.fuzzy_score !== undefined && jc.fuzzy_score !== null ? `${jc.fuzzy_score}%` : ""),
-          escapeCSV(jc.candidate_job_status || "pending"),
-          escapeCSV(jc.stage || "screening"),
-          ...customFieldIds.map(id => escapeCSV(responsesMap[id] || ""))
-        ];
+        const row: Record<string, any> = {
+          "Rank": index + 1,
+          "Candidate Name": jc.candidate_name || "Unknown",
+          "Email Address": jc.candidate_email || "",
+          "Phone Number": jc.candidate_phone || "",
+          "Years of Experience": jc.experience_years !== undefined ? `${jc.experience_years} Years` : "",
+          "Education / Degree": fullCand.education || "",
+          "Employment Status": fullCand.working_or_not === true ? "Employed" : fullCand.working_or_not === false ? "Open to Work" : "",
+          "Key Skills": jc.candidate_skills || "",
+          "Academic Details": fullCand.academic_details || "",
+          "Achievements": fullCand.achievements || "",
+          "AI Match Score": jc.fuzzy_score !== undefined && jc.fuzzy_score !== null ? `${jc.fuzzy_score}%` : "",
+          "Screening Status": jc.candidate_job_status || "pending",
+          "Current Stage": jc.stage || "screening"
+        };
 
-        csvRows.push(row.join(","));
+        // Append custom responses dynamically
+        fieldIds.forEach(id => {
+          row[map[id]] = responsesMap[id] || "";
+        });
+
+        return row;
       });
 
-      const csvContent = "\ufeff" + csvRows.join("\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
+      // Create sheet and workbook
+      const worksheet = XLSX.utils.json_to_sheet(dataRows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Form Submissions");
       
-      const link = document.createElement("a");
-      const filename = `${jobTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_responses.csv`;
-      link.setAttribute("href", url);
-      link.setAttribute("download", filename);
-      link.style.visibility = "hidden";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Auto-size columns for premium feel
+      const colWidths = Object.keys(dataRows[0] || {}).map(key => {
+        const maxLen = Math.max(
+          key.length,
+          ...dataRows.map(row => String(row[key] || "").length)
+        );
+        return { wch: Math.min(40, Math.max(10, maxLen + 2)) };
+      });
+      worksheet["!cols"] = colWidths;
+
+      // Trigger download
+      const filename = `${jobTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_submissions.xlsx`;
+      XLSX.writeFile(workbook, filename);
     } catch (err) {
       console.error("Failed to export responses sheet:", err);
       showCustomAlert("Error", "Failed to export responses sheet. Please try again.");
@@ -2095,12 +2108,36 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               <button
                 type="button"
                 onClick={() => handleExportExcel(activeJob?.id, activeJob?.title)}
-                className="px-2.5 py-1.5 border border-neutral-200 bg-neutral-white hover:bg-neutral-100 rounded-sm text-neutral-650 font-semibold flex items-center gap-1.5 cursor-pointer font-sans text-[10px]"
+                className="px-2.5 py-1.5 border border-neutral-200 bg-neutral-white hover:bg-neutral-100 rounded-sm text-neutral-650 font-semibold flex items-semibold gap-1.5 cursor-pointer font-sans text-[10px]"
                 title="Export Form Responses to Excel/CSV"
               >
                 <Download className="w-3.5 h-3.5 text-neutral-500" />
                 Export Responses
               </button>
+              <div className="flex items-center border border-neutral-200 rounded-sm overflow-hidden p-0.5 bg-neutral-50/50 mr-1.5 select-none shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setCandidateViewMode("alignment")}
+                  className={`px-2.5 py-1 rounded-xs text-[9.5px] uppercase font-bold transition-all cursor-pointer ${
+                    candidateViewMode === "alignment"
+                      ? "bg-neutral-900 text-neutral-white shadow-xs"
+                      : "text-neutral-500 hover:text-neutral-800"
+                  }`}
+                >
+                  Match Alignment
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCandidateViewMode("spreadsheet")}
+                  className={`px-2.5 py-1 rounded-xs text-[9.5px] uppercase font-bold transition-all cursor-pointer ${
+                    candidateViewMode === "spreadsheet"
+                      ? "bg-neutral-900 text-neutral-white shadow-xs"
+                      : "text-neutral-500 hover:text-neutral-800"
+                  }`}
+                >
+                  Spreadsheet
+                </button>
+              </div>
               {activeJob?.processing_status === "matching" ? (
                 <span className="text-[10px] text-primary font-semibold flex items-center gap-1.5 font-mono animate-pulse">
                   <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
@@ -2128,6 +2165,93 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               <div className="text-center py-12 text-xs text-neutral-400">No candidates matched. Go to Skills weights to trigger matching scan.</div>
             )
           ) : (
+            candidateViewMode === "spreadsheet" ? (
+              <div className="overflow-x-auto border-t border-neutral-200">
+                <table className="w-full text-left border-collapse text-xs table-fixed">
+                  <thead>
+                    <tr className="bg-neutral-50/50 border-b border-neutral-200 text-neutral-400 font-mono uppercase text-[9px] tracking-wider">
+                      <th className="p-3 font-semibold w-12 border-r border-neutral-200 text-center">Rank</th>
+                      <th className="p-3 font-semibold w-36 border-r border-neutral-200">Name</th>
+                      <th className="p-3 font-semibold w-40 border-r border-neutral-200">Email</th>
+                      <th className="p-3 font-semibold w-32 border-r border-neutral-200">Phone</th>
+                      <th className="p-3 font-semibold w-24 border-r border-neutral-200">Experience</th>
+                      <th className="p-3 font-semibold w-32 border-r border-neutral-200">Education</th>
+                      <th className="p-3 font-semibold w-28 border-r border-neutral-200">Status</th>
+                      <th className="p-3 font-semibold w-44 border-r border-neutral-200">Skills</th>
+                      <th className="p-3 font-semibold w-48 border-r border-neutral-200">Academic Details</th>
+                      <th className="p-3 font-semibold w-48 border-r border-neutral-200">Achievements</th>
+                      <th className="p-3 font-semibold w-24 border-r border-neutral-200">Match Score</th>
+                      <th className="p-3 font-semibold w-24 border-r border-neutral-200">Stage</th>
+                      {customFieldIds.map(id => (
+                        <th key={id} className="p-3 font-semibold w-48 border-r border-neutral-200 truncate" title={customQuestionKeysMap[id]}>
+                          {customQuestionKeysMap[id]}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-150">
+                    {matchedCandidates.map((jc) => {
+                      const fullCand = (candidates.find(c => c.id === jc.candidate_id) || {}) as any;
+                      const responsesMap: Record<string, string> = {};
+                      if (fullCand.parsed_resume_json && Array.isArray(fullCand.parsed_resume_json.custom_form_responses)) {
+                        fullCand.parsed_resume_json.custom_form_responses.forEach((resp: any) => {
+                          if (resp.field_id) {
+                            responsesMap[resp.field_id] = resp.response || "";
+                          }
+                        });
+                      }
+
+                      return (
+                        <tr key={jc.id} className="hover:bg-neutral-50/50 transition-colors">
+                          <td className="p-3 font-mono font-bold text-neutral-400 border-r border-neutral-200 text-center bg-neutral-50/20">#{jc.rank_order}</td>
+                          <td className="p-3 font-semibold text-neutral-800 border-r border-neutral-200 truncate">
+                            {jc.application_id ? (
+                              <button
+                                onClick={() => onNavigateToReview(jc.application_id!)}
+                                className="hover:text-primary transition-colors cursor-pointer text-left font-semibold truncate block w-full"
+                              >
+                                {jc.candidate_name}
+                              </button>
+                            ) : (
+                              jc.candidate_name
+                            )}
+                          </td>
+                          <td className="p-3 font-mono text-neutral-550 border-r border-neutral-200 truncate" title={jc.candidate_email}>{jc.candidate_email}</td>
+                          <td className="p-3 font-mono text-neutral-550 border-r border-neutral-200 truncate">{jc.candidate_phone || "-"}</td>
+                          <td className="p-3 font-mono text-neutral-555 border-r border-neutral-200">{jc.experience_years} Years</td>
+                          <td className="p-3 text-neutral-600 border-r border-neutral-200 truncate" title={fullCand.education}>{fullCand.education || "-"}</td>
+                          <td className="p-3 text-neutral-600 border-r border-neutral-200">
+                            {fullCand.working_or_not === true ? "Employed" : fullCand.working_or_not === false ? "Open to Work" : "-"}
+                          </td>
+                          <td className="p-3 text-neutral-550 border-r border-neutral-200 truncate" title={jc.candidate_skills}>{jc.candidate_skills || "-"}</td>
+                          <td className="p-3 text-neutral-500 border-r border-neutral-200 truncate" title={fullCand.academic_details}>{fullCand.academic_details || "-"}</td>
+                          <td className="p-3 text-neutral-500 border-r border-neutral-200 truncate" title={fullCand.achievements}>{fullCand.achievements || "-"}</td>
+                          <td className="p-3 font-bold font-mono border-r border-neutral-200">
+                            <span className={`px-1.5 py-0.5 rounded-xs text-[10px] ${
+                              jc.fuzzy_score >= 80 ? "bg-success/10 text-success border border-success/20" :
+                              jc.fuzzy_score >= 50 ? "bg-warning/10 text-warning border border-warning/20" :
+                              "bg-error/10 text-error border border-error/20"
+                            }`}>
+                              {jc.fuzzy_score}%
+                            </span>
+                          </td>
+                          <td className="p-3 uppercase font-mono text-[9px] border-r border-neutral-200">
+                            <span className="px-1.5 py-0.2 bg-neutral-100 border border-neutral-200 rounded-xs text-neutral-500">
+                              {jc.stage || "screening"}
+                            </span>
+                          </td>
+                          {customFieldIds.map(id => (
+                            <td key={id} className="p-3 text-neutral-600 border-r border-neutral-200 truncate" title={responsesMap[id] || "-"}>
+                              {responsesMap[id] || "-"}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
@@ -2282,7 +2406,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                   </tbody>
                 </table>
               </div>
-            )}
+            )
+          )}
           </div>
       )}
 

@@ -10,7 +10,7 @@ import {
   MapPin, Loader2, ArrowLeft, Building2, Sparkles, Check, ShieldCheck,
   Eye, Settings, Plus, Trash2, ArrowUp, ArrowDown, Sparkle,
   Copy, ExternalLink, Moon, Sun, Info, Layout, AlignLeft,
-  ChevronRight, ChevronDown, CheckSquare, List, RefreshCw, Pencil, MessageSquare, X, HelpCircle
+  ChevronRight, ChevronDown, CheckSquare, List, RefreshCw, Pencil, MessageSquare, X, HelpCircle, Clock
 } from "lucide-react";
 
 interface FormFieldConfig {
@@ -173,6 +173,75 @@ export default function PublicApplyPage() {
   const [job, setJob] = useState<any>(null);
   const [loadingJob, setLoadingJob] = useState(true);
   const [errorJob, setErrorJob] = useState<string | null>(null);
+
+  // Form availability states
+  const [formTimer, setFormTimer] = useState<number | null>(null);
+  const [formThreshold, setFormThreshold] = useState<number | null>(null);
+  const [formStartDate, setFormStartDate] = useState<string | null>(null);
+  const [formEndDate, setFormEndDate] = useState<string | null>(null);
+  const [totalSubmissions, setTotalSubmissions] = useState<number>(0);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
+  const formatToDatetimeLocal = (isoString: string | null | undefined): string => {
+    if (!isoString) return "";
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return "";
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    } catch (e) {
+      return "";
+    }
+  };
+
+  const formatTime = (seconds: number | null): string => {
+    if (seconds === null) return "";
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const { endDateStr, endTimeStr } = useMemo(() => {
+    if (!formEndDate) return { endDateStr: "", endTimeStr: "" };
+    try {
+      const d = new Date(formEndDate);
+      if (isNaN(d.getTime())) return { endDateStr: "", endTimeStr: "" };
+      
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      
+      const hours = String(d.getHours()).padStart(2, "0");
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      
+      return {
+        endDateStr: `${year}-${month}-${day}`,
+        endTimeStr: `${hours}:${minutes}`
+      };
+    } catch (e) {
+      return { endDateStr: "", endTimeStr: "" };
+    }
+  }, [formEndDate]);
+
+  const handleUpdateEndDateTime = (dateVal: string, timeVal: string) => {
+    if (!dateVal) {
+      setFormEndDate(null);
+      return;
+    }
+    const time = timeVal || "23:59";
+    try {
+      const parsedDate = new Date(`${dateVal}T${time}`);
+      if (!isNaN(parsedDate.getTime())) {
+        setFormEndDate(parsedDate.toISOString());
+      }
+    } catch (e) {
+      console.error("Failed to parse split end date/time:", e);
+    }
+  };
 
   // Form states (Candidate responses)
   const [fieldValues, setFieldValues] = useState<Record<string, any>>({
@@ -393,6 +462,14 @@ export default function PublicApplyPage() {
         const result = await apiRequest<any>("GET", `/jobs/${jobId}`);
         setJob(result);
         
+        try {
+          const candidatesList = await apiRequest<any[]>("GET", `/jobs/${jobId}/candidates`);
+          setTotalSubmissions(candidatesList.length);
+        } catch (candErr) {
+          console.error("Failed to fetch candidates count:", candErr);
+          setTotalSubmissions(0);
+        }
+
         // If edit=true exists in URL, set mode to design by default
         if (isEditMode) {
           setMode("design");
@@ -408,38 +485,96 @@ export default function PublicApplyPage() {
     fetchJobDetails();
   }, [jobId, recruiterId, isEditMode]);
 
-  // Load/Save Configuration from localStorage
+  // Load configuration from database or local storage fallback
   useEffect(() => {
-    if (!jobId) return;
-    const localConfig = localStorage.getItem(`form_config_${jobId}`);
-    const localTheme = localStorage.getItem(`form_theme_${jobId}`);
-    const localBgMode = localStorage.getItem(`form_bg_mode_${jobId}`);
-    
-    if (localConfig) {
-      try {
-        setFields(JSON.parse(localConfig));
-      } catch (e) {
+    if (!job) return;
+
+    if (job.form_fields && Array.isArray(job.form_fields) && job.form_fields.length > 0) {
+      setFields(job.form_fields);
+    } else {
+      const localConfig = localStorage.getItem(`form_config_${jobId}`);
+      if (localConfig) {
+        try {
+          setFields(JSON.parse(localConfig));
+        } catch (e) {
+          setFields([...defaultFields]);
+        }
+      } else {
         setFields([...defaultFields]);
       }
+    }
+
+    if (job.form_theme) {
+      setSelectedTheme(job.form_theme as any);
     } else {
-      setFields([...defaultFields]);
+      const localTheme = localStorage.getItem(`form_theme_${jobId}`);
+      if (localTheme && Object.keys(themes).includes(localTheme)) {
+        setSelectedTheme(localTheme as any);
+      }
     }
 
-    if (localTheme && Object.keys(themes).includes(localTheme)) {
-      setSelectedTheme(localTheme as any);
+    if (job.form_bg_mode) {
+      setBgMode(job.form_bg_mode as any);
+    } else {
+      const localBgMode = localStorage.getItem(`form_bg_mode_${jobId}`);
+      if (localBgMode === "light" || localBgMode === "dark") {
+        setBgMode(localBgMode);
+      }
     }
 
-    if (localBgMode === "light" || localBgMode === "dark") {
-      setBgMode(localBgMode);
-    }
-  }, [jobId]);
+    setFormTimer(job.form_timer !== undefined ? job.form_timer : null);
+    setFormThreshold(job.form_threshold !== undefined ? job.form_threshold : null);
+    setFormStartDate(job.form_start_date !== undefined ? job.form_start_date : null);
+    setFormEndDate(job.form_end_date !== undefined ? job.form_end_date : null);
+  }, [job, jobId]);
 
-  const handleSaveConfig = (customFieldsList = fields, customTheme = selectedTheme, customBgMode = bgMode) => {
+  const handleSaveConfig = async (customFieldsList = fields, customTheme = selectedTheme, customBgMode = bgMode) => {
     localStorage.setItem(`form_config_${jobId}`, JSON.stringify(customFieldsList));
     localStorage.setItem(`form_theme_${jobId}`, customTheme);
     localStorage.setItem(`form_bg_mode_${jobId}`, customBgMode);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
+    
+    try {
+      const payload = {
+        form_fields: customFieldsList,
+        form_theme: customTheme,
+        form_bg_mode: customBgMode,
+        form_timer: formTimer,
+        form_threshold: formThreshold,
+        form_start_date: formStartDate,
+        form_end_date: formEndDate
+      };
+      await apiRequest<any>("PATCH", `/jobs/${jobId}`, payload);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (e) {
+      console.error("Failed to auto-save form config to DB:", e);
+    }
+  };
+
+  const handleRePublishForm = async () => {
+    try {
+      setSubmitting(true);
+      const payload = {
+        status: "published",
+        form_fields: fields,
+        form_theme: selectedTheme,
+        form_bg_mode: bgMode,
+        form_timer: formTimer,
+        form_threshold: formThreshold,
+        form_start_date: formStartDate,
+        form_end_date: formEndDate
+      };
+      const result = await apiRequest<any>("PATCH", `/jobs/${jobId}`, payload);
+      setJob(result);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+      alert("Form re-published successfully and is now active for submissions!");
+    } catch (err: any) {
+      console.error("Failed to re-publish form:", err);
+      alert(`Error re-publishing form: ${err.message || err}`);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleResetToDefault = () => {
@@ -454,6 +589,41 @@ export default function PublicApplyPage() {
       setTimeout(() => setSaveSuccess(false), 2000);
     }
   };
+
+  // Countdown Timer effect
+  useEffect(() => {
+    // Only run timer for candidate apply mode (not edit mode)
+    if (isEditMode || !formTimer || mode === "design") return;
+
+    const storageKey = `kozker_timer_start_${jobId}`;
+    let startTimeStr = sessionStorage.getItem(storageKey);
+    let startTime: number;
+
+    if (!startTimeStr) {
+      startTime = Date.now();
+      sessionStorage.setItem(storageKey, String(startTime));
+    } else {
+      startTime = parseInt(startTimeStr, 10);
+    }
+
+    const totalSeconds = formTimer * 60;
+    
+    const updateTimer = () => {
+      const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+      const remaining = totalSeconds - elapsedSeconds;
+      
+      if (remaining <= 0) {
+        setTimeLeft(0);
+      } else {
+        setTimeLeft(remaining);
+      }
+    };
+
+    updateTimer(); // Initial call
+    const timerInterval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(timerInterval);
+  }, [formTimer, isEditMode, jobId, mode]);
 
   // Reordering fields
   const moveField = (index: number, direction: "up" | "down") => {
@@ -891,8 +1061,115 @@ export default function PublicApplyPage() {
     );
   }
 
+  if (!isEditMode && job) {
+    const now = new Date();
+    
+    // 1. Status check
+    if (job.status === "closed") {
+      return (
+        <div className="min-h-screen bg-neutral-50 flex items-center justify-center font-sans p-6">
+          <div className="max-w-md w-full bg-neutral-white border border-neutral-200 rounded-sm p-6 text-center space-y-4 shadow-sm">
+            <AlertCircle className="w-12 h-12 text-error mx-auto" />
+            <div className="space-y-1.5">
+              <h3 className="font-tight font-bold text-base text-neutral-800 uppercase tracking-wider">
+                Form Closed
+              </h3>
+              <p className="text-neutral-500 text-xs leading-relaxed">
+                This form has been manually closed by the recruiter and is no longer accepting submissions.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 2. Start Date check
+    if (formStartDate && now < new Date(formStartDate)) {
+      return (
+        <div className="min-h-screen bg-neutral-50 flex items-center justify-center font-sans p-6">
+          <div className="max-w-md w-full bg-neutral-white border border-neutral-200 rounded-sm p-6 text-center space-y-4 shadow-sm">
+            <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
+            <div className="space-y-1.5">
+              <h3 className="font-tight font-bold text-base text-neutral-800 uppercase tracking-wider">
+                Application Not Yet Open
+              </h3>
+              <p className="text-neutral-500 text-xs leading-relaxed">
+                This application form will open on <strong>{new Date(formStartDate).toLocaleString()}</strong>. Please check back then.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 3. End Date check
+    if (formEndDate && now > new Date(formEndDate)) {
+      return (
+        <div className="min-h-screen bg-neutral-50 flex items-center justify-center font-sans p-6">
+          <div className="max-w-md w-full bg-neutral-white border border-neutral-200 rounded-sm p-6 text-center space-y-4 shadow-sm">
+            <AlertCircle className="w-12 h-12 text-error mx-auto" />
+            <div className="space-y-1.5">
+              <h3 className="font-tight font-bold text-base text-neutral-800 uppercase tracking-wider">
+                Deadline Passed
+              </h3>
+              <p className="text-neutral-500 text-xs leading-relaxed">
+                This form is no longer accepting submissions. The deadline was <strong>{new Date(formEndDate).toLocaleString()}</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 4. Threshold check
+    if (formThreshold && totalSubmissions >= formThreshold) {
+      return (
+        <div className="min-h-screen bg-neutral-50 flex items-center justify-center font-sans p-6">
+          <div className="max-w-md w-full bg-neutral-white border border-neutral-200 rounded-sm p-6 text-center space-y-4 shadow-sm">
+            <AlertCircle className="w-12 h-12 text-neutral-400 mx-auto" />
+            <div className="space-y-1.5">
+              <h3 className="font-tight font-bold text-base text-neutral-800 uppercase tracking-wider">
+                Submission Limit Reached
+              </h3>
+              <p className="text-neutral-500 text-xs leading-relaxed">
+                This form is no longer accepting submissions because the maximum candidate submission threshold ({formThreshold}) has been reached.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
+
   return (
     <div className={`min-h-screen ${resolvedBgClass} font-sans flex flex-col transition-colors duration-250`}>
+      {timeLeft === 0 && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-sans select-none animate-fade-in">
+          <div className="max-w-md w-full bg-[#120f1e] border border-orange-500/30 rounded p-8 text-center space-y-5 shadow-lg shadow-orange-500/10">
+            <div className="w-14 h-14 bg-orange-950/50 border border-orange-900 text-orange-500 rounded-full flex items-center justify-center mx-auto animate-pulse">
+              <Clock className="w-8 h-8" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="font-tight font-black text-lg text-white uppercase tracking-wider">
+                Time Expired
+              </h3>
+              <p className="text-[#a096c0] text-xs leading-relaxed font-sans">
+                The allotted time for completing this application form has expired. Your submission session has timed out.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.removeItem(`kozker_timer_start_${jobId}`);
+                window.location.reload();
+              }}
+              className="w-full py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded transition-all uppercase tracking-wider cursor-pointer"
+            >
+              Restart Session
+            </button>
+          </div>
+        </div>
+      )}
       {/* Studio Header (Only shown when edit=true is present to manage form) */}
       {isEditMode && (
         <div className="px-6 py-3.5 flex items-center justify-between border-b border-[#251e3a] bg-[#0c0a12] text-white transition-colors duration-250 select-none">
@@ -936,12 +1213,20 @@ export default function PublicApplyPage() {
                 <Check className="w-3.5 h-3.5" /> Saved
               </span>
             ) : (
-              <button
-                onClick={() => handleSaveConfig()}
-                className="px-3.5 py-1.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer shadow-md shadow-purple-500/20"
-              >
-                Save Config
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleSaveConfig()}
+                  className="px-3.5 py-1.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer shadow-md shadow-purple-500/20"
+                >
+                  Save Config
+                </button>
+                <button
+                  onClick={handleRePublishForm}
+                  className="px-3.5 py-1.5 bg-[#FF6E30] hover:bg-[#e0561b] text-white text-[10px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer shadow-md shadow-orange-500/20"
+                >
+                  Re-publish Form
+                </button>
+              </div>
             )}
             <button
               onClick={handleResetToDefault}
@@ -1248,6 +1533,93 @@ export default function PublicApplyPage() {
                 </form>
               </div>
 
+              {/* Form Availability & Limits Customizer */}
+              <div className="space-y-3.5 border-t border-[#251e3a] pt-5 text-xs">
+                <div className="border-b border-[#251e3a] pb-2">
+                  <h3 className="font-tight font-black text-xs uppercase tracking-wider text-white">Availability & Limits</h3>
+                  <p className="text-[10px] text-[#7d7593]">Configure candidate submission limit and access window deadline.</p>
+                </div>
+
+                <div className="space-y-3.5">
+                  {/* Submission Limit (Threshold) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[#7d7593] uppercase tracking-wider block font-bold text-[9px] font-mono">Submission Limit</label>
+                      <label className="flex items-center gap-1.5 text-[9.5px] font-mono font-bold text-neutral-305 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={formThreshold === null}
+                          onChange={(e) => {
+                            const never = e.target.checked;
+                            setFormThreshold(never ? null : 50);
+                          }}
+                          className="w-3.5 h-3.5 accent-[#7c3aed] rounded border-[#251e3a] cursor-pointer"
+                        />
+                        <span>Never</span>
+                      </label>
+                    </div>
+                    {formThreshold !== null ? (
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="e.g. 50 (max candidates)"
+                        value={formThreshold}
+                        onChange={(e) => setFormThreshold(e.target.value ? parseInt(e.target.value, 10) : null)}
+                        className="w-full px-3 py-2 border border-[#251e3a] bg-[#0c0a12] rounded text-white placeholder:text-[#524b64] focus:outline-hidden focus:border-[#7C3AED]"
+                      />
+                    ) : (
+                      <div className="px-3 py-2 bg-[#0c0a12] border border-[#251e3a] border-dashed text-[#7d7593] italic text-[10px] rounded select-none">
+                        Unlimited candidate submissions allowed.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* End Date & Time */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[#7d7593] uppercase tracking-wider block font-bold text-[9px] font-mono">End Date & Time</label>
+                      <label className="flex items-center gap-1.5 text-[9.5px] font-mono font-bold text-neutral-305 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={formEndDate === null}
+                          onChange={(e) => {
+                            const never = e.target.checked;
+                            if (never) {
+                              setFormEndDate(null);
+                            } else {
+                              const oneWeekLater = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                              setFormEndDate(oneWeekLater.toISOString());
+                            }
+                          }}
+                          className="w-3.5 h-3.5 accent-[#7c3aed] rounded border-[#251e3a] cursor-pointer"
+                        />
+                        <span>Never</span>
+                      </label>
+                    </div>
+                    {formEndDate !== null ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          value={endDateStr}
+                          onChange={(e) => handleUpdateEndDateTime(e.target.value, endTimeStr)}
+                          className="flex-1 px-3 py-2 border border-[#251e3a] bg-[#0c0a12] rounded text-white focus:outline-hidden focus:border-[#7C3AED]"
+                        />
+                        <input
+                          type="time"
+                          value={endTimeStr}
+                          onChange={(e) => handleUpdateEndDateTime(endDateStr, e.target.value)}
+                          className="w-[110px] px-3 py-2 border border-[#251e3a] bg-[#0c0a12] rounded text-white focus:outline-hidden focus:border-[#7C3AED]"
+                        />
+                      </div>
+                    ) : (
+                      <div className="px-3 py-2 bg-[#0c0a12] border border-[#251e3a] border-dashed text-[#7d7593] italic text-[10px] rounded select-none">
+                        No deadline set (Form stays open).
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Screening Suggestions */}
               {aiInsights && (
                 <div className="space-y-3 border-t border-[#251e3a] pt-5">
@@ -1365,6 +1737,7 @@ export default function PublicApplyPage() {
                   </button>
                 </div>
               </div>
+
             </div>
 
           </div>
@@ -1707,6 +2080,19 @@ export default function PublicApplyPage() {
                         {parseNotice}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Countdown Timer Banner */}
+                {timeLeft !== null && timeLeft > 0 && (
+                  <div className="mb-4 bg-orange-950/30 border border-orange-900/50 rounded p-3.5 flex items-center justify-between gap-3 text-xs font-mono text-[#ff6e30] animate-pulse select-none">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      <span>COMPLETION TIME LIMIT</span>
+                    </div>
+                    <div className="font-bold text-sm bg-orange-950 border border-orange-900 px-2 py-0.5 rounded">
+                      {formatTime(timeLeft)}
+                    </div>
                   </div>
                 )}
 

@@ -553,6 +553,13 @@ class JobOpeningUpdateModel(BaseModel):
     custom_stages: Optional[List[str]] = None
     category: Optional[str] = None
     sub_category: Optional[str] = None
+    form_timer: Optional[int] = None
+    form_threshold: Optional[int] = None
+    form_start_date: Optional[str] = None
+    form_end_date: Optional[str] = None
+    form_fields: Optional[List[Dict[str, Any]]] = None
+    form_theme: Optional[str] = None
+    form_bg_mode: Optional[str] = None
 
 class SkillsApprovalModel(BaseModel):
     skills: List[Dict[str, Any]]
@@ -1899,6 +1906,20 @@ async def patch_job(job_id: str, job_update: JobOpeningUpdateModel, db: Client =
         update_data["category"] = job_update.category
     if job_update.sub_category is not None:
         update_data["sub_category"] = job_update.sub_category
+    if job_update.form_timer is not None:
+        update_data["form_timer"] = job_update.form_timer
+    if job_update.form_threshold is not None:
+        update_data["form_threshold"] = job_update.form_threshold
+    if job_update.form_start_date is not None:
+        update_data["form_start_date"] = job_update.form_start_date
+    if job_update.form_end_date is not None:
+        update_data["form_end_date"] = job_update.form_end_date
+    if job_update.form_fields is not None:
+        update_data["form_fields"] = job_update.form_fields
+    if job_update.form_theme is not None:
+        update_data["form_theme"] = job_update.form_theme
+    if job_update.form_bg_mode is not None:
+        update_data["form_bg_mode"] = job_update.form_bg_mode
 
     if update_data:
         res = db.table("job_openings").update(update_data).eq("id", job_id).execute()
@@ -3327,6 +3348,64 @@ async def handle_candidate_application(candidate_id: str, email: str, full_name:
         return None, False, str(e)
 
 
+async def auto_link_candidate_to_job(db: Client, job_id: str, cand_id: str, cand_data: Dict[str, Any]):
+    try:
+        skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
+        approved_skills = skills_res.data[0].get("skills", []) if skills_res.data else []
+        
+        cand_skills = [s.lower() for s in (cand_data.get("skills") or [])]
+        cand_raw_text = cand_data.get("raw_text") or cand_data.get("parsed_resume_json", {}).get("raw_text") or ""
+        
+        matched_score, match_reason, strengths, skill_gaps = evaluate_candidate_matching_with_history(
+            db, cand_id, job_id, approved_skills, cand_skills, cand_raw_text
+        )
+        
+        app_res = db.table("applications").upsert({
+            "candidate_id": cand_id,
+            "job_opening_id": job_id,
+            "fuzzy_score": matched_score,
+            "match_score": int(matched_score),
+            "match_reason": match_reason,
+            "strengths": strengths[:3],
+            "skill_gaps": skill_gaps[:3],
+            "screening_status": "pending",
+            "stage": "screening",
+            "stage_status": "pending"
+        }, on_conflict="candidate_id,job_opening_id").execute()
+        
+        if app_res.data:
+            new_app = app_res.data[0]
+            existing_jc_cand = db.table("job_candidates").select("rank_order").eq("job_opening_id", job_id).eq("candidate_id", cand_id).execute()
+            if existing_jc_cand.data:
+                rank = existing_jc_cand.data[0]["rank_order"]
+            else:
+                existing_jc = db.table("job_candidates").select("*").eq("job_opening_id", job_id).execute()
+                rank = len(existing_jc.data) + 1
+                
+            db.table("job_candidates").upsert({
+                "job_opening_id": job_id,
+                "candidate_id": cand_id,
+                "application_id": new_app["id"],
+                "fuzzy_score": matched_score,
+                "rank_order": rank,
+                "strengths": strengths[:3],
+                "skill_gaps": skill_gaps[:3],
+                "parsed_resume": cand_data.get("parsed_resume_json")
+            }, on_conflict="job_opening_id,candidate_id").execute()
+            
+            try:
+                db.table("activity_log").insert({
+                    "action": "candidate_linked",
+                    "entity_type": "applications",
+                    "entity_id": new_app["id"],
+                    "actor_name": "System",
+                    "metadata": {"candidate_name": cand_data.get("full_name"), "source": "public_apply"}
+                }).execute()
+            except Exception as log_err:
+                logger.error(f"Failed to log auto-link activity: {log_err}")
+    except Exception as e:
+        logger.error(f"Error auto-linking candidate {cand_id} to job {job_id}: {e}")
+
 @app.post("/api/v1/candidates")
 async def create_candidate(
     cand: CandidateModel,
@@ -3409,7 +3488,6 @@ async def create_candidate(
         if res.data:
             data = res.data[0]
             data["raw_text"] = merged_raw
-            
             # Auto-handle application linking and email
             target_job_id = cand.job_id if cand.job_id else existing_cand.get("job_id")
             if target_job_id:
@@ -3422,6 +3500,7 @@ async def create_candidate(
                     form_responses=form_responses,
                     db=db
                 )
+                await auto_link_candidate_to_job(db, target_job_id, data["id"], data)
                 if app_id:
                     data["application_id"] = app_id
                     data["email_sent"] = email_sent
@@ -3454,7 +3533,6 @@ async def create_candidate(
     if res.data:
         data = res.data[0]
         data["raw_text"] = cand.raw_text
-        
         # Auto-handle application linking and email
         if cand.job_id:
             form_responses = parsed_resume_payload.get("custom_form_responses") or {}
@@ -3466,6 +3544,7 @@ async def create_candidate(
                 form_responses=form_responses,
                 db=db
             )
+            await auto_link_candidate_to_job(db, cand.job_id, data["id"], data)
             if app_id:
                 data["application_id"] = app_id
                 data["email_sent"] = email_sent

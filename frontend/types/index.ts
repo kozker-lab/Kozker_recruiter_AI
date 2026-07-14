@@ -81,6 +81,13 @@ export interface JobOpening {
   candidate_count?: number;
   top_score?: number;
   last_activity?: string;
+  form_timer?: number | null;
+  form_threshold?: number | null;
+  form_start_date?: string | null;
+  form_end_date?: string | null;
+  form_fields?: any[] | null;
+  form_theme?: string | null;
+  form_bg_mode?: string | null;
 }
 
 export interface JobOpeningSkill {

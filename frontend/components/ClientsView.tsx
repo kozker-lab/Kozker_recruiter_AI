@@ -272,6 +272,9 @@ export default function ClientsView() {
   const [linkedinShareSuccessMessage, setLinkedinShareSuccessMessage] = useState<string | null>(null);
   const [linkedinShareError, setLinkedinShareError] = useState<string | null>(null);
 
+  const [confirmCloseJob, setConfirmCloseJob] = useState<{ id: string; title: string } | null>(null);
+  const [confirmOpenJob, setConfirmOpenJob] = useState<{ id: string; title: string } | null>(null);
+
   // Check LinkedIn connection status when modal opens
   React.useEffect(() => {
     if (activeLinkedInJob) {
@@ -735,6 +738,25 @@ export default function ClientsView() {
     },
     onError: (err: any) => {
       showCustomAlert("Error", err.message || "Failed to delete requirement.");
+    }
+  });
+
+  const updateJobStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest<any>("PATCH", `/jobs/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      queryClient.invalidateQueries({ queryKey: ["requirements"] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["activity_log"] });
+      setConfirmCloseJob(null);
+      setConfirmOpenJob(null);
+      showCustomAlert("System Alert", "Form status updated successfully.");
+    },
+    onError: (err: any) => {
+      setConfirmCloseJob(null);
+      setConfirmOpenJob(null);
+      showCustomAlert("Error", err.message || "Failed to update form status.");
     }
   });
 
@@ -1365,14 +1387,14 @@ export default function ClientsView() {
 
                               {/* Candidate Application Link */}
                               <div className="mt-3 pt-2.5 border-t border-neutral-150 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
-                                <div className="space-y-0.5 min-w-0 flex-1">
-                                  <span className="text-[9px] text-neutral-400 uppercase font-semibold block font-mono">Candidate Apply Link</span>
-                                  <span className="text-[11px] font-mono text-neutral-600 truncate block">
-                                    {typeof window !== "undefined" 
-                                      ? `${window.location.origin}/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}` 
-                                      : `/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}`
-                                    }
-                                  </span>
+                                <div className="space-y-0.5 min-w-0 flex-1 flex flex-row items-center gap-2">
+                                  <span className="text-[9px] text-neutral-400 uppercase font-semibold font-mono">Candidate Apply Link</span>
+                                  {(job.status === "published" || job.status === "closed") && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-sm font-mono text-[8px] font-bold uppercase tracking-wider select-none animate-pulse">
+                                      <Users className="w-2.5 h-2.5" />
+                                      {jobApps.length} Form Submissions
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                   <button
@@ -1426,6 +1448,27 @@ export default function ClientsView() {
                                     </svg>
                                     <span>Create Post</span>
                                   </button>
+                                  {job.status === "closed" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmOpenJob({ id: job.id, title: job.title })}
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-250 rounded-sm shadow-xs transition-colors cursor-pointer"
+                                      title="Re-open candidate submissions form"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      <span>Re-open Form</span>
+                                    </button>
+                                  ) : job.status === "published" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmCloseJob({ id: job.id, title: job.title })}
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-250 rounded-sm shadow-xs transition-colors cursor-pointer"
+                                      title="End candidate form access and block submissions"
+                                    >
+                                      <XCircle className="w-3.5 h-3.5" />
+                                      <span>End Form</span>
+                                    </button>
+                                  ) : null}
                                   <a
                                     href={`/apply/${job.id}?edit=true${r.created_by ? `&recruiter_id=${r.created_by}` : ""}`}
                                     target="_blank"
@@ -2350,6 +2393,83 @@ export default function ClientsView() {
                   OK
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmCloseJob && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-6 space-y-4 shadow-xl">
+            <div className="space-y-1.5 text-center">
+              <XCircle className="w-12 h-12 text-error mx-auto animate-pulse" />
+              <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider">
+                End Candidate Application Form?
+              </h3>
+              <p className="text-neutral-450 text-xs leading-relaxed">
+                You are about to close the form for <strong>{confirmCloseJob.title}</strong>. This action will immediately make the form unavailable to candidates and stop accepting any new submissions.
+              </p>
+              <div className="p-2.5 bg-neutral-50 border border-neutral-200 rounded text-[11px] text-neutral-500 text-left space-y-1">
+                <strong>Important Consequences:</strong>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  <li>Active links shared with candidates will display a "Form Closed" notice.</li>
+                  <li>No new candidate submissions can be parsed or matched.</li>
+                  <li>You can re-open or re-publish the form at any time.</li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmCloseJob(null)}
+                className="px-3.5 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 text-[11px] font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => updateJobStatusMutation.mutate({ id: confirmCloseJob.id, status: "closed" })}
+                disabled={updateJobStatusMutation.isPending}
+                className="px-4 py-1.5 bg-error text-neutral-white hover:bg-error/90 rounded-sm text-[11px] font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1"
+              >
+                {updateJobStatusMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                End Form Access
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmOpenJob && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-6 space-y-4 shadow-xl">
+            <div className="space-y-1.5 text-center">
+              <CheckCircle2 className="w-12 h-12 text-success mx-auto" />
+              <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider">
+                Re-open Application Form?
+              </h3>
+              <p className="text-neutral-450 text-xs leading-relaxed">
+                You are about to re-open submissions for <strong>{confirmOpenJob.title}</strong>. This will set the form status back to "published" and make it available to candidates.
+              </p>
+            </div>
+            
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmOpenJob(null)}
+                className="px-3.5 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 text-[11px] font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => updateJobStatusMutation.mutate({ id: confirmOpenJob.id, status: "published" })}
+                disabled={updateJobStatusMutation.isPending}
+                className="px-4 py-1.5 bg-success text-neutral-white hover:bg-success/90 rounded-sm text-[11px] font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1"
+              >
+                {updateJobStatusMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Re-open Form
+              </button>
             </div>
           </div>
         </div>
