@@ -34,13 +34,14 @@ interface UserAvatarProps {
 }
 
 export default function UserAvatar({ 
-  avatarUrl, 
+  avatarUrl: rawAvatarUrl, 
   fullName, 
   email, 
   className = "w-8 h-8", 
   size 
 }: UserAvatarProps) {
   
+  const avatarUrl = rawAvatarUrl ? rawAvatarUrl.split("#")[0] : null;
   // Helper to extract initials
   const getInitials = () => {
     if (fullName) {

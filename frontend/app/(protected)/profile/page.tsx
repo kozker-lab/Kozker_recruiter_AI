@@ -414,7 +414,14 @@ export default function ProfilePage() {
     setSaving(true);
 
     try {
-      const avatarUrl = getPreviewAvatarUrl();
+      let avatarUrl = getPreviewAvatarUrl();
+      
+      // Preserve tour status hash if it exists on original profile
+      if (profile?.avatar_url?.includes("#tour_completed")) {
+        avatarUrl += "#tour_completed";
+      } else if (profile?.avatar_url?.includes("#tour_skipped")) {
+        avatarUrl += "#tour_skipped";
+      }
       
       // Update public profile details in Supabase
       await updateProfile.mutateAsync({

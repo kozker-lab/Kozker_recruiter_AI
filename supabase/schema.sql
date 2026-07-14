@@ -34,6 +34,8 @@ CREATE TABLE public.profiles (
     role TEXT DEFAULT 'recruiter' CHECK (role IN ('admin', 'recruiter', 'manager', 'client')),
     is_active BOOLEAN DEFAULT TRUE,
     is_onboarded BOOLEAN DEFAULT FALSE,
+    tutorial_completed BOOLEAN DEFAULT FALSE,
+    tutorial_skipped BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );

@@ -3,10 +3,13 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Briefcase, Users, MessageSquare, ArrowRight } from "lucide-react";
+import { useUpdateProfile, useProfile } from "@/lib/hooks/useAuth";
 import { Logo } from "@/components/Logo";
 
 export default function WelcomePage() {
   const router = useRouter();
+  const updateProfile = useUpdateProfile();
+  const { data: profile } = useProfile();
 
   const handleStartTour = () => {
     localStorage.setItem("show_kozker_tutorial", "true");
@@ -16,11 +19,19 @@ export default function WelcomePage() {
     router.push("/dashboard");
   };
 
-  const handleSkipTour = () => {
+  const handleSkipTour = async () => {
     localStorage.setItem("kozker_tutorial_skipped", "true");
     localStorage.setItem("kozker_tutorial_step", "0");
     localStorage.removeItem("show_kozker_tutorial");
     localStorage.removeItem("kozker_tutorial_completed");
+    try {
+      const cleanAvatar = profile?.avatar_url ? profile.avatar_url.split("#")[0] : "";
+      await updateProfile.mutateAsync({
+        avatar_url: `${cleanAvatar}#tour_skipped`
+      });
+    } catch (e) {
+      console.error("Failed to update profile tutorial status on skip", e);
+    }
     router.push("/dashboard");
   };
 

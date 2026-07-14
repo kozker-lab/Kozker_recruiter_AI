@@ -2193,6 +2193,53 @@ async def get_candidate_queries(job_id: str, email: Optional[str] = None, db: Cl
         return sorted(mem_queries, key=lambda x: x["created_at"], reverse=True)
 
 
+@app.get("/api/v1/jobs/{job_id}/queries/public")
+async def get_public_resolved_queries(job_id: str, db: Client = Depends(get_supabase)):
+    try:
+        # Fetch resolved candidate queries for this job (omitting email/ID for privacy)
+        res = db.table("candidate_queries").select("query_text, ai_response, created_at").eq("job_id", job_id).eq("is_resolved", True).execute()
+        db_queries = res.data or []
+        
+        # Merge with in-memory resolved queries for this job
+        mem_queries = in_memory_queries.get(job_id, [])
+        mem_resolved = [
+            {
+                "query_text": mq.get("query_text"),
+                "ai_response": mq.get("ai_response"),
+                "created_at": mq.get("created_at")
+            }
+            for mq in mem_queries
+            if mq.get("is_resolved") and mq.get("ai_response")
+        ]
+        
+        # Merge and deduplicate by query_text
+        all_resolved = []
+        seen_queries = set()
+        for q in (db_queries + mem_resolved):
+            txt = q.get("query_text", "").strip()
+            if txt and txt not in seen_queries:
+                seen_queries.add(txt)
+                all_resolved.append({
+                    "query_text": q.get("query_text"),
+                    "ai_response": q.get("ai_response"),
+                    "created_at": q.get("created_at")
+                })
+        return sorted(all_resolved, key=lambda x: x["created_at"], reverse=True)
+    except Exception as e:
+        logger.error(f"Error in get_public_resolved_queries: {e}")
+        mem_queries = in_memory_queries.get(job_id, [])
+        mem_resolved = [
+            {
+                "query_text": mq.get("query_text"),
+                "ai_response": mq.get("ai_response"),
+                "created_at": mq.get("created_at")
+            }
+            for mq in mem_queries
+            if mq.get("is_resolved") and mq.get("ai_response")
+        ]
+        return sorted(mem_resolved, key=lambda x: x["created_at"], reverse=True)
+
+
 @app.post("/api/v1/queries/{query_id}/resolve")
 async def resolve_candidate_query(query_id: str, payload: ResolveQueryModel, db: Client = Depends(get_supabase)):
     # Dual-mode update

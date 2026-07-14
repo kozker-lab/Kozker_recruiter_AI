@@ -594,8 +594,8 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   // Redirect to Welcome page if onboarding is complete but tutorial state is not initialized
   React.useEffect(() => {
     if (profile?.is_onboarded) {
-      const isCompleted = localStorage.getItem("kozker_tutorial_completed") === "true";
-      const isSkipped = localStorage.getItem("kozker_tutorial_skipped") === "true";
+      const isCompleted = profile?.avatar_url?.includes("#tour_completed") || localStorage.getItem("kozker_tutorial_completed") === "true";
+      const isSkipped = profile?.avatar_url?.includes("#tour_skipped") || localStorage.getItem("kozker_tutorial_skipped") === "true";
       const hasSessionRedirected = sessionStorage.getItem("kozker_welcome_redirected") === "true";
 
       if (!isCompleted && !isSkipped && !hasSessionRedirected && pathname !== "/welcome") {
@@ -881,12 +881,21 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     return () => clearInterval(interval);
   }, [tourStep, activeTutorial, pathname, currentSteps]);
 
-  const handleSkipTutorial = () => {
+  const handleSkipTutorial = async () => {
     setActiveTutorial(false);
     localStorage.removeItem("show_kozker_tutorial");
     if (activeTourType === "main") {
       localStorage.setItem("kozker_tutorial_skipped", "true");
       localStorage.setItem("kozker_tutorial_step", tourStep.toString());
+
+      try {
+        const cleanAvatar = profile?.avatar_url ? profile.avatar_url.split("#")[0] : "";
+        await updateProfile.mutateAsync({
+          avatar_url: `${cleanAvatar}#tour_skipped`
+        });
+      } catch (e) {
+        console.error("Failed to persist tour skipped state:", e);
+      }
     } else {
       localStorage.removeItem("kozker_page_tour_step");
       localStorage.removeItem("kozker_active_tour_type");
@@ -894,7 +903,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     router.push("/dashboard");
   };
 
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     if (tourStep < currentSteps.length - 1) {
       const nextStep = tourStep + 1;
       setTourStep(nextStep);
@@ -912,6 +921,15 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         localStorage.setItem("kozker_tutorial_completed", "true");
         localStorage.removeItem("kozker_tutorial_skipped");
         localStorage.removeItem("kozker_tutorial_step");
+
+        try {
+          const cleanAvatar = profile?.avatar_url ? profile.avatar_url.split("#")[0] : "";
+          await updateProfile.mutateAsync({
+            avatar_url: `${cleanAvatar}#tour_completed`
+          });
+        } catch (e) {
+          console.error("Failed to persist tour completed state:", e);
+        }
       } else {
         localStorage.removeItem("kozker_page_tour_step");
         localStorage.removeItem("kozker_active_tour_type");
