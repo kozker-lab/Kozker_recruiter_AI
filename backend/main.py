@@ -691,6 +691,21 @@ class AnswerQueryModel(BaseModel):
     response_text: str
 
 
+class VerifyStatusModel(BaseModel):
+    email: str
+    application_id: str
+
+
+class CandidateMessageCreateModel(BaseModel):
+    message_text: str
+
+
+class EndConversationModel(BaseModel):
+    candidate_email: str
+    job_id: str
+
+
+
 class PasswordOtpRequestModel(BaseModel):
     new_password: str
 
@@ -2086,6 +2101,9 @@ async def post_candidate_query(job_id: str, payload: CandidateQueryCreateModel, 
         "query_text": payload.query_text,
         "ai_response": ai_response,
         "is_resolved": False,
+        "source": "apply_form",
+        "sender": "candidate",
+        "is_ended": False,
         "created_at": datetime.utcnow().isoformat() + "Z"
     }
     
@@ -2222,6 +2240,25 @@ async def answer_candidate_query(query_id: str, payload: AnswerQueryModel, db: C
         }).eq("id", query_id).execute()
         if res.data:
             updated_query = res.data[0]
+            
+            # Create a separate recruiter reply message row for chat history
+            try:
+                db.table("candidate_queries").insert({
+                    "job_id": updated_query["job_id"],
+                    "candidate_email": updated_query["candidate_email"],
+                    "query_text": payload.response_text,
+                    "source": updated_query.get("source") or "apply_form",
+                    "sender": "recruiter",
+                    "is_resolved": True,
+                    "is_ended": False
+                }).execute()
+                
+                # Mark all other unresolved candidate queries in this thread as resolved
+                db.table("candidate_queries").update({
+                    "is_resolved": True
+                }).eq("job_id", updated_query["job_id"]).eq("candidate_email", updated_query["candidate_email"]).eq("sender", "candidate").execute()
+            except Exception as ie:
+                logger.error(f"Failed to insert recruiter query reply row: {ie}")
     except Exception as e:
         logger.warning(f"Failed to update query answer in Supabase: {e}. Updating in-memory.")
 
@@ -2299,6 +2336,138 @@ async def answer_candidate_query(query_id: str, payload: AnswerQueryModel, db: C
         logger.error(f"Failed to construct or send query response email: {e}")
 
     return updated_query
+
+
+# 10.1 Application status tracking and messaging endpoints
+@app.post("/api/v1/applications/verify-status")
+async def verify_application_status(payload: VerifyStatusModel, db: Client = Depends(get_supabase)):
+    try:
+        # Check if application exists and links to candidate with matching email
+        app_res = db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(name)))").eq("id", payload.application_id).execute()
+        if not app_res.data:
+            raise HTTPException(status_code=404, detail="Application not found with the provided ID")
+            
+        app_data = app_res.data[0]
+        cand_data = app_data.get("candidates") or {}
+        
+        # Verify candidate email matches case-insensitively
+        if cand_data.get("email", "").strip().lower() != payload.email.strip().lower():
+            raise HTTPException(status_code=401, detail="Invalid combination of Email and Application ID")
+            
+        # Clean candidate raw_text before returning
+        if cand_data and "parsed_resume_json" in cand_data and cand_data["parsed_resume_json"]:
+            if isinstance(cand_data["parsed_resume_json"], dict) and "raw_text" in cand_data["parsed_resume_json"]:
+                cand_data["raw_text"] = cand_data["parsed_resume_json"]["raw_text"]
+                
+        # Format job opening client details
+        job_data = app_data.get("job_openings") or {}
+        if job_data:
+            req = job_data.get("requirements") or {}
+            cli = req.get("clients") or {}
+            job_data["client_name"] = cli.get("name") or "Generic Client"
+            
+        # Fetch active chat history for this candidate & job
+        msg_res = db.table("candidate_queries").select("*").eq("job_id", job_data.get("id")).eq("candidate_email", cand_data.get("email")).order("created_at", desc=False).execute()
+        messages = msg_res.data or []
+        
+        return {
+            "application": {
+                "id": app_data.get("id"),
+                "stage": app_data.get("stage") or "screening",
+                "stage_status": app_data.get("stage_status") or "pending",
+                "screening_status": app_data.get("screening_status") or "pending",
+                "created_at": app_data.get("created_at")
+            },
+            "candidate": {
+                "full_name": cand_data.get("full_name"),
+                "email": cand_data.get("email")
+            },
+            "job": {
+                "id": job_data.get("id"),
+                "title": job_data.get("title"),
+                "department": job_data.get("department") or "Engineering",
+                "client_name": job_data.get("client_name")
+            },
+            "messages": messages
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in verify_application_status: {e}")
+        raise HTTPException(status_code=500, detail=f"Database verification failed: {e}")
+
+
+@app.post("/api/v1/applications/{application_id}/messages")
+async def send_candidate_status_message(application_id: str, payload: CandidateMessageCreateModel, db: Client = Depends(get_supabase)):
+    try:
+        # Check if application exists
+        app_res = db.table("applications").select("*, candidates(*), job_openings(id, title, requirements(created_by))").eq("id", application_id).execute()
+        if not app_res.data:
+            raise HTTPException(status_code=404, detail="Application not found")
+            
+        app_data = app_res.data[0]
+        cand_data = app_data.get("candidates") or {}
+        job_data = app_data.get("job_openings") or {}
+        
+        # Insert a candidate query row
+        import uuid
+        from datetime import datetime
+        query_id = str(uuid.uuid4())
+        
+        new_query = {
+            "id": query_id,
+            "job_id": job_data.get("id"),
+            "candidate_email": cand_data.get("email"),
+            "query_text": payload.message_text,
+            "ai_response": None,
+            "is_resolved": False,
+            "source": "tracking_portal",
+            "sender": "candidate",
+            "is_ended": False,
+            "created_at": datetime.utcnow().isoformat() + "Z"
+        }
+        
+        db.table("candidate_queries").insert(new_query).execute()
+        
+        # Dispatch notification to recruiter
+        req_data = job_data.get("requirements") or {}
+        recruiter_id = req_data.get("created_by") or "usr-1"
+        notif_msg = f"Candidate ({cand_data.get('email')}) sent a message from tracking portal: '{payload.message_text}'"
+        try:
+            db.table("notifications").insert({
+                "recruiter_id": recruiter_id,
+                "title": "New Status Portal Query",
+                "message": notif_msg,
+                "type": "upload",
+                "is_read": False,
+                "metadata": {"job_id": job_data.get("id"), "query_id": query_id}
+            }).execute()
+        except Exception as ne:
+            logger.warning(f"Failed to insert database notification for tracking portal query: {ne}")
+            
+        return new_query
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in send_candidate_status_message: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to submit message: {e}")
+
+
+@app.post("/api/v1/conversations/end")
+async def end_candidate_conversation(payload: EndConversationModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        # Mark all messages in the thread as ended and resolved
+        db.table("candidate_queries").update({
+            "is_ended": True,
+            "is_resolved": True
+        }).eq("job_id", payload.job_id).eq("candidate_email", payload.candidate_email.strip()).execute()
+        
+        return {"status": "success", "message": f"Conversation with {payload.candidate_email} ended successfully."}
+    except Exception as e:
+        logger.error(f"Error in end_candidate_conversation: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to end conversation: {e}")
 
 
 @app.get("/api/v1/jobs/{job_id}/skills")
@@ -3049,8 +3218,109 @@ async def get_all_applications(db: Client = Depends(get_supabase)):
                 del job["requirements"]
     return data
 
+def send_application_confirmation_email(to_email: str, full_name: str, job_title: str, client_name: str, application_id: str, form_responses: dict):
+    # Construct direct tracking portal link
+    portal_link = f"{FRONTEND_BASE_URL}/apply/status?appId={application_id}&email={to_email}"
+    
+    # Render form responses as HTML list
+    responses_html = ""
+    if form_responses:
+        responses_html += "<h3>Your Submitted Form Details:</h3><ul>"
+        for label, val in form_responses.items():
+            if val:
+                responses_html += f"<li><strong>{label}:</strong> {val}</li>"
+        responses_html += "</ul>"
+        
+    subject = f"Application Received: {job_title} at {client_name}"
+    html_body = f"""
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 4px;">
+        <h2 style="color: #004D40;">Thank you for applying, {full_name}!</h2>
+        <p>Your application for the <strong>{job_title}</strong> role at <strong>{client_name}</strong> has been successfully received.</p>
+        
+        <div style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #004D40; margin: 20px 0; font-family: monospace;">
+            <strong>Application ID:</strong> {application_id}<br/>
+            <strong>Email:</strong> {to_email}
+        </div>
+        
+        <p>You can track the progress of your application and message the recruiting team directly by visiting our status tracking portal:</p>
+        <p style="text-align: center; margin: 25px 0;">
+            <a href="{portal_link}" style="background-color: #004D40; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
+                Track Application Status
+            </a>
+        </p>
+        
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+        {responses_html}
+        <p style="color: #666; font-size: 11px; margin-top: 20px;">
+            This is an automated notification from Kozker Recruiting Platform. Please keep your Application ID confidential.
+        </p>
+    </div>
+    """
+    send_email(to_email=to_email, subject=subject, html_body=html_body, sender_name="Kozker Recruitment")
+
+
+async def handle_candidate_application(candidate_id: str, email: str, full_name: str, job_id: str, form_responses: dict, db: Client, background_tasks: BackgroundTasks):
+    try:
+        # Check if application already exists
+        app_check = db.table("applications").select("id").eq("candidate_id", candidate_id).eq("job_opening_id", job_id).execute()
+        
+        is_new_app = False
+        application_id = None
+        
+        if app_check.data:
+            application_id = app_check.data[0]["id"]
+        else:
+            # Create new application
+            app_res = db.table("applications").insert({
+                "candidate_id": candidate_id,
+                "job_opening_id": job_id,
+                "screening_status": "pending",
+                "stage": "screening",
+                "stage_status": "pending"
+            }).execute()
+            if app_res.data:
+                application_id = app_res.data[0]["id"]
+                is_new_app = True
+        
+        if application_id and is_new_app:
+            # Fetch job title and client name for the email
+            job_title = "Active Opening"
+            client_name = "Generic Client"
+            try:
+                job_res = db.table("job_openings").select("title, requirements(clients(name))").eq("id", job_id).execute()
+                if job_res.data:
+                    row = job_res.data[0]
+                    job_title = row.get("title") or "Active Opening"
+                    req = row.get("requirements") or {}
+                    cli = req.get("clients") or {}
+                    client_name = cli.get("name") or "Generic Client"
+            except Exception as je:
+                logger.error(f"Failed to fetch job details for confirmation email: {je}")
+                
+            # Queue confirmation email sending task
+            background_tasks.add_task(
+                send_application_confirmation_email,
+                to_email=email,
+                full_name=full_name,
+                job_title=job_title,
+                client_name=client_name,
+                application_id=application_id,
+                form_responses=form_responses
+            )
+            
+        return application_id
+    except Exception as e:
+        logger.error(f"Error in handle_candidate_application: {e}")
+        return None
+
+
 @app.post("/api/v1/candidates")
-async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+async def create_candidate(
+    cand: CandidateModel,
+    background_tasks: BackgroundTasks,
+    db: Client = Depends(get_supabase),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
     # Limit source value to allowed constraints: 'csv', 'pdf', 'docx', 'manual'
     db_source = cand.source
     if db_source not in ["csv", "pdf", "docx", "manual"]:
@@ -3126,6 +3396,22 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
         if res.data:
             data = res.data[0]
             data["raw_text"] = merged_raw
+            
+            # Auto-handle application linking and email
+            target_job_id = cand.job_id if cand.job_id else existing_cand.get("job_id")
+            if target_job_id:
+                form_responses = merged_parsed.get("custom_form_responses") or {}
+                app_id = await handle_candidate_application(
+                    candidate_id=existing_cand["id"],
+                    email=cand.email,
+                    full_name=cand.full_name,
+                    job_id=target_job_id,
+                    form_responses=form_responses,
+                    db=db,
+                    background_tasks=background_tasks
+                )
+                if app_id:
+                    data["application_id"] = app_id
             return data
  
     incoming_parsed = cand.parsed_resume_json or {}
@@ -3154,6 +3440,21 @@ async def create_candidate(cand: CandidateModel, db: Client = Depends(get_supaba
     if res.data:
         data = res.data[0]
         data["raw_text"] = cand.raw_text
+        
+        # Auto-handle application linking and email
+        if cand.job_id:
+            form_responses = parsed_resume_payload.get("custom_form_responses") or {}
+            app_id = await handle_candidate_application(
+                candidate_id=data["id"],
+                email=cand.email,
+                full_name=cand.full_name,
+                job_id=cand.job_id,
+                form_responses=form_responses,
+                db=db,
+                background_tasks=background_tasks
+            )
+            if app_id:
+                data["application_id"] = app_id
         return data
     return {}
 
