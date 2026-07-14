@@ -9,9 +9,11 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  productionBrowserSourceMaps: false,
   experimental: {
     webpackMemoryOptimizations: true,
     cpus: 1,
+    optimizePackageImports: ["lucide-react"],
   },
   async rewrites() {
     return [
