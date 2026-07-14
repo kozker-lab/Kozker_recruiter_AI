@@ -3282,7 +3282,7 @@ async def handle_candidate_application(candidate_id: str, email: str, full_name:
                 application_id = app_res.data[0]["id"]
                 is_new_app = True
         
-        if application_id and is_new_app:
+        if application_id:
             # Fetch job title and client name for the email
             job_title = "Active Opening"
             client_name = "Generic Client"
