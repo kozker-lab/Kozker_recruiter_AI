@@ -84,15 +84,7 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
     }
   });
 
-  // End Conversation mutation
-  const endConversationMutation = useMutation({
-    mutationFn: ({ email, jobId }: { email: string; jobId: string }) => 
-      apiRequest<any>("POST", "/conversations/end", { candidate_email: email, job_id: jobId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dashboard_queries"] });
-      queryClient.invalidateQueries({ queryKey: ["activity_log"] });
-    }
-  });
+
 
   // Group messages by job_id + candidate_email to form Threads
   const conversations = React.useMemo(() => {
@@ -312,22 +304,7 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
                   placeholder="Type a message reply to candidate..."
                   className="w-full px-3 py-2 border border-neutral-250 bg-neutral-50/20 focus:bg-white rounded-sm text-neutral-850 placeholder:text-neutral-450 focus:outline-hidden focus:border-primary text-xs resize-none text-neutral-900"
                 />
-                <div className="flex justify-between items-center">
-                  {/* End Conversation Button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if(window.confirm("Are you sure you want to end this conversation session? This will lock the chat portal for this candidate until they raise a new query.")) {
-                        endConversationMutation.mutate({ email: c.candidate_email, jobId: c.job_id });
-                      }
-                    }}
-                    className="px-2.5 py-1.5 border border-red-200 hover:bg-red-50 text-red-600 font-mono text-[9px] uppercase font-bold rounded-sm cursor-pointer transition-colors flex items-center gap-1.5"
-                  >
-                    <Archive className="w-3.5 h-3.5" />
-                    End Conversation
-                  </button>
-
-                  <div className="flex gap-2">
+                <div className="flex justify-end gap-2">
                     <button
                       type="button"
                       onClick={() => {
@@ -351,7 +328,6 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
                       Send Reply
                     </button>
                   </div>
-                </div>
               </form>
             </div>
           )}
