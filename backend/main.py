@@ -17,7 +17,14 @@ import httpx
 import jwt
 import time
 
-# Load environment variables
+# Load environment variables from multiple possible locations
+base_dir = os.path.dirname(os.path.abspath(__file__))
+env_file_backend = os.path.join(base_dir, ".env")
+if os.path.exists(env_file_backend):
+    load_dotenv(dotenv_path=env_file_backend, override=True)
+env_file_root = os.path.join(os.path.dirname(base_dir), ".env")
+if os.path.exists(env_file_root):
+    load_dotenv(dotenv_path=env_file_root, override=True)
 load_dotenv(override=True)
 
 logging.basicConfig(level=logging.INFO)
