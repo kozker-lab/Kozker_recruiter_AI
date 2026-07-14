@@ -26,6 +26,7 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
   
   const [queryAnswerText, setQueryAnswerText] = useState<string>("");
   const [answeringConvoId, setAnsweringConvoId] = useState<string | null>(null);
+  const [answeringQueryId, setAnsweringQueryId] = useState<string | null>(null);
 
   // Q&A View State Persistence
   React.useEffect(() => {
@@ -81,6 +82,7 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
       queryClient.invalidateQueries({ queryKey: ["dashboard_queries"] });
       queryClient.invalidateQueries({ queryKey: ["activity_log"] });
       setQueryAnswerText("");
+      setAnsweringQueryId(null);
     }
   });
 
@@ -226,112 +228,101 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
   };
 
   const renderConversationChat = (c: any) => {
-    const lastCandidateMsg = [...c.messages].reverse().find(m => m.sender !== "recruiter" && !m.is_resolved);
-    const activeMsgId = lastCandidateMsg?.id || c.messages[c.messages.length - 1]?.id;
-
     return (
-      <div className="flex flex-col gap-3 mt-3 p-4 border border-neutral-200 bg-neutral-50/50 rounded-sm">
-        
-        {/* Chat Timeline history */}
-        <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-          {c.messages.map((m: any) => {
-            const isCandidate = m.sender !== "recruiter" && m.sender !== "ai";
-            const isAi = m.sender === "ai";
-            
-            return (
-              <div key={m.id} className="space-y-1">
-                <div className={`flex flex-col max-w-[85%] ${isCandidate ? "mr-auto items-start" : "ml-auto items-end"}`}>
-                  {/* Meta tag */}
-                  <div className="flex items-center gap-1.5 px-1 text-[9px] font-mono font-bold uppercase text-neutral-400">
-                    <span>{isCandidate ? "Candidate" : isAi ? "AI Agent" : "Recruiter"}</span>
-                    <span>•</span>
-                    <span className="bg-neutral-200 px-1 py-0.2 rounded-xs border border-neutral-300/40">
+      <div className="flex flex-col gap-4 mt-3">
+        {c.messages.map((m: any) => {
+          const isAnswered = m.is_resolved || !!m.ai_response;
+          
+          return (
+            <div key={m.id} className="p-4 border border-neutral-200 bg-white rounded-sm space-y-3 shadow-xs">
+              <div className="flex justify-between items-start gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-bold uppercase text-neutral-450">
+                      Query Source:
+                    </span>
+                    <span className="bg-neutral-100 border border-neutral-200 px-1.5 py-0.5 rounded-xs text-[9px] font-mono font-semibold uppercase text-neutral-500">
                       {m.source === "tracking_portal" ? "Status Portal" : "Apply Form"}
                     </span>
                   </div>
-
-                  {/* Bubble */}
-                  <div className={`p-2.5 rounded-sm text-xs border font-medium mt-1 leading-relaxed ${
-                    isCandidate 
-                      ? "bg-neutral-100 border-neutral-200 text-neutral-800 rounded-tl-none" 
-                      : isAi
-                      ? "bg-amber-50/50 border-amber-200/50 text-neutral-700 italic rounded-tr-none"
-                      : "bg-primary/5 border-primary/10 text-neutral-800 rounded-tr-none"
-                  }`}>
+                  <p className="text-xs font-semibold text-neutral-800 leading-relaxed pt-1">
                     {m.query_text}
-                  </div>
+                  </p>
                 </div>
 
-                {/* Legacy ai_response preview if present */}
-                {m.ai_response && !c.messages.some((x: any) => x.sender === "recruiter" && x.query_text === m.ai_response) && (
-                  <div className="ml-6 pl-3 border-l border-neutral-200 py-1 space-y-1">
-                    <span className="text-[8.5px] font-mono uppercase text-neutral-400 font-bold block">Auto AI Context Reply</span>
-                    <p className="text-[11px] text-neutral-500 italic bg-neutral-100/30 p-2 border rounded-sm">{m.ai_response}</p>
-                  </div>
+                {isAnswered ? (
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-250 px-2 py-0.5 rounded-sm text-[9px] font-mono font-bold uppercase tracking-wider">
+                    Responded
+                  </span>
+                ) : (
+                  <span className="bg-amber-50 text-amber-700 border border-amber-250 px-2 py-0.5 rounded-sm text-[9px] font-mono font-bold uppercase tracking-wider">
+                    Pending
+                  </span>
                 )}
               </div>
-            );
-          })}
-        </div>
 
-        {/* Action Controls / Reply Area */}
-        <div className="border-t border-neutral-200 pt-3 flex flex-col gap-3">
-          {c.is_ended ? (
-            <div className="p-3 bg-neutral-100 border border-neutral-200/55 rounded-sm flex items-center justify-between text-xs text-neutral-500 font-mono">
-              <div className="flex items-center gap-2">
-                <Archive className="w-4 h-4 text-neutral-400" />
-                <span>CONVERSATION CLOSED & ARCHIVED BY RECRUITER</span>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!queryAnswerText.trim() || !activeMsgId) return;
-                  answerQueryMutation.mutate({ id: activeMsgId, responseText: queryAnswerText });
-                }}
-                className="space-y-2.5"
-              >
-                <textarea
-                  required
-                  rows={2}
-                  value={answeringConvoId === c.id ? queryAnswerText : ""}
-                  onChange={(e) => {
-                    setAnsweringConvoId(c.id);
-                    setQueryAnswerText(e.target.value);
-                  }}
-                  placeholder="Type a message reply to candidate..."
-                  className="w-full px-3 py-2 border border-neutral-250 bg-neutral-50/20 focus:bg-white rounded-sm text-neutral-850 placeholder:text-neutral-450 focus:outline-hidden focus:border-primary text-xs resize-none text-neutral-900"
-                />
-                <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAnsweringConvoId(null);
-                        setQueryAnswerText("");
+              {isAnswered ? (
+                <div className="p-3 bg-neutral-50 border border-neutral-150 rounded-sm space-y-1">
+                  <span className="text-[9px] font-mono font-bold uppercase text-neutral-450 block">
+                    Recruiter Response
+                  </span>
+                  <p className="text-xs text-neutral-700 font-medium whitespace-pre-wrap leading-relaxed">
+                    {m.ai_response}
+                  </p>
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-neutral-100">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!queryAnswerText.trim() || answeringQueryId !== m.id) return;
+                      answerQueryMutation.mutate({ id: m.id, responseText: queryAnswerText });
+                    }}
+                    className="space-y-2.5"
+                  >
+                    <textarea
+                      required
+                      rows={2}
+                      value={answeringQueryId === m.id ? queryAnswerText : ""}
+                      onChange={(e) => {
+                        setAnsweringQueryId(m.id);
+                        setQueryAnswerText(e.target.value);
                       }}
-                      className="px-2.5 py-1.5 border border-neutral-200 hover:bg-neutral-100 text-neutral-500 font-mono text-[9px] uppercase font-bold rounded-sm cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={answerQueryMutation.isPending || answeringConvoId !== c.id || !queryAnswerText.trim()}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800/40 text-white font-mono text-[9px] uppercase font-bold tracking-wider rounded-sm transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
-                    >
-                      {answerQueryMutation.isPending && answeringConvoId === c.id ? (
-                        <RefreshCw className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <Send className="w-3 h-3" />
+                      placeholder="Type your response to this candidate query..."
+                      className="w-full px-3 py-2 border border-neutral-250 bg-neutral-50/20 focus:bg-white rounded-sm text-xs resize-none text-neutral-900 focus:outline-hidden focus:border-primary placeholder:text-neutral-400"
+                    />
+                    <div className="flex justify-end gap-2">
+                      {answeringQueryId === m.id && queryAnswerText.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAnsweringQueryId(null);
+                            setQueryAnswerText("");
+                          }}
+                          className="px-2.5 py-1.5 border border-neutral-200 hover:bg-neutral-100 text-neutral-500 font-mono text-[9px] uppercase font-bold rounded-sm cursor-pointer"
+                        >
+                          Cancel
+                        </button>
                       )}
-                      Send Reply
-                    </button>
-                  </div>
-              </form>
+                      <button
+                        type="submit"
+                        disabled={answerQueryMutation.isPending && answeringQueryId === m.id}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800/40 text-white font-mono text-[9px] uppercase font-bold tracking-wider rounded-sm transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+                      >
+                        {answerQueryMutation.isPending && answeringQueryId === m.id ? (
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Send className="w-3 h-3" />
+                        )}
+                        Send Response
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })}
       </div>
     );
   };

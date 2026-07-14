@@ -2278,14 +2278,15 @@ async def get_all_candidate_queries(db: Client = Depends(get_supabase), user_id:
         res = db.table("candidate_queries").select("*, job_openings(id, title, requirements(id, title, clients(name)))").order("created_at", desc=True).execute()
         db_queries = res.data or []
         
-        # Explicit python-side filtering to match recruiter job IDs
-        db_queries = [q for q in db_queries if q.get("job_id") in recruiter_job_ids]
+        # Explicit python-side filtering to match recruiter job IDs and exclude recruiter reply logs
+        db_queries = [q for q in db_queries if q.get("job_id") in recruiter_job_ids and q.get("sender") != "recruiter"]
         
         # Merge with in-memory backups filtered by recruiter's job IDs
         all_mem = []
         for j_id, q_list in in_memory_queries.items():
             if j_id in recruiter_job_ids:
-                all_mem.extend(q_list)
+                # Filter out recruiter messages from in-memory backup as well
+                all_mem.extend([qm for qm in q_list if qm.get("sender") != "recruiter"])
             
         all_queries = {q["id"]: q for q in (db_queries + all_mem)}
         return sorted(all_queries.values(), key=lambda x: x["created_at"], reverse=True)
@@ -2317,25 +2318,6 @@ async def answer_candidate_query(query_id: str, payload: AnswerQueryModel, db: C
         }).eq("id", query_id).execute()
         if res.data:
             updated_query = res.data[0]
-            
-            # Create a separate recruiter reply message row for chat history
-            try:
-                db.table("candidate_queries").insert({
-                    "job_id": updated_query["job_id"],
-                    "candidate_email": updated_query["candidate_email"],
-                    "query_text": payload.response_text,
-                    "source": updated_query.get("source") or "apply_form",
-                    "sender": "recruiter",
-                    "is_resolved": True,
-                    "is_ended": False
-                }).execute()
-                
-                # Mark all other unresolved candidate queries in this thread as resolved
-                db.table("candidate_queries").update({
-                    "is_resolved": True
-                }).eq("job_id", updated_query["job_id"]).eq("candidate_email", updated_query["candidate_email"]).eq("sender", "candidate").execute()
-            except Exception as ie:
-                logger.error(f"Failed to insert recruiter query reply row: {ie}")
     except Exception as e:
         logger.warning(f"Failed to update query answer in Supabase: {e}. Updating in-memory.")
 
