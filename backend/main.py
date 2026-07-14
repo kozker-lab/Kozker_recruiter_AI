@@ -2064,8 +2064,10 @@ def send_email(to_email: str, subject: str, html_body: str, reply_to: Optional[s
             logger.info(f"Email successfully sent via SMTP to {to_email}")
         except Exception as e:
             logger.error(f"Failed to send email via SMTP to {to_email}: {e}")
+            raise e
     else:
         logger.info(f"SMTP is not configured. Email to {to_email} was logged to console and requests.log.")
+        raise Exception("SMTP mail configuration parameters (SMTP_HOST, SMTP_PORT, etc.) are missing from the server environment.")
 
 
 # 10. Candidate queries endpoints
@@ -3259,12 +3261,13 @@ def send_application_confirmation_email(to_email: str, full_name: str, job_title
     send_email(to_email=to_email, subject=subject, html_body=html_body, sender_name="Kozker Recruitment")
 
 
-async def handle_candidate_application(candidate_id: str, email: str, full_name: str, job_id: str, form_responses: dict, db: Client, background_tasks: BackgroundTasks):
+async def handle_candidate_application(candidate_id: str, email: str, full_name: str, job_id: str, form_responses: dict, db: Client):
+    email_sent = False
+    email_error = None
     try:
         # Check if application already exists
         app_check = db.table("applications").select("id").eq("candidate_id", candidate_id).eq("job_opening_id", job_id).execute()
         
-        is_new_app = False
         application_id = None
         
         if app_check.data:
@@ -3280,7 +3283,6 @@ async def handle_candidate_application(candidate_id: str, email: str, full_name:
             }).execute()
             if app_res.data:
                 application_id = app_res.data[0]["id"]
-                is_new_app = True
         
         if application_id:
             # Fetch job title and client name for the email
@@ -3297,21 +3299,25 @@ async def handle_candidate_application(candidate_id: str, email: str, full_name:
             except Exception as je:
                 logger.error(f"Failed to fetch job details for confirmation email: {je}")
                 
-            # Queue confirmation email sending task
-            background_tasks.add_task(
-                send_application_confirmation_email,
-                to_email=email,
-                full_name=full_name,
-                job_title=job_title,
-                client_name=client_name,
-                application_id=application_id,
-                form_responses=form_responses
-            )
+            # Call confirmation email sending synchronously
+            try:
+                send_application_confirmation_email(
+                    to_email=email,
+                    full_name=full_name,
+                    job_title=job_title,
+                    client_name=client_name,
+                    application_id=application_id,
+                    form_responses=form_responses
+                )
+                email_sent = True
+            except Exception as ee:
+                logger.error(f"Failed to send application confirmation email: {ee}")
+                email_error = str(ee)
             
-        return application_id
+        return application_id, email_sent, email_error
     except Exception as e:
         logger.error(f"Error in handle_candidate_application: {e}")
-        return None
+        return None, False, str(e)
 
 
 @app.post("/api/v1/candidates")
@@ -3401,17 +3407,18 @@ async def create_candidate(
             target_job_id = cand.job_id if cand.job_id else existing_cand.get("job_id")
             if target_job_id:
                 form_responses = merged_parsed.get("custom_form_responses") or {}
-                app_id = await handle_candidate_application(
+                app_id, email_sent, email_error = await handle_candidate_application(
                     candidate_id=existing_cand["id"],
                     email=cand.email,
                     full_name=cand.full_name,
                     job_id=target_job_id,
                     form_responses=form_responses,
-                    db=db,
-                    background_tasks=background_tasks
+                    db=db
                 )
                 if app_id:
                     data["application_id"] = app_id
+                    data["email_sent"] = email_sent
+                    data["email_error"] = email_error
             return data
  
     incoming_parsed = cand.parsed_resume_json or {}
@@ -3444,17 +3451,18 @@ async def create_candidate(
         # Auto-handle application linking and email
         if cand.job_id:
             form_responses = parsed_resume_payload.get("custom_form_responses") or {}
-            app_id = await handle_candidate_application(
+            app_id, email_sent, email_error = await handle_candidate_application(
                 candidate_id=data["id"],
                 email=cand.email,
                 full_name=cand.full_name,
                 job_id=cand.job_id,
                 form_responses=form_responses,
-                db=db,
-                background_tasks=background_tasks
+                db=db
             )
             if app_id:
                 data["application_id"] = app_id
+                data["email_sent"] = email_sent
+                data["email_error"] = email_error
         return data
     return {}
 

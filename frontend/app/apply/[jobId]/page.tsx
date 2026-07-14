@@ -204,6 +204,10 @@ export default function PublicApplyPage() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submittedAppId, setSubmittedAppId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [emailVerificationStatus, setEmailVerificationStatus] = useState<"loading" | "success" | "failed">("loading");
+  const [emailSentResult, setEmailSentResult] = useState<boolean | null>(null);
+  const [emailErrorResult, setEmailErrorResult] = useState<string | null>(null);
+  const [emailDeliveryError, setEmailDeliveryError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
 
   // Card editing states
@@ -234,6 +238,22 @@ export default function PublicApplyPage() {
       setCandidateEmail(fieldValues.email);
     }
   }, [fieldValues.email, candidateEmail]);
+
+  // Simulates or processes email delivery verification loader on the success page
+  useEffect(() => {
+    if (submitSuccess) {
+      setEmailVerificationStatus("loading");
+      const timer = setTimeout(() => {
+        if (emailSentResult) {
+          setEmailVerificationStatus("success");
+        } else {
+          setEmailVerificationStatus("failed");
+          setEmailDeliveryError(emailErrorResult || "SMTP mail configuration is missing or inactive.");
+        }
+      }, 1800); // 1.8 seconds premium loading simulation
+      return () => clearTimeout(timer);
+    }
+  }, [submitSuccess, emailSentResult, emailErrorResult]);
 
   // Load saved email on startup
   useEffect(() => {
@@ -713,6 +733,8 @@ export default function PublicApplyPage() {
       if (res && res.application_id) {
         setSubmittedAppId(res.application_id);
       }
+      setEmailSentResult(res?.email_sent === true);
+      setEmailErrorResult(res?.email_error || null);
       setSubmitSuccess(true);
     } catch (err: any) {
       console.error("Failed to submit candidate profile:", err);
@@ -787,14 +809,47 @@ export default function PublicApplyPage() {
             </div>
 
             {mode !== "design" && (
-              <div className="p-3.5 bg-emerald-50/50 border border-emerald-100/60 rounded-sm flex items-start gap-2.5 text-left text-[11px] text-emerald-800 animate-fadeIn mt-3.5">
-                <ShieldCheck className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
-                  <span className="font-bold uppercase tracking-wider text-[9px] block">Verification Email Dispatched</span>
-                  <p className="text-neutral-550 text-[10.5px] leading-relaxed">
-                    A confirmation message containing your tracking link and login credentials has been sent to <strong className="text-neutral-700">{fieldValues.email}</strong>. **Please check your spam / junk folder** if it does not arrive shortly.
-                  </p>
-                </div>
+              <div className="mt-3.5">
+                {emailVerificationStatus === "loading" && (
+                  <div className="p-3.5 bg-stone-50 border border-stone-200 rounded-sm flex items-start gap-2.5 text-left text-[11px] text-stone-700 animate-pulse">
+                    <Loader2 className="w-4.5 h-4.5 text-stone-500 animate-spin shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <span className="font-bold uppercase tracking-wider text-[9px] block text-stone-600">Verifying Email Dispatch...</span>
+                      <p className="text-stone-500 text-[10.5px] leading-relaxed">
+                        Transmitting credentials and direct status tracking link to <strong className="text-stone-700">{fieldValues.email}</strong>...
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {emailVerificationStatus === "success" && (
+                  <div className="p-3.5 bg-emerald-50/50 border border-emerald-100/60 rounded-sm flex items-start gap-2.5 text-left text-[11px] text-emerald-800 animate-fadeIn">
+                    <ShieldCheck className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <span className="font-bold uppercase tracking-wider text-[9px] block">Verification Email Delivered!</span>
+                      <p className="text-neutral-550 text-[10.5px] leading-relaxed">
+                        A confirmation message containing your tracking link and login credentials has been successfully sent to <strong className="text-neutral-700">{fieldValues.email}</strong>. **Please check your spam / junk folder** if it does not arrive shortly.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {emailVerificationStatus === "failed" && (
+                  <div className="p-3.5 bg-amber-50/50 border border-amber-250/60 rounded-sm flex items-start gap-2.5 text-left text-[11px] text-amber-900 animate-fadeIn">
+                    <AlertCircle className="w-4.5 h-4.5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5 w-full">
+                      <span className="font-bold uppercase tracking-wider text-[9px] block text-amber-800">Email Delivery Failed</span>
+                      <p className="text-neutral-600 text-[10.5px] leading-relaxed">
+                        We could not send a confirmation email to <strong className="text-neutral-700">{fieldValues.email}</strong>. Please check your SMTP mail server settings or local network parameters.
+                      </p>
+                      {emailDeliveryError && (
+                        <div className="mt-1.5 p-2 bg-amber-100/40 border border-amber-200/50 rounded-xs font-mono text-[9.5px] text-amber-800 break-all select-all leading-normal">
+                          <strong>Error Details:</strong> {emailDeliveryError}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             
