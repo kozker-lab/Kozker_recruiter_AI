@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     webpackMemoryOptimizations: true,
+    cpus: 1,
   },
   async rewrites() {
     return [
