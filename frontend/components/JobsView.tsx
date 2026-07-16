@@ -426,6 +426,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const [selectedJobId, setSelectedJobId] = useState<string | null>(initialJobId || null);
   const [activeTab, setActiveTab] = useState<"jd" | "skills" | "candidates" | "queries">("jd");
   const [queryFilter, setQueryFilter] = useState<"all" | "pending" | "resolved">("all");
+  const [isMatchingScopeOpen, setIsMatchingScopeOpen] = useState(false);
+  const [selectedMatchingScope, setSelectedMatchingScope] = useState<"applied" | "pool" | "both">("both");
 
   const [customDialog, setCustomDialog] = useState<{
     isOpen: boolean;
@@ -841,7 +843,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   });
 
   const saveSkillsMutation = useMutation({
-    mutationFn: (updatedSkills: JobOpeningSkill[]) => {
+    mutationFn: ({ skills: updatedSkills, matching_scope = "both" }: { skills: JobOpeningSkill[]; matching_scope?: string }) => {
       const totalWeight = updatedSkills.reduce((sum, s) => sum + (s.weight || 0), 0);
       let normalized = updatedSkills;
       if (totalWeight > 0) {
@@ -856,7 +858,10 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           }
         });
       }
-      return apiRequest<{ success: boolean }>("PUT", `/jobs/${selectedJobId}/skills`, { skills: normalized });
+      return apiRequest<{ success: boolean }>("PUT", `/jobs/${selectedJobId}/skills`, {
+        skills: normalized,
+        matching_scope
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
@@ -2059,7 +2064,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           <div className="flex justify-end gap-2.5 pt-4 border-t border-neutral-100 mt-6">
             <button
               id="approve-rank-candidates-btn"
-              onClick={() => saveSkillsMutation.mutate(localSkills)}
+              onClick={() => setIsMatchingScopeOpen(true)}
               disabled={saveSkillsMutation.isPending}
               className="px-4 py-2 bg-success hover:bg-success/95 text-neutral-white font-medium rounded-sm cursor-pointer flex items-center gap-1.5 uppercase tracking-wider font-semibold text-[10px]"
             >
@@ -2907,6 +2912,95 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                   OK
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {isMatchingScopeOpen && (
+        <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-xs flex items-center justify-center z-[9999] animate-fade-in font-sans p-4 select-none">
+          <div className="bg-neutral-900 border border-neutral-800 max-w-md w-full p-6 space-y-4 shadow-xl rounded-sm">
+            <div className="flex items-center gap-2 text-primary">
+              <Sparkles className="w-5 h-5" />
+              <span className="font-tight font-bold text-xs uppercase tracking-wider">Candidate Sourcing Scope</span>
+            </div>
+            
+            <p className="text-neutral-300 text-xs leading-relaxed">
+              Select which candidate scope should be scanned and matched against the approved skills requirements:
+            </p>
+
+            <div className="space-y-2.5 pt-2">
+              <label className="flex items-start gap-3 p-3 bg-neutral-950 border border-neutral-850 hover:border-neutral-700 rounded-sm cursor-pointer transition-all">
+                <input
+                  type="radio"
+                  name="matching_scope"
+                  value="both"
+                  checked={selectedMatchingScope === "both"}
+                  onChange={() => setSelectedMatchingScope("both")}
+                  className="mt-0.5 accent-primary"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-xs font-semibold text-neutral-200 block">Both Sourcing Pools</span>
+                  <span className="text-[10px] text-neutral-400 leading-relaxed block">
+                    Evaluates both candidates who applied via the job form and all candidates currently in the common candidate pool. (Recommended)
+                  </span>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 bg-neutral-950 border border-neutral-850 hover:border-neutral-700 rounded-sm cursor-pointer transition-all">
+                <input
+                  type="radio"
+                  name="matching_scope"
+                  value="applied"
+                  checked={selectedMatchingScope === "applied"}
+                  onChange={() => setSelectedMatchingScope("applied")}
+                  className="mt-0.5 accent-primary"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-xs font-semibold text-neutral-200 block">Applied Candidates Only</span>
+                  <span className="text-[10px] text-neutral-400 leading-relaxed block">
+                    Only matches candidates who explicitly submitted their application for this specific job opening.
+                  </span>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 bg-neutral-950 border border-neutral-850 hover:border-neutral-700 rounded-sm cursor-pointer transition-all">
+                <input
+                  type="radio"
+                  name="matching_scope"
+                  value="pool"
+                  checked={selectedMatchingScope === "pool"}
+                  onChange={() => setSelectedMatchingScope("pool")}
+                  className="mt-0.5 accent-primary"
+                />
+                <div className="space-y-0.5">
+                  <span className="text-xs font-semibold text-neutral-200 block">Common Candidate Pool Only</span>
+                  <span className="text-[10px] text-neutral-400 leading-relaxed block">
+                    Excludes already applied candidates and only scans the general pool for fresh matching talent.
+                  </span>
+                </div>
+              </label>
+            </div>
+            
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-neutral-800/60">
+              <button
+                onClick={() => setIsMatchingScopeOpen(false)}
+                className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  saveSkillsMutation.mutate({
+                    skills: localSkills,
+                    matching_scope: selectedMatchingScope
+                  });
+                  setIsMatchingScopeOpen(false);
+                }}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-neutral-white text-[10px] font-tight font-semibold uppercase tracking-wider transition-colors cursor-pointer rounded-sm flex items-center gap-1.5 shadow-sm"
+              >
+                <Check className="w-3.5 h-3.5" />
+                Proceed to Match
+              </button>
             </div>
           </div>
         </div>

@@ -563,6 +563,7 @@ class JobOpeningUpdateModel(BaseModel):
 
 class SkillsApprovalModel(BaseModel):
     skills: List[Dict[str, Any]]
+    matching_scope: Optional[str] = "both"
 
 class CandidateModel(BaseModel):
     full_name: str
@@ -1191,7 +1192,7 @@ async def handle_scan_publish_dispatch(job: dict, jwt_token: str):
         logger.warning("n8n dispatch failed for extract_skills, falling back to local execution")
         run_local_scan_publish(job["id"], jwt_token)
 
-async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
+async def handle_match_candidates_dispatch(job_id: str, jwt_token: str, matching_scope: str = "both"):
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
     try:
         # Fetch job title and tags
@@ -1205,6 +1206,22 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
         skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
         approved_skills = skills_res.data[0].get("skills", []) if skills_res.data else []
         
+        # Get candidate IDs that are already linked to this job via applications
+        linked_apps_res = db.table("applications").select("candidate_id").eq("job_opening_id", job_id).execute()
+        linked_cand_ids = [a["candidate_id"] for a in linked_apps_res.data or []]
+        
+        # Fetch all active candidates
+        candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
+        all_candidates = candidates_res.data or []
+        
+        # Filter candidates based on matching_scope
+        if matching_scope == "applied":
+            candidates = [c for c in all_candidates if c.get("job_id") == job_id or c.get("id") in linked_cand_ids]
+        elif matching_scope == "pool":
+            candidates = [c for c in all_candidates if c.get("job_id") != job_id and c.get("id") not in linked_cand_ids]
+        else: # both
+            candidates = all_candidates
+        
         callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/candidate-matches"
         payload = {
             "job_opening": {
@@ -1214,6 +1231,8 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
                 "sub_category": job_sub_category
             },
             "approved_skills": approved_skills,
+            "matching_scope": matching_scope,
+            "candidates": candidates,
             "callback_url": callback_url,
             "authorization": f"Bearer {CALLBACK_SECRET}",
             "auth_header": f"Bearer {CALLBACK_SECRET}"
@@ -1222,10 +1241,10 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str):
         success = await dispatch_n8n_webhook(N8N_MATCH_CANDIDATES_URL, payload, "match_candidates")
         if not success:
             logger.warning("n8n dispatch failed for match_candidates, falling back to local execution")
-            match_candidates_background(job_id, jwt_token)
+            match_candidates_background(job_id, jwt_token, matching_scope)
     except Exception as e:
         logger.error(f"Error in handle_match_candidates_dispatch: {e}")
-        match_candidates_background(job_id, jwt_token)
+        match_candidates_background(job_id, jwt_token, matching_scope)
 
 async def handle_generate_questions_dispatch(app_record: dict, cand: dict, job: dict, req: dict, jwt_token: str):
     callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/screening-questions"
@@ -2618,10 +2637,11 @@ async def handle_approve_skills_logic(job_id: str, skills_data: SkillsApprovalMo
     )
     
     # Trigger matching task in the background
+    matching_scope = skills_data.matching_scope or "both"
     if USE_N8N:
-        background_tasks.add_task(handle_match_candidates_dispatch, job_id, jwt_token)
+        background_tasks.add_task(handle_match_candidates_dispatch, job_id, jwt_token, matching_scope)
     else:
-        background_tasks.add_task(match_candidates_background, job_id, jwt_token)
+        background_tasks.add_task(match_candidates_background, job_id, jwt_token, matching_scope)
         
     return {"status": "published"}
 
@@ -2737,8 +2757,8 @@ def evaluate_candidate_matching_with_history(db: Client, cand_id: str, job_id: s
     return matched_score, match_reason, strengths, skill_gaps
 
 # Candidate matching background task
-def match_candidates_background(job_id: str, jwt_token: str):
-    logger.info(f"Starting background candidate matching for job {job_id}")
+def match_candidates_background(job_id: str, jwt_token: str, matching_scope: str = "both"):
+    logger.info(f"Starting background candidate matching for job {job_id} with scope {matching_scope}")
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
     
     try:
@@ -2750,13 +2770,17 @@ def match_candidates_background(job_id: str, jwt_token: str):
         linked_apps_res = db.table("applications").select("candidate_id").eq("job_opening_id", job_id).execute()
         linked_cand_ids = [a["candidate_id"] for a in linked_apps_res.data or []]
         
-        # Only query candidates assigned to this job or already linked to it
-        if linked_cand_ids:
-            candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
-            candidates = [c for c in candidates_res.data or [] if c.get("job_id") == job_id or c.get("id") in linked_cand_ids]
-        else:
-            candidates_res = db.table("candidates").select("*").eq("job_id", job_id).eq("is_deleted", False).execute()
-            candidates = candidates_res.data or []
+        # Fetch all active candidates
+        candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
+        all_candidates = candidates_res.data or []
+        
+        # Filter candidates based on matching_scope
+        if matching_scope == "applied":
+            candidates = [c for c in all_candidates if c.get("job_id") == job_id or c.get("id") in linked_cand_ids]
+        elif matching_scope == "pool":
+            candidates = [c for c in all_candidates if c.get("job_id") != job_id and c.get("id") not in linked_cand_ids]
+        else: # both
+            candidates = all_candidates
         
         if not job_res.data or not skills_res.data or not candidates:
             db.table("job_openings").update({"processing_status": "ready"}).eq("id", job_id).execute()

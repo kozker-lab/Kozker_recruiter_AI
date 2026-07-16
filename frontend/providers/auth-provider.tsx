@@ -3,11 +3,14 @@
 import React, { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/store/auth";
+import { usePathname } from "next/navigation";
+import { Logo } from "@/components/Logo";
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const setSession = useAuthStore((state) => state.setSession);
   const setLoading = useAuthStore((state) => state.setLoading);
   const supabase = createClient();
+  const pathname = usePathname();
 
   const [isMobile, setIsMobile] = React.useState(false);
   const [hasChecked, setHasChecked] = React.useState(false);
@@ -19,8 +22,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) throw error;
         setSession(session, session?.user ?? null);
-      } catch (err) {
-        console.error("Failed to load session:", err);
+      } catch (e) {
+        console.error("Failed to load session:", e);
         setSession(null, null);
       } finally {
         setLoading(false);
@@ -29,19 +32,17 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
     loadSession();
 
-    // Listen to auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session, session?.user ?? null);
-        setLoading(false);
-      }
-    );
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session, session?.user ?? null);
+      setLoading(false);
+    });
 
-    // Screen size detection for mobile incompatibility block
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
       setHasChecked(true);
     };
+
     checkMobile();
     window.addEventListener("resize", checkMobile);
 
@@ -51,15 +52,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     };
   }, [supabase, setSession, setLoading]);
 
-  if (hasChecked && isMobile) {
+  const isCandidateRoute = pathname?.startsWith("/apply");
+
+  if (hasChecked && isMobile && !isCandidateRoute) {
     return (
       <div className="fixed inset-0 z-[999999] flex flex-col items-center justify-center p-6 bg-stone-950 text-stone-200 font-sans select-none">
         <div className="w-full max-w-md bg-stone-900/50 border border-stone-800 rounded-sm p-8 text-center space-y-6 shadow-2xl backdrop-blur-md">
           {/* Brand/Logo */}
           <div className="flex justify-center mb-2">
-            <div className="w-12 h-12 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-sm flex items-center justify-center font-black text-xl tracking-tighter">
-              K
-            </div>
+            <Logo className="w-16 h-16 text-amber-500" />
           </div>
 
           <div className="space-y-2">
@@ -69,9 +70,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             <h1 className="text-lg font-bold uppercase tracking-tight text-white">
               Application Incompatible
             </h1>
-            <p className="text-xs text-stone-400 leading-relaxed">
-              This system is optimized for high-density recruiter workflows and candidate assessments. It is not compatible with mobile viewports.
-            </p>
           </div>
 
           <div className="p-4 bg-stone-950 border border-stone-850 rounded-sm text-[11px] text-stone-400 flex flex-col items-center gap-3">
