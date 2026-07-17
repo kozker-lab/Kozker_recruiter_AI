@@ -2547,7 +2547,8 @@ async def verify_application_status(payload: VerifyStatusModel, db: Client = Dep
                 "id": job_data.get("id"),
                 "title": job_data.get("title"),
                 "department": job_data.get("department") or "Engineering",
-                "client_name": job_data.get("client_name")
+                "client_name": job_data.get("client_name"),
+                "custom_stages": job_data.get("custom_stages") or []
             },
             "messages": messages
         }

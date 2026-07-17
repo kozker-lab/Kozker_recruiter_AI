@@ -207,25 +207,7 @@ function ApplicationStatusContent() {
     setAppIdInput("");
   };
 
-  // Define recruitment workflow stages
-  const stages = [
-    { key: "screening", label: "Screening", desc: "AI Credential Assessment" },
-    { key: "technical", label: "Technical Test", desc: "Coding & Assessment Review" },
-    { key: "hr", label: "HR Interview", desc: "Cultural Fit Discussion" },
-    { key: "final", label: "Final Decision", desc: "Hiring Team Evaluation" }
-  ];
-
-  const getStageIndex = (currentStage: string) => {
-    const stageMap: Record<string, number> = {
-      screening: 0,
-      technical: 1,
-      hr: 2,
-      final: 3,
-      hired: 4,
-      rejected: 4
-    };
-    return stageMap[currentStage] ?? 0;
-  };
+  
 
   if (!isAuthenticated) {
     return (
@@ -403,8 +385,50 @@ function ApplicationStatusContent() {
   const job = appDetails?.job || {};
   const app = appDetails?.application || {};
   const cand = appDetails?.candidate || {};
+
+  // Define recruitment workflow stages dynamically based on custom stages
+  const getJobStagesList = () => {
+    const custom = job.custom_stages || [];
+    if (custom.length > 0) {
+      const list = [{ key: "screening", label: "Screening", desc: "AI Credential Assessment" }];
+      custom.forEach((stgKey: string) => {
+        const lowerKey = stgKey.toLowerCase();
+        if (lowerKey === "technical") {
+          list.push({ key: stgKey, label: "Technical Test", desc: "Coding & Assessment Review" });
+        } else if (lowerKey === "hr") {
+          list.push({ key: stgKey, label: "HR Interview", desc: "Cultural Fit Discussion" });
+        } else if (lowerKey === "final") {
+          list.push({ key: stgKey, label: "Final Decision", desc: "Hiring Team Evaluation" });
+        } else {
+          list.push({ 
+            key: stgKey, 
+            label: stgKey, 
+            desc: "Custom Evaluation Round" 
+          });
+        }
+      });
+      return list;
+    }
+    return [
+      { key: "screening", label: "Screening", desc: "AI Credential Assessment" },
+      { key: "technical", label: "Technical Test", desc: "Coding & Assessment Review" },
+      { key: "hr", label: "HR Interview", desc: "Cultural Fit Discussion" },
+      { key: "final", label: "Final Decision", desc: "Hiring Team Evaluation" }
+    ];
+  };
+
+  const stages = getJobStagesList();
+
+  const getStageIndex = (currentStage: string) => {
+    if (!currentStage) return 0;
+    const idx = stages.findIndex(s => s.key.toLowerCase() === currentStage.toLowerCase());
+    if (idx !== -1) return idx;
+    if (currentStage.toLowerCase() === "hired" || currentStage.toLowerCase() === "rejected") return stages.length;
+    return 0;
+  };
+
   const currentStageIdx = getStageIndex(app.stage);
-  const isRejected = app.screening_status === "rejected" || app.stage === "rejected";
+  const isRejected = app.screening_status === "rejected" || app.stage === "rejected" || app.stage_status === "failed";
   const isHired = app.stage === "hired";
 
   const pendingQuery = messages.find(m => m.sender === "candidate" && !m.is_resolved);
@@ -579,21 +603,30 @@ function ApplicationStatusContent() {
                 isDarkMode ? "before:bg-stone-800" : "before:bg-stone-200"
               }`}>
                 {stages.map((stage, idx) => {
-                  const isCompleted = idx < currentStageIdx;
+                  const isFailedStage = isRejected && (
+                    (app.stage === "rejected" || app.stage_status === "failed") 
+                      ? idx === currentStageIdx 
+                      : (app.screening_status === "rejected" ? idx === 0 : false)
+                  );
+                  const isCompleted = idx < currentStageIdx && !isFailedStage;
                   const isActive = idx === currentStageIdx && !isRejected && !isHired;
                   
                   return (
                     <div key={stage.key} className="relative flex gap-4 transition-all">
                       {/* Circle Node */}
-                      <div className={`absolute -left-6 w-4.5 h-4.5 rounded-full flex items-center justify-center border transition-all z-10 ${
+                      <div className={`absolute -left-[26px] w-5 h-5 rounded-full flex items-center justify-center border transition-all z-10 ${
                         isCompleted 
                           ? (isDarkMode ? "bg-teal-600 border-teal-600 text-stone-950" : "bg-teal-600 border-teal-650 text-white")
                           : isActive 
                           ? (isDarkMode ? "bg-stone-955 border-teal-500 text-teal-400 shadow-md shadow-teal-500/20 scale-110" : "bg-white border-teal-650 text-teal-655 shadow-md shadow-teal-550/20 scale-110") 
+                          : isFailedStage
+                          ? (isDarkMode ? "bg-red-950/40 border-red-500 text-red-400 shadow-md shadow-red-500/10 scale-110" : "bg-red-50 border-red-500 text-red-600 shadow-md shadow-red-500/10 scale-110")
                           : (isDarkMode ? "bg-stone-900 border-stone-800 text-stone-605" : "bg-white border-stone-200 text-stone-400")
                       }`}>
                         {isCompleted ? (
                           <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        ) : isFailedStage ? (
+                          <X className="w-3 h-3 stroke-[3.5]" />
                         ) : (
                           <div className={`w-1.5 h-1.5 rounded-full ${
                             isActive 
@@ -609,6 +642,8 @@ function ApplicationStatusContent() {
                             ? (isDarkMode ? "text-stone-300" : "text-stone-700") 
                             : isActive 
                             ? (isDarkMode ? "text-teal-400" : "text-teal-650") 
+                            : isFailedStage
+                            ? "text-red-500"
                             : "text-stone-500"
                         }`}>
                           {stage.label}
@@ -626,11 +661,20 @@ function ApplicationStatusContent() {
                             Current Stage Status: {app.stage_status || "in_progress"}
                           </span>
                         )}
+                        {isFailedStage && (
+                          <span className={`inline-flex items-center gap-1 text-[9px] font-mono border px-2 py-0.5 rounded-sm mt-1 ${
+                            isDarkMode 
+                              ? "text-red-400 bg-red-955/15 border-red-900/30" 
+                              : "text-red-700 bg-red-50 border-red-200"
+                          }`}>
+                            <X className="w-3 h-3" />
+                            Current Stage Status: {app.stage_status === "failed" ? "Failed / Rejected" : "Rejected"}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
                 })}
-              </div>
             </div>
           </section>
 
