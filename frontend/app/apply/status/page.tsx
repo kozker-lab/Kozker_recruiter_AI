@@ -675,6 +675,7 @@ function ApplicationStatusContent() {
                     </div>
                   );
                 })}
+              </div>
             </div>
           </section>
 
