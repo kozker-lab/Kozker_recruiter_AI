@@ -10,7 +10,8 @@ import {
   Table, Briefcase, FileSignature, Sparkles, CheckSquare, 
   Play, Check, Edit3, ArrowLeft, RefreshCcw, Save, Trash2, 
   Sliders, UserCheck, AlertTriangle, Layers, UserCircle, ChevronRight, Plus, CheckCircle2, FileText,
-  Folder, FolderOpen, Search, Filter, Building2, ChevronDown, LayoutGrid, List, Download
+  Folder, FolderOpen, Search, Filter, Building2, ChevronDown, LayoutGrid, List, Download,
+  ArrowUp, ArrowDown, Eye, EyeOff, Loader2, Clock
 } from "lucide-react";
 
 // Custom ScatterPlot Component
@@ -424,7 +425,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const queryClient = useQueryClient();
   const router = useRouter();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(initialJobId || null);
-  const [activeTab, setActiveTab] = useState<"jd" | "skills" | "candidates" | "queries">("jd");
+  const [activeTab, setActiveTab] = useState<"jd" | "skills" | "candidates" | "queries" | "stages">("jd");
   const [queryFilter, setQueryFilter] = useState<"all" | "pending" | "resolved">("all");
   const [isMatchingScopeOpen, setIsMatchingScopeOpen] = useState(false);
   const [selectedMatchingScope, setSelectedMatchingScope] = useState<"applied" | "pool" | "both">("both");
@@ -465,12 +466,15 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      if (selectedJobId) {
-        url.searchParams.set("id", selectedJobId);
-      } else {
-        url.searchParams.delete("id");
+      const currentJobId = url.searchParams.get("id") || null;
+      if (currentJobId !== selectedJobId) {
+        if (selectedJobId) {
+          url.searchParams.set("id", selectedJobId);
+        } else {
+          url.searchParams.delete("id");
+        }
+        router.replace(url.pathname + url.search, { scroll: false });
       }
-      router.replace(url.pathname + url.search, { scroll: false });
     }
   }, [selectedJobId, router]);
 
@@ -499,7 +503,11 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (parsed.selectedJobId !== undefined) setSelectedJobId(parsed.selectedJobId);
+          if (initialJobId) {
+            // URL parameter takes precedence, do not overwrite selectedJobId
+          } else if (parsed.selectedJobId !== undefined) {
+            setSelectedJobId(parsed.selectedJobId);
+          }
           if (parsed.activeTab !== undefined) setActiveTab(parsed.activeTab);
           if (parsed.queryFilter !== undefined) setQueryFilter(parsed.queryFilter);
           if (parsed.viewMode !== undefined) setViewMode(parsed.viewMode);
@@ -514,7 +522,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
         setIsLoaded(true);
       }, 0);
     }
-  }, []);
+  }, [initialJobId]);
 
   React.useEffect(() => {
     if (isLoaded && typeof window !== "undefined") {
@@ -562,6 +570,12 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const [jdQual, setJdQual] = useState<string[]>([]);
   const [newRespItem, setNewRespItem] = useState("");
   const [newQualItem, setNewQualItem] = useState("");
+
+  // Stages & Settings States
+  const [customStagesList, setCustomStagesList] = useState<string[]>([]);
+  const [candidateViewSettings, setCandidateViewSettings] = useState<Record<string, boolean>>({});
+  const [stageNotifications, setStageNotifications] = useState<Record<string, boolean>>({});
+
 
   // Queries
   const { data: jobs = EMPTY_JOBS, isLoading: loadingJobs } = useQuery<JobOpening[]>({
@@ -785,6 +799,9 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       setJdSalary(activeJob.salary_range || "");
       setJdResp(activeJob.responsibilities || []);
       setJdQual(activeJob.qualifications || []);
+      setCustomStagesList(activeJob.custom_stages && activeJob.custom_stages.length > 0 ? activeJob.custom_stages : ["technical", "hr", "final"]);
+      setCandidateViewSettings((activeJob as any).candidate_view_settings || {});
+      setStageNotifications((activeJob as any).stage_notifications || {});
     }
   }, [activeJob]);
 
@@ -803,6 +820,22 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     onError: (err: any) => {
       console.error("updateJobMutation failed:", err);
       showCustomAlert("Error", `Failed to save job opening: ${err.message || err}`);
+    }
+  });
+
+  const saveJobStagesMutation = useMutation({
+    mutationFn: (data: { custom_stages: string[]; candidate_view_settings: Record<string, boolean>; stage_notifications: Record<string, boolean> }) => {
+      console.log("saveJobStagesMutation mutationFn called with data:", data);
+      return apiRequest<JobOpening>("PATCH", `/jobs/${selectedJobId}`, data);
+    },
+    onSuccess: (updatedJob) => {
+      console.log("saveJobStagesMutation succeeded:", updatedJob);
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      showCustomAlert("Success", "Stages and advanced settings saved successfully.");
+    },
+    onError: (err: any) => {
+      console.error("saveJobStagesMutation failed:", err);
+      showCustomAlert("Error", `Failed to save stages/settings: ${err.message || err}`);
     }
   });
 
@@ -1820,6 +1853,15 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           }`}
         >
           Candidate Queries {queries.filter(q => !q.is_resolved).length > 0 && `(${queries.filter(q => !q.is_resolved).length})`}
+        </button>
+        <button
+          disabled={!activeJob}
+          onClick={() => setActiveTab("stages")}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider border-b-2 cursor-pointer transition-all disabled:opacity-40 ${
+            activeTab === "stages" ? "border-primary text-primary" : "border-transparent text-neutral-400 hover:text-neutral-600"
+          }`}
+        >
+          Stages & Settings
         </button>
       </div>
 
@@ -2916,6 +2958,319 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           </div>
         </div>
       )}
+
+      {activeTab === "stages" && (
+        <div className="bg-neutral-white border border-neutral-200 rounded-sm overflow-hidden shadow-sm text-xs font-sans p-6 space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-neutral-200 pb-4 gap-4">
+            <div>
+              <h3 className="font-tight font-bold text-sm text-neutral-850 uppercase tracking-wider flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-primary" />
+                Pipeline Stages & Advanced Settings
+              </h3>
+              <p className="text-neutral-450 text-[10.5px] mt-0.5 font-mono">
+                Configure the interview pipeline stages for this position and control candidate visibility settings
+              </p>
+            </div>
+          </div>
+       
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Left Column: Stage Sequence List (8 cols) */}
+            <div className="lg:col-span-8 space-y-4">
+              <span className="text-[10px] uppercase font-bold text-neutral-400 font-mono block tracking-wider">Configure Interview Pipeline Sequence</span>
+              
+              <div className="border border-neutral-200 rounded-sm overflow-hidden bg-neutral-white shadow-xs">
+                {/* Column Headers */}
+                <div className="grid grid-cols-12 gap-3 px-4 py-2.5 bg-neutral-50/80 border-b border-neutral-200 text-[9px] uppercase font-bold font-mono text-neutral-500">
+                  <div className="col-span-1.5 flex items-center">Stage</div>
+                  <div className="col-span-4 flex items-center">Stage Name</div>
+                  <div className="col-span-2 flex items-center justify-center">Sequence</div>
+                  <div className="col-span-2.5 flex items-center justify-center">Candidate View</div>
+                  <div className="col-span-2 flex items-center justify-center">Alerts</div>
+                </div>
+
+                <div className="divide-y divide-neutral-150">
+                  {/* Stage 1: Screening */}
+                  <div className="grid grid-cols-12 gap-3 px-4 py-3 items-center bg-neutral-50/20">
+                    <div className="col-span-1.5 flex items-center">
+                      <span className="text-[10px] font-mono text-neutral-400 font-bold bg-neutral-100 px-2 py-0.5 rounded-xs">1</span>
+                    </div>
+                    
+                    <div className="col-span-4 flex items-center gap-2">
+                      <span className="text-xs font-semibold text-neutral-700">Screening</span>
+                      <span className="text-[8px] font-mono font-bold text-neutral-400 uppercase tracking-tight px-1 py-0.5 bg-neutral-200/50 rounded-xs">Locked</span>
+                    </div>
+
+                    <div className="col-span-2 flex items-center justify-center">
+                      <span className="text-[10px] font-mono text-neutral-300">-</span>
+                    </div>
+
+                    <div className="col-span-2.5 flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setCandidateViewSettings(prev => ({ ...prev, screening: !prev["screening"] }))}
+                        className={`relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          candidateViewSettings["screening"] ? "bg-primary" : "bg-neutral-200"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-neutral-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                            candidateViewSettings["screening"] ? "translate-x-3.5" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="col-span-2 flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setStageNotifications(prev => ({ ...prev, screening: !prev["screening"] }))}
+                        className={`relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          stageNotifications["screening"] ? "bg-primary" : "bg-neutral-200"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-neutral-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                            stageNotifications["screening"] ? "translate-x-3.5" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Custom Stages */}
+                  {customStagesList.map((stage, index) => {
+                    const stageNumber = index + 2;
+                    const stageKey = stage.toLowerCase().replace(/\s+/g, "_");
+                    const isVisible = !!candidateViewSettings[stageKey];
+                    const isNotifEnabled = !!stageNotifications[stageKey];
+
+                    return (
+                      <div key={index} className="grid grid-cols-12 gap-3 px-4 py-3 items-center hover:bg-neutral-50/10 transition-colors">
+                        <div className="col-span-1.5 flex items-center">
+                          <span className="text-[10px] font-mono text-neutral-400 font-bold bg-neutral-100 px-2 py-0.5 rounded-xs">{stageNumber}</span>
+                        </div>
+
+                        <div className="col-span-4 flex items-center pr-2">
+                          <input
+                            type="text"
+                            value={stage}
+                            onChange={(e) => {
+                              const updated = [...customStagesList];
+                              updated[index] = e.target.value;
+                              setCustomStagesList(updated);
+                              
+                              const nextName = e.target.value;
+                              const newKey = nextName.toLowerCase().replace(/\s+/g, "_");
+                              if (newKey !== stageKey) {
+                                setCandidateViewSettings(prev => {
+                                  const nextSettings = { ...prev };
+                                  nextSettings[newKey] = isVisible;
+                                  delete nextSettings[stageKey];
+                                  return nextSettings;
+                                });
+                                setStageNotifications(prev => {
+                                  const nextSettings = { ...prev };
+                                  nextSettings[newKey] = isNotifEnabled;
+                                  delete nextSettings[stageKey];
+                                  return nextSettings;
+                                });
+                              }
+                            }}
+                            className="w-full px-2 py-1 bg-neutral-white border border-neutral-200 rounded-sm text-xs text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                            placeholder="Stage name..."
+                          />
+                        </div>
+
+                        <div className="col-span-2 flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            disabled={index === 0}
+                            onClick={() => {
+                              const updated = [...customStagesList];
+                              const temp = updated[index];
+                              updated[index] = updated[index - 1];
+                              updated[index - 1] = temp;
+                              setCustomStagesList(updated);
+                            }}
+                            className="p-1 hover:bg-neutral-100 rounded-xs disabled:opacity-30 cursor-pointer"
+                            title="Move Up"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5 text-neutral-500" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={index === customStagesList.length - 1}
+                            onClick={() => {
+                              const updated = [...customStagesList];
+                              const temp = updated[index];
+                              updated[index] = updated[index + 1];
+                              updated[index + 1] = temp;
+                              setCustomStagesList(updated);
+                            }}
+                            className="p-1 hover:bg-neutral-100 rounded-xs disabled:opacity-30 cursor-pointer"
+                            title="Move Down"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5 text-neutral-500" />
+                          </button>
+                        </div>
+
+                        <div className="col-span-2.5 flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={() => setCandidateViewSettings(prev => ({ ...prev, [stageKey]: !prev[stageKey] }))}
+                            className={`relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              isVisible ? "bg-primary" : "bg-neutral-200"
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-neutral-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                                isVisible ? "translate-x-3.5" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        <div className="col-span-2 flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setStageNotifications(prev => ({ ...prev, [stageKey]: !prev[stageKey] }))}
+                            className={`relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              isNotifEnabled ? "bg-primary" : "bg-neutral-200"
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-neutral-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                                isNotifEnabled ? "translate-x-3.5" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = customStagesList.filter((_, i) => i !== index);
+                              setCustomStagesList(updated);
+                              
+                              setCandidateViewSettings(prev => {
+                                const nextSettings = { ...prev };
+                                delete nextSettings[stageKey];
+                                return nextSettings;
+                              });
+                              setStageNotifications(prev => {
+                                const nextSettings = { ...prev };
+                                delete nextSettings[stageKey];
+                                return nextSettings;
+                              });
+                            }}
+                            className="p-1 hover:bg-red-50 text-red-500 rounded-xs cursor-pointer ml-auto"
+                            title="Delete Stage"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCustomStagesList([...customStagesList, `Stage ${customStagesList.length + 2}`])}
+                className="w-full py-2 border border-dashed border-neutral-350 hover:border-primary hover:text-primary transition-colors text-[9px] uppercase font-semibold font-mono tracking-wider text-neutral-500 rounded-sm flex items-center justify-center gap-1 cursor-pointer bg-neutral-white"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Custom Stage
+              </button>
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-neutral-150">
+                <button
+                  type="button"
+                  disabled={saveJobStagesMutation.isPending}
+                  onClick={() => {
+                    saveJobStagesMutation.mutate({
+                      custom_stages: customStagesList,
+                      candidate_view_settings: candidateViewSettings,
+                      stage_notifications: stageNotifications
+                    });
+                  }}
+                  className="px-4 py-2 bg-primary hover:bg-primary/95 disabled:opacity-50 text-neutral-white font-semibold font-mono uppercase text-[9px] tracking-wider rounded-sm flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  {saveJobStagesMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  Save Stages & Settings
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column: Live Stepper Preview (4 cols) */}
+            <div className="lg:col-span-4 bg-neutral-50 border border-neutral-200 rounded-sm p-4 space-y-4">
+              <div>
+                <h4 className="font-tight font-bold text-xs text-neutral-850 uppercase tracking-wider">Candidate View Live Preview</h4>
+                <p className="text-[9.5px] text-neutral-450 mt-0.5 leading-relaxed font-mono">
+                  This preview displays exactly how the recruitment stepper will appear on the candidate status tracking page.
+                </p>
+              </div>
+
+              <div className="bg-neutral-white border border-neutral-150 rounded-sm p-4 space-y-4 font-sans">
+                <div className="flex items-center justify-between border-b border-neutral-150 pb-2">
+                  <span className="text-[9px] uppercase tracking-wider font-bold font-mono text-neutral-400">Status Stepper Preview</span>
+                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full text-[8px] font-semibold border border-emerald-100">Dynamic</span>
+                </div>
+
+                {/* Dynamic Stepper */}
+                {Object.values(candidateViewSettings).some(v => v === true) || candidateViewSettings["screening"] ? (
+                  <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[2px] before:bg-neutral-200">
+                    {/* Screening Stage */}
+                    {candidateViewSettings["screening"] && (
+                      <div className="relative flex flex-col gap-0.5">
+                        <div className="absolute -left-6 top-0.5 w-4 h-4 rounded-full bg-primary border-2 border-neutral-white flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5 text-neutral-white" />
+                        </div>
+                        <span className="font-semibold text-neutral-800 text-[11px] leading-tight">Screening</span>
+                        <span className="text-neutral-400 text-[9px] font-mono leading-none font-medium">AI Credential Assessment</span>
+                      </div>
+                    )}
+
+                    {/* Custom Stages */}
+                    {customStagesList.map((stage, idx) => {
+                      const stageKey = stage.toLowerCase().replace(/\s+/g, "_");
+                      const isVisible = !!candidateViewSettings[stageKey];
+                      
+                      if (!isVisible) return null;
+                      
+                      return (
+                        <div key={idx} className="relative flex flex-col gap-0.5">
+                          <div className="absolute -left-6 top-0.5 w-4 h-4 rounded-full bg-neutral-350 border-2 border-neutral-white flex items-center justify-center">
+                            <div className="w-1.5 h-1.5 rounded-full bg-neutral-white" />
+                          </div>
+                          <span className="font-semibold text-neutral-800 text-[11px] leading-tight">{stage}</span>
+                          <span className="text-neutral-400 text-[9px] font-mono leading-none">Candidate Assessment Stage</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 space-y-2">
+                    <EyeOff className="w-7 h-7 text-neutral-300 mx-auto animate-pulse" />
+                    <div className="space-y-1">
+                      <p className="text-neutral-600 text-xs font-semibold">Candidate Tracker Disabled</p>
+                      <p className="text-neutral-400 text-[10px] max-w-[200px] mx-auto leading-relaxed">
+                        Currently, no stages are visible. Candidates will see: <span className="font-semibold text-neutral-600 font-mono">"Application under review"</span>.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="rounded-sm border border-orange-100 bg-orange-50/30 p-3 space-y-1 text-[10px] text-orange-800 leading-relaxed font-sans">
+                <span className="font-semibold block uppercase tracking-wider text-[8px] font-mono text-orange-700">Recruiter Tip</span>
+                Toggling the <span className="font-semibold">Candidate View</span> switch to ON allows candidates to inspect that stage on their live tracking dashboard. Turn it OFF to mask internal stages, evaluations, or test results.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isMatchingScopeOpen && (
         <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-xs flex items-center justify-center z-[9999] animate-fade-in font-sans p-4 select-none">
           <div className="bg-neutral-900 border border-neutral-800 max-w-md w-full p-6 space-y-4 shadow-xl rounded-sm">

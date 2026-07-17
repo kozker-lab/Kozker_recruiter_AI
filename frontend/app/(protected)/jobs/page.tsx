@@ -24,12 +24,15 @@ export default function JobsPage() {
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      if (selectedAppId) {
-        url.searchParams.set("appId", selectedAppId);
-      } else {
-        url.searchParams.delete("appId");
+      const currentAppId = url.searchParams.get("appId") || null;
+      if (currentAppId !== selectedAppId) {
+        if (selectedAppId) {
+          url.searchParams.set("appId", selectedAppId);
+        } else {
+          url.searchParams.delete("appId");
+        }
+        router.replace(url.pathname + url.search, { scroll: false });
       }
-      router.replace(url.pathname + url.search, { scroll: false });
     }
   }, [selectedAppId, router]);
 

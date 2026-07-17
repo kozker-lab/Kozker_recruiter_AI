@@ -207,25 +207,7 @@ function ApplicationStatusContent() {
     setAppIdInput("");
   };
 
-  // Define recruitment workflow stages
-  const stages = [
-    { key: "screening", label: "Screening", desc: "AI Credential Assessment" },
-    { key: "technical", label: "Technical Test", desc: "Coding & Assessment Review" },
-    { key: "hr", label: "HR Interview", desc: "Cultural Fit Discussion" },
-    { key: "final", label: "Final Decision", desc: "Hiring Team Evaluation" }
-  ];
 
-  const getStageIndex = (currentStage: string) => {
-    const stageMap: Record<string, number> = {
-      screening: 0,
-      technical: 1,
-      hr: 2,
-      final: 3,
-      hired: 4,
-      rejected: 4
-    };
-    return stageMap[currentStage] ?? 0;
-  };
 
   if (!isAuthenticated) {
     return (
@@ -403,9 +385,76 @@ function ApplicationStatusContent() {
   const job = appDetails?.job || {};
   const app = appDetails?.application || {};
   const cand = appDetails?.candidate || {};
+
+  // Define recruitment workflow stages
+  const defaultStages = [
+    { key: "screening", label: "Screening", desc: "AI Credential Assessment" },
+    { key: "technical", label: "Technical Test", desc: "Coding & Assessment Review" },
+    { key: "hr", label: "HR Interview", desc: "Cultural Fit Discussion" },
+    { key: "final", label: "Final Decision", desc: "Hiring Team Evaluation" }
+  ];
+
+  const getDynamicStages = () => {
+    const customStages = job?.custom_stages && job.custom_stages.length > 0
+      ? job.custom_stages
+      : ["technical", "hr", "final"];
+      
+    const mapped = [
+      { key: "screening", label: "Screening", desc: "AI Credential Assessment" }
+    ];
+    
+    customStages.forEach((stg: string) => {
+      const key = stg.toLowerCase().replace(/\s+/g, "_");
+      const match = defaultStages.find(d => d.key === key);
+      mapped.push({
+        key,
+        label: stg,
+        desc: match ? match.desc : "Candidate Assessment Stage"
+      });
+    });
+    return mapped;
+  };
+
+  const allDynamicStages = getDynamicStages();
+  const candidateViewSettings = job?.candidate_view_settings || {};
+  const visibleStages = allDynamicStages.filter(s => !!candidateViewSettings[s.key]);
+
+  const getStageIndex = (currentStage: string) => {
+    const stageMap: Record<string, number> = {
+      screening: 0,
+      technical: 1,
+      hr: 2,
+      final: 3,
+      hired: 4,
+      rejected: 4
+    };
+    return stageMap[currentStage ? currentStage.toLowerCase() : "screening"] ?? 0;
+  };
+
   const currentStageIdx = getStageIndex(app.stage);
   const isRejected = app.screening_status === "rejected" || app.stage === "rejected";
   const isHired = app.stage === "hired";
+
+  const getDisplayStage = () => {
+    if (isRejected) return "Declined";
+    if (isHired) return "Offer Accepted";
+    
+    const activeStageKey = allDynamicStages[currentStageIdx]?.key;
+    const isActiveVisible = !!candidateViewSettings[activeStageKey];
+    
+    if (isActiveVisible) {
+      return `Active: ${allDynamicStages[currentStageIdx]?.label}`;
+    }
+    
+    for (let i = currentStageIdx - 1; i >= 0; i--) {
+      if (candidateViewSettings[allDynamicStages[i].key]) {
+        return `Active: ${allDynamicStages[i].label}`;
+      }
+    }
+    
+    return "Under Review";
+  };
+
 
   const pendingQuery = messages.find(m => m.sender === "candidate" && !m.is_resolved);
   const hasPendingQuery = !!pendingQuery;
@@ -532,7 +581,7 @@ function ApplicationStatusContent() {
                       ? "bg-emerald-955/40 border-emerald-900/50 text-emerald-400"
                       : "bg-teal-955/40 border-teal-900/50 text-teal-400"
                   }`}>
-                    {isRejected ? "Declined" : isHired ? "Offer Accepted" : `Active: ${app.stage}`}
+                    {getDisplayStage()}
                   </span>
                 </div>
               </div>
@@ -574,63 +623,79 @@ function ApplicationStatusContent() {
                 </div>
               ) : null}
 
-              {/* Stepper Items */}
-              <div className={`relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[2px] ${
-                isDarkMode ? "before:bg-stone-800" : "before:bg-stone-200"
-              }`}>
-                {stages.map((stage, idx) => {
-                  const isCompleted = idx < currentStageIdx;
-                  const isActive = idx === currentStageIdx && !isRejected && !isHired;
-                  
-                  return (
-                    <div key={stage.key} className="relative flex gap-4 transition-all">
-                      {/* Circle Node */}
-                      <div className={`absolute -left-6 w-4.5 h-4.5 rounded-full flex items-center justify-center border transition-all z-10 ${
-                        isCompleted 
-                          ? (isDarkMode ? "bg-teal-600 border-teal-600 text-stone-950" : "bg-teal-600 border-teal-650 text-white")
-                          : isActive 
-                          ? (isDarkMode ? "bg-stone-955 border-teal-500 text-teal-400 shadow-md shadow-teal-500/20 scale-110" : "bg-white border-teal-650 text-teal-655 shadow-md shadow-teal-550/20 scale-110") 
-                          : (isDarkMode ? "bg-stone-900 border-stone-800 text-stone-605" : "bg-white border-stone-200 text-stone-400")
-                      }`}>
-                        {isCompleted ? (
-                          <Check className="w-2.5 h-2.5 stroke-[3]" />
-                        ) : (
-                          <div className={`w-1.5 h-1.5 rounded-full ${
-                            isActive 
-                              ? (isDarkMode ? "bg-teal-450 animate-pulse" : "bg-teal-555 animate-pulse") 
-                              : (isDarkMode ? "bg-stone-800" : "bg-stone-250")
-                          }`} />
-                        )}
-                      </div>
-
-                      <div className="space-y-0.5">
-                        <h4 className={`text-xs font-bold uppercase tracking-wider transition-colors ${
+              {visibleStages.length > 0 ? (
+                <div className={`relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[2px] ${
+                  isDarkMode ? "before:bg-stone-800" : "before:bg-stone-200"
+                }`}>
+                  {visibleStages.map((stage) => {
+                    const fullIdx = allDynamicStages.findIndex(s => s.key === stage.key);
+                    const isCompleted = fullIdx < currentStageIdx;
+                    const isActive = fullIdx === currentStageIdx && !isRejected && !isHired;
+                    
+                    return (
+                      <div key={stage.key} className="relative flex gap-4 transition-all">
+                        {/* Circle Node */}
+                        <div className={`absolute -left-6 w-4.5 h-4.5 rounded-full flex items-center justify-center border transition-all z-10 ${
                           isCompleted 
-                            ? (isDarkMode ? "text-stone-300" : "text-stone-700") 
+                            ? (isDarkMode ? "bg-teal-600 border-teal-600 text-stone-950" : "bg-teal-600 border-teal-650 text-white")
                             : isActive 
-                            ? (isDarkMode ? "text-teal-400" : "text-teal-650") 
-                            : "text-stone-500"
+                            ? (isDarkMode ? "bg-stone-955 border-teal-500 text-teal-400 shadow-md shadow-teal-500/20 scale-110" : "bg-white border-teal-655 text-teal-655 shadow-md shadow-teal-550/20 scale-110") 
+                            : (isDarkMode ? "bg-stone-900 border-stone-800 text-stone-605" : "bg-white border-stone-200 text-stone-400")
                         }`}>
-                          {stage.label}
-                        </h4>
-                        <p className={`text-[11px] font-medium leading-relaxed ${isDarkMode ? "text-stone-550" : "text-stone-500"}`}>
-                          {stage.desc}
-                        </p>
-                        {isActive && (
-                          <span className={`inline-flex items-center gap-1 text-[9px] font-mono border px-2 py-0.5 rounded-sm mt-1 animate-pulse ${
-                            isDarkMode 
-                              ? "text-teal-455 bg-teal-955/20 border-teal-900/30" 
-                              : "text-teal-700 bg-teal-50 border-teal-200"
+                          {isCompleted ? (
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          ) : (
+                            <div className={`w-1.5 h-1.5 rounded-full ${
+                              isActive 
+                                ? (isDarkMode ? "bg-teal-450 animate-pulse" : "bg-teal-555 animate-pulse") 
+                                : (isDarkMode ? "bg-stone-800" : "bg-stone-250")
+                            }`} />
+                          )}
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <h4 className={`text-xs font-bold uppercase tracking-wider transition-colors ${
+                            isCompleted 
+                              ? (isDarkMode ? "text-stone-300" : "text-stone-700") 
+                              : isActive 
+                              ? (isDarkMode ? "text-teal-400" : "text-teal-655") 
+                              : "text-stone-500"
                           }`}>
-                            <Clock className="w-3 h-3" />
-                            Current Stage Status: {app.stage_status || "in_progress"}
-                          </span>
-                        )}
+                            {stage.label}
+                          </h4>
+                          <p className={`text-[11px] font-medium leading-relaxed ${isDarkMode ? "text-stone-550" : "text-stone-500"}`}>
+                            {stage.desc}
+                          </p>
+                          {isActive && (
+                            <span className={`inline-flex items-center gap-1 text-[9px] font-mono border px-2 py-0.5 rounded-sm mt-1 animate-pulse ${
+                              isDarkMode 
+                                ? "text-teal-455 bg-teal-955/20 border-teal-900/30" 
+                                : "text-teal-700 bg-teal-50 border-teal-205"
+                            }`}>
+                              <Clock className="w-3 h-3" />
+                              Current Stage Status: {app.stage_status || "in_progress"}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12 space-y-4">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${
+                    isDarkMode ? "bg-stone-900 text-stone-500 border border-stone-800" : "bg-stone-100 text-stone-400 border border-stone-200"
+                  }`}>
+                    <ShieldCheck className="w-6 h-6 text-teal-500" />
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-neutral-850">Application Under Review</h4>
+                    <p className={`text-[11px] max-w-sm mx-auto leading-relaxed ${isDarkMode ? "text-stone-500" : "text-stone-550"}`}>
+                      Your application has been received successfully and is currently under review by the recruitment team. We will contact you directly if your background matches our requirements.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 

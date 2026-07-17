@@ -760,12 +760,15 @@ export default function PoolView() {
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      if (expandedCandidateId) {
-        url.searchParams.set("candidateId", expandedCandidateId);
-      } else {
-        url.searchParams.delete("candidateId");
+      const currentCandidateId = url.searchParams.get("candidateId") || null;
+      if (currentCandidateId !== expandedCandidateId) {
+        if (expandedCandidateId) {
+          url.searchParams.set("candidateId", expandedCandidateId);
+        } else {
+          url.searchParams.delete("candidateId");
+        }
+        router.replace(url.pathname + url.search, { scroll: false });
       }
-      router.replace(url.pathname + url.search, { scroll: false });
     }
   }, [expandedCandidateId, router]);
 

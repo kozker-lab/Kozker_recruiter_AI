@@ -560,6 +560,9 @@ class JobOpeningUpdateModel(BaseModel):
     form_fields: Optional[List[Dict[str, Any]]] = None
     form_theme: Optional[str] = None
     form_bg_mode: Optional[str] = None
+    candidate_view_settings: Optional[Dict[str, bool]] = None
+    stage_notifications: Optional[Dict[str, bool]] = None
+
 
 class SkillsApprovalModel(BaseModel):
     skills: List[Dict[str, Any]]
@@ -1921,6 +1924,32 @@ async def patch_job(job_id: str, job_update: JobOpeningUpdateModel, db: Client =
         update_data["error_message"] = job_update.error_message
     if job_update.custom_stages is not None:
         update_data["custom_stages"] = job_update.custom_stages
+        
+        # If view settings/notification settings are not explicitly passed (e.g. from the Rounds page modal)
+        # reconcile the keys in database so the state configuration does not drift or become redundant
+        if job_update.candidate_view_settings is None:
+            current_res = db.table("job_openings").select("custom_stages", "candidate_view_settings", "stage_notifications").eq("id", job_id).execute()
+            if current_res.data:
+                current_job = current_res.data[0]
+                old_stages = current_job.get("custom_stages") or []
+                old_view = current_job.get("candidate_view_settings") or {}
+                old_notif = current_job.get("stage_notifications") or {}
+                
+                new_view = {"screening": old_view.get("screening", False)}
+                new_notif = {"screening": old_notif.get("screening", False)}
+                
+                for idx, next_stage in enumerate(job_update.custom_stages):
+                    new_key = next_stage.lower().replace(" ", "_")
+                    if idx < len(old_stages):
+                        old_key = old_stages[idx].lower().replace(" ", "_")
+                        new_view[new_key] = old_view.get(old_key, False)
+                        new_notif[new_key] = old_notif.get(old_key, False)
+                    else:
+                        new_view[new_key] = False
+                        new_notif[new_key] = False
+                
+                update_data["candidate_view_settings"] = new_view
+                update_data["stage_notifications"] = new_notif
     if job_update.category is not None:
         update_data["category"] = job_update.category
     if job_update.sub_category is not None:
@@ -1939,6 +1968,11 @@ async def patch_job(job_id: str, job_update: JobOpeningUpdateModel, db: Client =
         update_data["form_theme"] = job_update.form_theme
     if job_update.form_bg_mode is not None:
         update_data["form_bg_mode"] = job_update.form_bg_mode
+    if job_update.candidate_view_settings is not None:
+        update_data["candidate_view_settings"] = job_update.candidate_view_settings
+    if job_update.stage_notifications is not None:
+        update_data["stage_notifications"] = job_update.stage_notifications
+
 
     if update_data:
         res = db.table("job_openings").update(update_data).eq("id", job_id).execute()
@@ -2464,7 +2498,10 @@ async def verify_application_status(payload: VerifyStatusModel, db: Client = Dep
                 "id": job_data.get("id"),
                 "title": job_data.get("title"),
                 "department": job_data.get("department") or "Engineering",
-                "client_name": job_data.get("client_name")
+                "client_name": job_data.get("client_name"),
+                "custom_stages": job_data.get("custom_stages"),
+                "candidate_view_settings": job_data.get("candidate_view_settings") or {},
+                "stage_notifications": job_data.get("stage_notifications") or {}
             },
             "messages": messages
         }
@@ -4016,6 +4053,98 @@ async def update_application_stage(app_id: str, request: Request, db: Client = D
         "actor_name": "Recruiter",
         "metadata": {"stage": stage, "status": stage_status}
     }).execute()
+
+    # 4. Check and send candidate notifications if enabled
+    job_id = app_record.get("job_opening_id")
+    candidate_id = app_record.get("candidate_id")
+    if job_id and candidate_id:
+        try:
+            # Fetch job settings
+            job_res = db.table("job_openings").select("title", "client_name", "stage_notifications", "custom_stages").eq("id", job_id).execute()
+            if job_res.data:
+                job_info = job_res.data[0]
+                stage_notifs = job_info.get("stage_notifications") or {}
+                
+                # Check if notification is enabled for this stage
+                if stage_notifs.get(stage) is True:
+                    # Fetch candidate info
+                    cand_res = db.table("candidates").select("full_name", "email", "phone").eq("id", candidate_id).execute()
+                    if cand_res.data:
+                        cand_info = cand_res.data[0]
+                        cand_email = cand_info.get("email")
+                        cand_phone = cand_info.get("phone") or "N/A"
+                        cand_name = cand_info.get("full_name") or "Candidate"
+                        job_title = job_info.get("title") or "Position"
+                        client_name = job_info.get("client_name") or "Kozker"
+                        
+                        # Determine stage label
+                        stage_label = stage.replace("_", " ").title()
+                        if stage == "screening":
+                            stage_label = "Screening"
+                        elif stage == "technical":
+                            stage_label = "Technical Test"
+                        elif stage == "hr":
+                            stage_label = "HR Interview"
+                        elif stage == "final":
+                            stage_label = "Final Decision"
+                        
+                        custom_stages = job_info.get("custom_stages") or []
+                        if stage == "technical" and len(custom_stages) > 0:
+                            stage_label = custom_stages[0]
+                        elif stage == "hr" and len(custom_stages) > 1:
+                            stage_label = custom_stages[1]
+                        elif stage == "final" and len(custom_stages) > 2:
+                            stage_label = custom_stages[2]
+                            
+                        # Send email
+                        subject = f"Application Status Update - {job_title} at {client_name}"
+                        tracking_url = f"http://localhost:3000/apply/status?email={cand_email}&appId={app_id}"
+                        
+                        html_body = f"""
+                        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e5e5; border-radius: 4px;">
+                            <h2 style="color: #0d9488; text-transform: uppercase; font-size: 16px; letter-spacing: 0.05em; border-bottom: 2px solid #0d9488; padding-bottom: 10px;">Kozker Recruitment Portal</h2>
+                            <p style="font-size: 14px; color: #374151; line-height: 1.5;">Dear {cand_name},</p>
+                            <p style="font-size: 14px; color: #374151; line-height: 1.5;">We are writing to update you on the progress of your application for the <strong>{job_title}</strong> role at <strong>{client_name}</strong>.</p>
+                            <p style="font-size: 14px; color: #374151; line-height: 1.5;">Your application has successfully transitioned to the next phase: <span style="background-color: #f0fdfa; color: #0f766e; font-weight: bold; padding: 4px 8px; border-radius: 2px; border: 1px solid #ccfbf1; font-size: 12px; text-transform: uppercase;">{stage_label}</span>.</p>
+                            <p style="font-size: 14px; color: #374151; line-height: 1.5;">To track your application status live and view next steps, please visit your personalized candidate dashboard:</p>
+                            <div style="text-align: center; margin: 25px 0;">
+                                <a href="{tracking_url}" style="background-color: #0d9488; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 13px; text-transform: uppercase; display: inline-block;">View Application Dashboard</a>
+                            </div>
+                            <hr style="border: 0; border-top: 1px solid #e5e5e5; margin: 20px 0;" />
+                            <p style="font-size: 11px; color: #6b7280; line-height: 1.4;">If you did not submit this application, please disregard this email or contact support.</p>
+                        </div>
+                        """
+                        
+                        if cand_email:
+                            send_email(cand_email, subject, html_body, sender_name="Kozker Recruitment")
+                            
+                        # Mock WhatsApp dispatch log
+                        wa_log = f"\n========================================\n[WHATSAPP DISPATCH SIMULATED]\nTo: {cand_phone}\nMessage:\nHi {cand_name}, your application for {job_title} at {client_name} has moved to the {stage_label} stage! Track your status here: {tracking_url}\n========================================\n"
+                        logger.info(wa_log)
+                        
+                        try:
+                            from datetime import datetime
+                            with open("requests.log", "a") as f:
+                                f.write(f"[{datetime.utcnow().isoformat()}] WHATSAPP To: {cand_phone} | Message: {wa_log}\n")
+                        except Exception as le:
+                            logger.error(f"Failed to write WhatsApp log to requests.log: {le}")
+                            
+                        # Insert notification log in activity_log
+                        db.table("activity_log").insert({
+                            "action": "candidate_notified",
+                            "entity_type": "applications",
+                            "entity_id": app_id,
+                            "actor_name": "System",
+                            "metadata": {
+                                "stage": stage,
+                                "email_sent": True,
+                                "whatsapp_sent": True,
+                                "candidate_phone": cand_phone,
+                                "candidate_email": cand_email
+                            }
+                        }).execute()
+        except Exception as e:
+            logger.error(f"Error sending stage update notification: {e}")
     
     return app_record
 
