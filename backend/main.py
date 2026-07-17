@@ -1279,7 +1279,7 @@ def send_whatsapp_notification_sync(phone: str, message: str, candidate_name: st
         return False
 
 def trigger_whatsapp_notification_background(jwt_token: str, candidate_id: str, job_opening_id: str, event_type: str, extra_data: dict = None):
-    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    db = get_admin_supabase_client()
     try:
         # Fetch candidate name and phone
         cand_res = db.table("candidates").select("full_name, phone").eq("id", candidate_id).execute()
@@ -2154,6 +2154,9 @@ def send_email(to_email: str, subject: str, html_body: str, reply_to: Optional[s
             f.write(f"[{datetime.utcnow().isoformat()}] EMAIL To: {to_email} | Subject: {subject} | Reply-To: {reply_to}\n{html_body}\n\n")
     except Exception as le:
         logger.error(f"Failed to write email to requests.log: {le}")
+        
+    if not (smtp_host and smtp_port and smtp_user and smtp_pass):
+        raise ValueError("SMTP configuration variables (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD) are missing or inactive on the server.")
         
     if smtp_host and smtp_port and smtp_user and smtp_pass:
         try:
