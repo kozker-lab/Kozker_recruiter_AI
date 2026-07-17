@@ -1253,7 +1253,7 @@ def send_whatsapp_notification_sync(phone: str, message: str, candidate_name: st
         logger.warning(f"No valid digits found in phone number: '{phone}' for WhatsApp notification.")
         return False
     
-    url = "https://n8n.srv832341.hstgr.cloud/webhook-test/57c713ae-2169-4f8a-999d-f939a52f0a82"
+    url = "https://n8n.srv832341.hstgr.cloud/webhook/57c713ae-2169-4f8a-999d-f939a52f0a82"
     payload = {
         "phone": cleaned_phone,
         "number": cleaned_phone,
