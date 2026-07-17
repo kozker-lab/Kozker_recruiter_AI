@@ -2501,6 +2501,7 @@ async def answer_candidate_query(query_id: str, payload: AnswerQueryModel, db: C
 # 10.1 Application status tracking and messaging endpoints
 @app.post("/api/v1/applications/verify-status")
 async def verify_application_status(payload: VerifyStatusModel, db: Client = Depends(get_supabase)):
+    db = get_admin_supabase_client()
     try:
         # Check if application exists and links to candidate with matching email
         app_res = db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(name)))").eq("id", payload.application_id).execute()
@@ -2559,6 +2560,7 @@ async def verify_application_status(payload: VerifyStatusModel, db: Client = Dep
 
 @app.post("/api/v1/applications/{application_id}/messages")
 async def send_candidate_status_message(application_id: str, payload: CandidateMessageCreateModel, db: Client = Depends(get_supabase)):
+    db = get_admin_supabase_client()
     try:
         # Check if application exists
         app_res = db.table("applications").select("*, candidates(*), job_openings(id, title, requirements(created_by))").eq("id", application_id).execute()
