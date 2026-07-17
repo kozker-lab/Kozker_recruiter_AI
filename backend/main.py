@@ -1246,6 +1246,83 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str, matching
         logger.error(f"Error in handle_match_candidates_dispatch: {e}")
         match_candidates_background(job_id, jwt_token, matching_scope)
 
+def send_whatsapp_notification_sync(phone: str, message: str, candidate_name: str, job_title: str, event_type: str):
+    # Clean phone number (keep only digits)
+    cleaned_phone = re.sub(r"[^\d]", "", phone)
+    if not cleaned_phone:
+        logger.warning(f"No valid digits found in phone number: '{phone}' for WhatsApp notification.")
+        return False
+    
+    url = "https://n8n.srv832341.hstgr.cloud/webhook/57c713ae-2169-4f8a-999d-f939a52f0a82"
+    payload = {
+        "phone": cleaned_phone,
+        "number": cleaned_phone,
+        "message": message,
+        "text": message,
+        "candidate_name": candidate_name,
+        "job_title": job_title,
+        "event_type": event_type
+    }
+    
+    logger.info(f"Sending WhatsApp notification to {cleaned_phone} via n8n webhook")
+    try:
+        with httpx.Client() as client:
+            res = client.post(url, json=payload, timeout=20.0)
+            if res.status_code in (200, 201, 202, 204):
+                logger.info(f"WhatsApp notification sent successfully for {candidate_name} (status: {res.status_code})")
+                return True
+            else:
+                logger.error(f"Failed to send WhatsApp notification. Status: {res.status_code}, Response: {res.text}")
+                return False
+    except Exception as e:
+        logger.error(f"Error sending WhatsApp notification: {e}")
+        return False
+
+def trigger_whatsapp_notification_background(jwt_token: str, candidate_id: str, job_opening_id: str, event_type: str, extra_data: dict = None):
+    db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    try:
+        # Fetch candidate name and phone
+        cand_res = db.table("candidates").select("full_name, phone").eq("id", candidate_id).execute()
+        if not cand_res.data:
+            logger.warning(f"Candidate {candidate_id} not found, skipping WhatsApp notification.")
+            return
+        
+        cand = cand_res.data[0]
+        phone = cand.get("phone")
+        full_name = cand.get("full_name") or "Candidate"
+        
+        if not phone:
+            logger.info(f"Candidate '{full_name}' does not have a phone number, skipping WhatsApp notification.")
+            return
+            
+        # Fetch job title
+        job_title = "Active Job Opening"
+        try:
+            job_res = db.table("job_openings").select("title").eq("id", job_opening_id).execute()
+            if job_res.data:
+                job_title = job_res.data[0].get("title") or "Active Job Opening"
+        except Exception as je:
+            logger.error(f"Failed to fetch job details for WhatsApp notification: {je}")
+            
+        # Construct message content based on event_type
+        if event_type == "application_submitted":
+            message = f"Hello {full_name}, your application for the '{job_title}' role has been successfully submitted! We will review it shortly. Thank you."
+        elif event_type == "application_accepted":
+            message = f"Hello {full_name}, great news! Your application for the '{job_title}' role has been accepted. We will contact you regarding the next steps."
+        elif event_type == "application_rejected":
+            message = f"Hello {full_name}, thank you for your interest in the '{job_title}' role. Unfortunately, we have decided to proceed with other candidates at this time."
+        elif event_type == "stage_updated":
+            stage = (extra_data or {}).get("stage") or "next stage"
+            status = (extra_data or {}).get("status") or ""
+            status_text = f" ({status})" if status else ""
+            message = f"Hello {full_name}, your application status for the '{job_title}' role has been updated to: {stage}{status_text}."
+        else:
+            message = f"Hello {full_name}, there is an update regarding your application for the '{job_title}' role."
+            
+        send_whatsapp_notification_sync(phone, message, full_name, job_title, event_type)
+    except Exception as e:
+        logger.error(f"Error in trigger_whatsapp_notification_background: {e}")
+
 async def handle_generate_questions_dispatch(app_record: dict, cand: dict, job: dict, req: dict, jwt_token: str):
     callback_url = f"{BACKEND_BASE_URL}/api/v1/callbacks/screening-questions"
     payload = {
@@ -3558,6 +3635,13 @@ async def create_candidate(
                     data["application_id"] = app_id
                     data["email_sent"] = email_sent
                     data["email_error"] = email_error
+                    background_tasks.add_task(
+                        trigger_whatsapp_notification_background,
+                        "",
+                        existing_cand["id"],
+                        target_job_id,
+                        "application_submitted"
+                    )
             return data
  
     incoming_parsed = cand.parsed_resume_json or {}
@@ -3602,6 +3686,13 @@ async def create_candidate(
                 data["application_id"] = app_id
                 data["email_sent"] = email_sent
                 data["email_error"] = email_error
+                background_tasks.add_task(
+                    trigger_whatsapp_notification_background,
+                    "",
+                    data["id"],
+                    cand.job_id,
+                    "application_submitted"
+                )
         return data
     return {}
 
@@ -3905,6 +3996,15 @@ async def handle_accept_application_logic(app_id: str, background_tasks: Backgro
                 cand.get("raw_text") or "",
                 jwt_token
             )
+        
+        # Trigger WhatsApp notification for acceptance
+        background_tasks.add_task(
+            trigger_whatsapp_notification_background,
+            jwt_token,
+            app_record["candidate_id"],
+            app_record["job_opening_id"],
+            "application_accepted"
+        )
             
     return app_record
 
@@ -3918,12 +4018,13 @@ async def accept_application_post(app_id: str, background_tasks: BackgroundTasks
 
 
 @app.patch("/api/v1/applications/{app_id}/reject")
-async def reject_application(app_id: str, request: Request, db: Client = Depends(get_supabase)):
+async def reject_application(app_id: str, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
     res = db.table("applications").update({"screening_status": "rejected"}).eq("id", app_id).execute()
     if res.data:
         app_record = res.data[0]
         auth_header = request.headers.get("Authorization", "")
         user_id = get_current_user_id(auth_header)
+        jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
         
         cand_name = "Candidate"
         job_title = "Job opening"
@@ -3946,6 +4047,15 @@ async def reject_application(app_id: str, request: Request, db: Client = Depends
             actor_id=user_id,
             metadata={"candidate_name": cand_name, "job_title": job_title}
         )
+        
+        # Trigger WhatsApp notification for rejection
+        background_tasks.add_task(
+            trigger_whatsapp_notification_background,
+            jwt_token,
+            app_record["candidate_id"],
+            app_record["job_opening_id"],
+            "application_rejected"
+        )
     return res.data[0] if res.data else {}
 
 @app.get("/api/v1/applications/{app_id}/stages")
@@ -3954,7 +4064,7 @@ async def get_application_stages(app_id: str, db: Client = Depends(get_supabase)
     return res.data or []
 
 @app.patch("/api/v1/applications/{app_id}/stage")
-async def update_application_stage(app_id: str, request: Request, db: Client = Depends(get_supabase)):
+async def update_application_stage(app_id: str, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase)):
     data = await request.json()
     stage = data.get("stage")
     stage_status = data.get("stage_status")
@@ -4016,6 +4126,18 @@ async def update_application_stage(app_id: str, request: Request, db: Client = D
         "actor_name": "Recruiter",
         "metadata": {"stage": stage, "status": stage_status}
     }).execute()
+    
+    # Trigger WhatsApp stage update notification
+    auth_header = request.headers.get("Authorization", "")
+    jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
+    background_tasks.add_task(
+        trigger_whatsapp_notification_background,
+        jwt_token,
+        app_record["candidate_id"],
+        app_record["job_opening_id"],
+        "stage_updated",
+        {"stage": stage, "status": stage_status}
+    )
     
     return app_record
 
