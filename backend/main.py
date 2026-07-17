@@ -3621,34 +3621,41 @@ async def create_candidate(
             "is_deleted": False  # Reactivate candidate if it was soft-deleted
         }).eq("id", existing_cand["id"]).execute()
         
-        if res.data:
-            data = res.data[0]
-            data["raw_text"] = merged_raw
-            # Auto-handle application linking and email
-            target_job_id = cand.job_id if cand.job_id else existing_cand.get("job_id")
-            if target_job_id:
-                form_responses = merged_parsed.get("custom_form_responses") or {}
-                app_id, email_sent, email_error = await handle_candidate_application(
-                    candidate_id=existing_cand["id"],
-                    email=cand.email,
-                    full_name=cand.full_name,
-                    job_id=target_job_id,
-                    form_responses=form_responses,
-                    db=get_admin_supabase_client()
+        if not res.data:
+            # Fallback query if update returned empty list (e.g. trigger or client settings)
+            fetch_res = db.table("candidates").select("*").eq("id", existing_cand["id"]).execute()
+            res_data_list = fetch_res.data if fetch_res.data else [existing_cand]
+        else:
+            res_data_list = res.data
+            
+        data = res_data_list[0]
+        data["raw_text"] = merged_raw
+        # Auto-handle application linking and email
+        target_job_id = cand.job_id if cand.job_id else existing_cand.get("job_id")
+        if target_job_id:
+            form_responses = merged_parsed.get("custom_form_responses") or {}
+            app_id, email_sent, email_error = await handle_candidate_application(
+                candidate_id=existing_cand["id"],
+                email=cand.email,
+                full_name=cand.full_name,
+                job_id=target_job_id,
+                form_responses=form_responses,
+                db=get_admin_supabase_client()
+            )
+            await auto_link_candidate_to_job(db, target_job_id, data["id"], data)
+            if app_id:
+                data["application_id"] = app_id
+                data["email_sent"] = email_sent
+                data["email_error"] = email_error
+                background_tasks.add_task(
+                    trigger_whatsapp_notification_background,
+                    "",
+                    existing_cand["id"],
+                    target_job_id,
+                    "application_submitted"
                 )
-                await auto_link_candidate_to_job(db, target_job_id, data["id"], data)
-                if app_id:
-                    data["application_id"] = app_id
-                    data["email_sent"] = email_sent
-                    data["email_error"] = email_error
-                    background_tasks.add_task(
-                        trigger_whatsapp_notification_background,
-                        "",
-                        existing_cand["id"],
-                        target_job_id,
-                        "application_submitted"
-                    )
-            return data
+        return data
+
  
     incoming_parsed = cand.parsed_resume_json or {}
     parsed_resume_payload = {**incoming_parsed}
@@ -3673,8 +3680,15 @@ async def create_candidate(
     }
     res = db.table("candidates").insert(payload).execute()
     
-    if res.data:
-        data = res.data[0]
+    if not res.data:
+        # Fallback query if insert returned empty list (e.g. database deduplication trigger returned NULL)
+        fetch_res = db.table("candidates").select("*").eq("email", cand.email).execute()
+        res_data_list = fetch_res.data if fetch_res.data else []
+    else:
+        res_data_list = res.data
+        
+    if res_data_list:
+        data = res_data_list[0]
         data["raw_text"] = cand.raw_text
         # Auto-handle application linking and email
         if cand.job_id:
