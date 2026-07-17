@@ -1279,10 +1279,12 @@ def send_whatsapp_notification_sync(phone: str, message: str, candidate_name: st
         return False
 
 def trigger_whatsapp_notification_background(jwt_token: str, candidate_id: str, job_opening_id: str, event_type: str, extra_data: dict = None):
+    logger.info(f"--- [WHATSAPP DIAGNOSTIC] trigger_whatsapp_notification_background invoked for candidate {candidate_id}, job {job_opening_id}, event {event_type} ---")
     db = get_admin_supabase_client()
     try:
         # Fetch candidate name and phone
         cand_res = db.table("candidates").select("full_name, phone").eq("id", candidate_id).execute()
+        logger.info(f"[WHATSAPP DIAGNOSTIC] db candidate lookup results: {cand_res.data}")
         if not cand_res.data:
             logger.warning(f"Candidate {candidate_id} not found, skipping WhatsApp notification.")
             return
@@ -3631,7 +3633,7 @@ async def create_candidate(
                     full_name=cand.full_name,
                     job_id=target_job_id,
                     form_responses=form_responses,
-                    db=db
+                    db=get_admin_supabase_client()
                 )
                 await auto_link_candidate_to_job(db, target_job_id, data["id"], data)
                 if app_id:
@@ -3682,7 +3684,7 @@ async def create_candidate(
                 full_name=cand.full_name,
                 job_id=cand.job_id,
                 form_responses=form_responses,
-                db=db
+                db=get_admin_supabase_client()
             )
             await auto_link_candidate_to_job(db, cand.job_id, data["id"], data)
             if app_id:
