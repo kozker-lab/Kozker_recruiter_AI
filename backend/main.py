@@ -3548,6 +3548,7 @@ async def create_candidate(
     db: Client = Depends(get_supabase),
     user_id: Optional[str] = Depends(get_current_user_id)
 ):
+    db = get_admin_supabase_client()
     # Limit source value to allowed constraints: 'csv', 'pdf', 'docx', 'manual'
     db_source = cand.source
     if db_source not in ["csv", "pdf", "docx", "manual"]:
