@@ -27,12 +27,15 @@ export default function RoundsPage() {
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      if (selectedAppId) {
-        url.searchParams.set("appId", selectedAppId);
-      } else {
-        url.searchParams.delete("appId");
+      const currentAppId = url.searchParams.get("appId") || null;
+      if (currentAppId !== selectedAppId) {
+        if (selectedAppId) {
+          url.searchParams.set("appId", selectedAppId);
+        } else {
+          url.searchParams.delete("appId");
+        }
+        router.replace(url.pathname + url.search, { scroll: false });
       }
-      router.replace(url.pathname + url.search, { scroll: false });
     }
   }, [selectedAppId, router]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -63,7 +66,11 @@ export default function RoundsPage() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (parsed.selectedAppId !== undefined) setSelectedAppId(parsed.selectedAppId);
+          if (initialAppId) {
+            // URL parameter takes precedence, do not overwrite selectedAppId from localStorage
+          } else if (parsed.selectedAppId !== undefined) {
+            setSelectedAppId(parsed.selectedAppId);
+          }
           if (parsed.searchQuery !== undefined) setSearchQuery(parsed.searchQuery);
           if (parsed.viewMode !== undefined) setViewMode(parsed.viewMode);
           if (parsed.selectedClient !== undefined) setSelectedClient(parsed.selectedClient);
@@ -79,7 +86,7 @@ export default function RoundsPage() {
         setIsLoaded(true);
       }, 0);
     }
-  }, []);
+  }, [initialAppId]);
 
   React.useEffect(() => {
     if (isLoaded && typeof window !== "undefined") {

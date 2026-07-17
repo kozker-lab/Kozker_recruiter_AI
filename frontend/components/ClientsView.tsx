@@ -131,17 +131,25 @@ export default function ClientsView() {
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      if (selectedClientId) {
-        url.searchParams.set("clientId", selectedClientId);
-      } else {
-        url.searchParams.delete("clientId");
+      const currentClientId = url.searchParams.get("clientId") || null;
+      const currentReqId = url.searchParams.get("reqId") || null;
+      
+      const clientIdChanged = currentClientId !== selectedClientId;
+      const reqIdChanged = currentReqId !== expandedReqId;
+      
+      if (clientIdChanged || reqIdChanged) {
+        if (selectedClientId) {
+          url.searchParams.set("clientId", selectedClientId);
+        } else {
+          url.searchParams.delete("clientId");
+        }
+        if (expandedReqId) {
+          url.searchParams.set("reqId", expandedReqId);
+        } else {
+          url.searchParams.delete("reqId");
+        }
+        router.replace(url.pathname + url.search, { scroll: false });
       }
-      if (expandedReqId) {
-        url.searchParams.set("reqId", expandedReqId);
-      } else {
-        url.searchParams.delete("reqId");
-      }
-      router.replace(url.pathname + url.search, { scroll: false });
     }
   }, [selectedClientId, expandedReqId, router]);
 
@@ -180,8 +188,12 @@ export default function ClientsView() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (parsed.selectedClientId !== undefined) setSelectedClientId(parsed.selectedClientId);
-          if (parsed.expandedReqId !== undefined) setExpandedReqId(parsed.expandedReqId);
+          if (initialClientId || initialReqId) {
+            // URL parameters take precedence, do not overwrite from localStorage
+          } else {
+            if (parsed.selectedClientId !== undefined) setSelectedClientId(parsed.selectedClientId);
+            if (parsed.expandedReqId !== undefined) setExpandedReqId(parsed.expandedReqId);
+          }
           if (parsed.clientSearchQuery !== undefined) setClientSearchQuery(parsed.clientSearchQuery);
           if (parsed.reqSearchQuery !== undefined) setReqSearchQuery(parsed.reqSearchQuery);
           if (parsed.reqStatusFilter !== undefined) setReqStatusFilter(parsed.reqStatusFilter);
@@ -193,7 +205,7 @@ export default function ClientsView() {
         setIsLoaded(true);
       }, 0);
     }
-  }, []);
+  }, [initialClientId, initialReqId]);
 
   React.useEffect(() => {
     if (isLoaded && typeof window !== "undefined") {
