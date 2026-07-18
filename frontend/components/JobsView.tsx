@@ -850,6 +850,17 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     }
   });
 
+  const stopMatchingMutation = useMutation({
+    mutationFn: () => apiRequest<JobOpening>("PATCH", `/jobs/${selectedJobId}`, { processing_status: "ready" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      showCustomAlert("Success", "AI Matching process stopped.");
+    },
+    onError: (err: any) => {
+      showCustomAlert("Error", `Failed to stop matching: ${err.message || err}`);
+    }
+  });
+
   const confirmJobMutation = useMutation({
     mutationFn: () => apiRequest<JobOpening>("POST", `/jobs/${selectedJobId}/confirm`),
     onSuccess: () => {
@@ -2186,10 +2197,20 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                 </button>
               </div>
               {activeJob?.processing_status === "matching" ? (
-                <span className="text-[10px] text-primary font-semibold flex items-center gap-1.5 font-mono animate-pulse">
-                  <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
-                  AI MATCHING IN PROGRESS...
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-primary font-semibold flex items-center gap-1.5 font-mono animate-pulse">
+                    <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
+                    AI MATCHING IN PROGRESS...
+                  </span>
+                  <button
+                    type="button"
+                    disabled={stopMatchingMutation.isPending}
+                    onClick={() => stopMatchingMutation.mutate()}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 border border-red-500/30 hover:border-red-500 bg-red-500/10 hover:bg-red-500/20 text-red-600 rounded-sm text-[9px] uppercase font-mono font-bold tracking-tight cursor-pointer transition-all disabled:opacity-50"
+                  >
+                    Stop Matching
+                  </button>
+                </div>
               ) : (
                 <span className="text-[10px] text-success font-semibold flex items-center gap-1 font-mono">
                   <CheckCircle2 className="w-3.5 h-3.5" />
@@ -2207,6 +2228,14 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                 <RefreshCcw className="w-5 h-5 animate-spin text-primary mb-1" />
                 <span>AI Agent is matching and ranking candidates in the background...</span>
                 <span className="text-[10px] text-neutral-400">Please wait. Results will appear here automatically.</span>
+                <button
+                  type="button"
+                  disabled={stopMatchingMutation.isPending}
+                  onClick={() => stopMatchingMutation.mutate()}
+                  className="mt-2 inline-flex items-center gap-1 px-3 py-1 border border-red-500/30 hover:border-red-500 bg-red-500/10 hover:bg-red-500/20 text-red-600 rounded-sm text-[10px] uppercase font-mono font-bold tracking-wider cursor-pointer transition-all disabled:opacity-50"
+                >
+                  Stop Matching
+                </button>
               </div>
             ) : (
               <div className="text-center py-12 text-xs text-neutral-400">No candidates matched. Go to Skills weights to trigger matching scan.</div>
@@ -3130,7 +3159,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                           </button>
                         </div>
 
-                        <div className="col-span-2 flex items-center justify-center gap-2">
+                        <div className="col-span-2 relative flex items-center justify-center">
                           <button
                             type="button"
                             onClick={() => setStageNotifications(prev => ({ ...prev, [stageKey]: !prev[stageKey] }))}
@@ -3162,7 +3191,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                                 return nextSettings;
                               });
                             }}
-                            className="p-1 hover:bg-red-50 text-red-500 rounded-xs cursor-pointer ml-auto"
+                            className="absolute right-0 p-1 hover:bg-red-50 text-red-500 rounded-xs cursor-pointer"
                             title="Delete Stage"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

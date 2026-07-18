@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "../lib/api";
+import { apiRequest, obfuscateId } from "../lib/api";
 import { Client, Requirement } from "../types";
 import { 
   Building2, Plus, FileText, ChevronRight, CheckCircle2, 
@@ -339,8 +339,10 @@ export default function ClientsView() {
 
   const handleCopyLink = (jobId: string, recruiterId?: string | null) => {
     if (typeof window !== "undefined") {
-      const queryParam = recruiterId ? `?recruiter_id=${recruiterId}` : "";
-      const applyUrl = `${window.location.origin}/apply/${jobId}${queryParam}`;
+      const obfJobId = obfuscateId(jobId);
+      const obfRecruiterId = recruiterId ? obfuscateId(recruiterId) : "";
+      const queryParam = obfRecruiterId ? `?recruiter_id=${obfRecruiterId}` : "";
+      const applyUrl = `${window.location.origin}/apply/${obfJobId}${queryParam}`;
       navigator.clipboard.writeText(applyUrl);
       setCopiedJobId(jobId);
       setTimeout(() => setCopiedJobId(null), 2000);
@@ -1430,9 +1432,11 @@ export default function ClientsView() {
                                     onClick={() => {
                                       const activeClient = clients.find(c => c.id === selectedClientId);
                                       const clientName = activeClient ? activeClient.name : "Our Client";
+                                      const obfJobId = obfuscateId(job.id);
+                                      const obfRecruiterId = r.created_by ? obfuscateId(r.created_by) : "";
                                       const applyUrl = typeof window !== "undefined"
-                                        ? `${window.location.origin}/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}`
-                                        : `/apply/${job.id}${r.created_by ? `?recruiter_id=${r.created_by}` : ""}`;
+                                        ? `${window.location.origin}/apply/${obfJobId}${obfRecruiterId ? `?recruiter_id=${obfRecruiterId}` : ""}`
+                                        : `/apply/${obfJobId}${obfRecruiterId ? `?recruiter_id=${obfRecruiterId}` : ""}`;
                                       const initialContent = generatePostContent(
                                         "professional",
                                         job.title,
@@ -2094,9 +2098,11 @@ export default function ClientsView() {
                   onChange={(e) => {
                     const newTone = e.target.value;
                     setLinkedinTone(newTone);
+                    const obfJobId = obfuscateId(activeLinkedInJob.id);
+                    const obfRecruiterId = activeLinkedInJob.created_by ? obfuscateId(activeLinkedInJob.created_by) : "";
                     const applyUrl = typeof window !== "undefined"
-                      ? `${window.location.origin}/apply/${activeLinkedInJob.id}${activeLinkedInJob.created_by ? `?recruiter_id=${activeLinkedInJob.created_by}` : ""}`
-                      : `/apply/${activeLinkedInJob.id}${activeLinkedInJob.created_by ? `?recruiter_id=${activeLinkedInJob.created_by}` : ""}`;
+                      ? `${window.location.origin}/apply/${obfJobId}${obfRecruiterId ? `?recruiter_id=${obfRecruiterId}` : ""}`
+                      : `/apply/${obfJobId}${obfRecruiterId ? `?recruiter_id=${obfRecruiterId}` : ""}`;
                     const newContent = generatePostContent(
                       newTone,
                       activeLinkedInJob.title,
@@ -2233,9 +2239,11 @@ export default function ClientsView() {
                 <button
                   type="button"
                   onClick={() => {
+                    const obfJobId = obfuscateId(activeLinkedInJob.id);
+                    const obfRecruiterId = activeLinkedInJob.created_by ? obfuscateId(activeLinkedInJob.created_by) : "";
                     const applyUrl = typeof window !== "undefined"
-                      ? `${window.location.origin}/apply/${activeLinkedInJob.id}${activeLinkedInJob.created_by ? `?recruiter_id=${activeLinkedInJob.created_by}` : ""}`
-                      : `/apply/${activeLinkedInJob.id}${activeLinkedInJob.created_by ? `?recruiter_id=${activeLinkedInJob.created_by}` : ""}`;
+                      ? `${window.location.origin}/apply/${obfJobId}${obfRecruiterId ? `?recruiter_id=${obfRecruiterId}` : ""}`
+                      : `/apply/${obfJobId}${obfRecruiterId ? `?recruiter_id=${obfRecruiterId}` : ""}`;
                     window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(applyUrl)}`, "_blank");
                   }}
                   className="px-4 py-1.5 bg-neutral-900 text-neutral-white font-medium hover:bg-neutral-850 rounded-sm cursor-pointer flex items-center gap-1.5 text-xs uppercase tracking-wider transition-colors"

@@ -126,7 +126,7 @@ function ApplicationStatusContent() {
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!emailInput.trim() || !appIdInput.trim()) return;
+    if (!emailInput.trim()) return;
     handleLogin(emailInput.trim(), appIdInput.trim());
   };
 
@@ -134,10 +134,10 @@ function ApplicationStatusContent() {
     setIsVerifying(true);
     setVerifyError(null);
     try {
-      await fetchStatusAndMessages(email, appId, true);
+      const res = await fetchStatusAndMessages(email, appId, true);
       // Persist authenticated state in memory
       setSessionEmail(email);
-      setSessionAppId(appId);
+      setSessionAppId(res?.application?.id || appId);
       setIsAuthenticated(true);
     } catch (err: any) {
       setVerifyError(err.message || "Invalid Email or Application ID. Please try again.");
@@ -155,6 +155,7 @@ function ApplicationStatusContent() {
       });
       setAppDetails(res);
       setMessages(res.messages || []);
+      return res;
     } catch (err) {
       throw err;
     } finally {
@@ -304,13 +305,12 @@ function ApplicationStatusContent() {
               <label className={`text-[10px] font-mono font-bold uppercase tracking-wider block ${
                 isDarkMode ? "text-stone-400" : "text-stone-500"
               }`}>
-                Application ID (from confirmation mail)
+                Application ID (Optional if process completed)
               </label>
               <div className="relative">
                 <Key className="absolute left-3 top-2.5 w-4 h-4 text-stone-500" />
                 <input
                   type="text"
-                  required
                   value={appIdInput}
                   onChange={(e) => setAppIdInput(e.target.value)}
                   placeholder="e.g., abc-123-xyz-456"
@@ -388,33 +388,40 @@ function ApplicationStatusContent() {
 
   // Define recruitment workflow stages dynamically based on custom stages
   const getJobStagesList = () => {
+    const viewSettings = job.candidate_view_settings || {};
     const custom = job.custom_stages || [];
     if (custom.length > 0) {
-      const list = [{ key: "screening", label: "Screening", desc: "AI Credential Assessment" }];
+      const list = [];
+      if (viewSettings.screening !== false) {
+        list.push({ key: "screening", label: "Screening", desc: "AI Credential Assessment" });
+      }
       custom.forEach((stgKey: string) => {
-        const lowerKey = stgKey.toLowerCase();
-        if (lowerKey === "technical") {
-          list.push({ key: stgKey, label: "Technical Test", desc: "Coding & Assessment Review" });
-        } else if (lowerKey === "hr") {
-          list.push({ key: stgKey, label: "HR Interview", desc: "Cultural Fit Discussion" });
-        } else if (lowerKey === "final") {
-          list.push({ key: stgKey, label: "Final Decision", desc: "Hiring Team Evaluation" });
-        } else {
-          list.push({ 
-            key: stgKey, 
-            label: stgKey, 
-            desc: "Custom Evaluation Round" 
-          });
+        const lowerKey = stgKey.toLowerCase().replace(/\s+/g, "_");
+        if (viewSettings[lowerKey] === true) {
+          if (lowerKey === "technical") {
+            list.push({ key: stgKey, label: "Technical Test", desc: "Coding & Assessment Review" });
+          } else if (lowerKey === "hr") {
+            list.push({ key: stgKey, label: "HR Interview", desc: "Cultural Fit Discussion" });
+          } else if (lowerKey === "final") {
+            list.push({ key: stgKey, label: "Final Decision", desc: "Hiring Team Evaluation" });
+          } else {
+            list.push({ 
+              key: stgKey, 
+              label: stgKey, 
+              desc: "Custom Evaluation Round" 
+            });
+          }
         }
       });
       return list;
     }
-    return [
+    const defaultStages = [
       { key: "screening", label: "Screening", desc: "AI Credential Assessment" },
       { key: "technical", label: "Technical Test", desc: "Coding & Assessment Review" },
       { key: "hr", label: "HR Interview", desc: "Cultural Fit Discussion" },
       { key: "final", label: "Final Decision", desc: "Hiring Team Evaluation" }
     ];
+    return defaultStages.filter(s => viewSettings[s.key] === true || (s.key === "screening" && viewSettings.screening !== false));
   };
 
   const stages = getJobStagesList();

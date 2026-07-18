@@ -3,6 +3,8 @@ import io
 import json
 import logging
 import re
+import uuid
+import base64
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, BackgroundTasks, Header, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -180,6 +182,29 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> Optional
             except Exception as e:
                 logger.error(f"Failed to decode JWT: {e}")
     return None
+
+def obfuscate_id(raw_id: str) -> str:
+    if not raw_id:
+        return ""
+    try:
+        u = uuid.UUID(raw_id)
+        encoded = base64.urlsafe_b64encode(u.bytes).decode('utf-8').rstrip('=')
+        return f"rec_{encoded}"
+    except Exception:
+        return raw_id
+
+def deobfuscate_id(obfuscated_id: str) -> str:
+    if not obfuscated_id:
+        return ""
+    clean_id = obfuscated_id
+    if clean_id.startswith("rec_"):
+        clean_id = clean_id[4:]
+    try:
+        padding = '=' * (4 - len(clean_id) % 4)
+        bytes_data = base64.urlsafe_b64decode(clean_id + padding)
+        return str(uuid.UUID(bytes=bytes_data))
+    except Exception:
+        return obfuscated_id
 
 # Startup: Ensure 'avatars' storage bucket exists in Supabase
 @app.on_event("startup")
@@ -711,7 +736,7 @@ class AnswerQueryModel(BaseModel):
 
 class VerifyStatusModel(BaseModel):
     email: str
-    application_id: str
+    application_id: Optional[str] = ""
 
 
 class CandidateMessageCreateModel(BaseModel):
@@ -1912,6 +1937,7 @@ async def get_jobs(db: Client = Depends(get_supabase)):
 
 @app.get("/api/v1/jobs/{job_id}")
 async def get_job(job_id: str, db: Client = Depends(get_supabase)):
+    job_id = deobfuscate_id(job_id)
     res = db.table("job_openings").select("*, requirements(id, title, clients(name))").eq("id", job_id).eq("is_deleted", False).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Job opening not found")
@@ -2236,6 +2262,7 @@ def send_email(to_email: str, subject: str, html_body: str, reply_to: Optional[s
 # 10. Candidate queries endpoints
 @app.post("/api/v1/jobs/{job_id}/queries")
 async def post_candidate_query(job_id: str, payload: CandidateQueryCreateModel, db: Client = Depends(get_supabase)):
+    job_id = deobfuscate_id(job_id)
     import uuid
     from datetime import datetime
     
@@ -2303,6 +2330,7 @@ async def post_candidate_query(job_id: str, payload: CandidateQueryCreateModel, 
 
 @app.get("/api/v1/jobs/{job_id}/queries")
 async def get_candidate_queries(job_id: str, email: Optional[str] = None, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+    job_id = deobfuscate_id(job_id)
     if not email and not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized: Recruiter auth or candidate email filter required")
         
@@ -2330,6 +2358,8 @@ async def get_candidate_queries(job_id: str, email: Optional[str] = None, db: Cl
 
 @app.get("/api/v1/jobs/{job_id}/queries/public")
 async def get_public_resolved_queries(job_id: str, db: Client = Depends(get_supabase)):
+    job_id = deobfuscate_id(job_id)
+    db = get_admin_supabase_client()
     try:
         # Fetch resolved candidate queries for this job (omitting email/ID for privacy)
         res = db.table("candidate_queries").select("query_text, ai_response, created_at").eq("job_id", job_id).eq("is_resolved", True).execute()
@@ -2538,11 +2568,40 @@ async def verify_application_status(payload: VerifyStatusModel, db: Client = Dep
     db = get_admin_supabase_client()
     try:
         # Check if application exists and links to candidate with matching email
-        app_res = db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(name)))").eq("id", payload.application_id).execute()
-        if not app_res.data:
-            raise HTTPException(status_code=404, detail="Application not found with the provided ID")
+        app_data = None
+        if not payload.application_id or not payload.application_id.strip():
+            # Find candidate by email
+            cand_res = db.table("candidates").select("*").eq("email", payload.email.strip()).execute()
+            if not cand_res.data:
+                raise HTTPException(status_code=404, detail="No application found matching this email address.")
+            cand_ids = [c["id"] for c in cand_res.data]
             
-        app_data = app_res.data[0]
+            # Find applications for these candidates
+            app_res = db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(name)))").in_("candidate_id", cand_ids).execute()
+            if not app_res.data:
+                raise HTTPException(status_code=404, detail="No application found matching this email address.")
+                
+            # Filter for applications that have cleared the stages (terminal: stage=hired or stage=rejected or stage_status=failed or screening_status=rejected)
+            cleared_apps = []
+            for app in app_res.data:
+                is_rej = app.get("screening_status") == "rejected" or app.get("stage") == "rejected" or app.get("stage_status") == "failed"
+                is_hir = app.get("stage") == "hired"
+                if is_rej or is_hir:
+                    cleared_apps.append(app)
+            
+            if not cleared_apps:
+                raise HTTPException(status_code=400, detail="Application ID is required for active applications.")
+            
+            # Sort by created_at desc and pick the latest one
+            cleared_apps.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            app_data = cleared_apps[0]
+        else:
+            # Query standard application ID
+            app_res = db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(name)))").eq("id", payload.application_id.strip()).execute()
+            if not app_res.data:
+                raise HTTPException(status_code=404, detail="Application not found with the provided ID")
+            app_data = app_res.data[0]
+            
         cand_data = app_data.get("candidates") or {}
         
         # Verify candidate email matches case-insensitively
@@ -3060,6 +3119,7 @@ def match_candidates_background(job_id: str, jwt_token: str, matching_scope: str
 
 @app.get("/api/v1/jobs/{job_id}/candidates")
 async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase)):
+    job_id = deobfuscate_id(job_id)
     res = db.table("job_candidates").select("*, candidates(*), applications(*)").eq("job_opening_id", job_id).order("created_at", desc=True).execute()
     # Format to match frontend expected JobCandidate layout
     formatted = []
@@ -3549,24 +3609,6 @@ async def auto_link_candidate_to_job(db: Client, job_id: str, cand_id: str, cand
         
         if app_res.data:
             new_app = app_res.data[0]
-            existing_jc_cand = db.table("job_candidates").select("rank_order").eq("job_opening_id", job_id).eq("candidate_id", cand_id).execute()
-            if existing_jc_cand.data:
-                rank = existing_jc_cand.data[0]["rank_order"]
-            else:
-                existing_jc = db.table("job_candidates").select("*").eq("job_opening_id", job_id).execute()
-                rank = len(existing_jc.data) + 1
-                
-            db.table("job_candidates").upsert({
-                "job_opening_id": job_id,
-                "candidate_id": cand_id,
-                "application_id": new_app["id"],
-                "fuzzy_score": matched_score,
-                "rank_order": rank,
-                "strengths": strengths[:3],
-                "skill_gaps": skill_gaps[:3],
-                "parsed_resume": cand_data.get("parsed_resume_json")
-            }, on_conflict="job_opening_id,candidate_id").execute()
-            
             try:
                 db.table("activity_log").insert({
                     "action": "candidate_linked",
@@ -3588,6 +3630,8 @@ async def create_candidate(
     user_id: Optional[str] = Depends(get_current_user_id)
 ):
     db = get_admin_supabase_client()
+    if cand.job_id:
+        cand.job_id = deobfuscate_id(cand.job_id)
     # Limit source value to allowed constraints: 'csv', 'pdf', 'docx', 'manual'
     db_source = cand.source
     if db_source not in ["csv", "pdf", "docx", "manual"]:
@@ -4033,6 +4077,25 @@ async def handle_accept_application_logic(app_id: str, background_tasks: Backgro
             metadata={"candidate_name": cand.get("full_name", ""), "job_title": job.get("title", "")}
         )
         
+        # Upsert candidate to job_candidates ranking list now that they are officially accepted/screened
+        try:
+            existing_jc_cand = db.table("job_candidates").select("rank_order").eq("job_opening_id", app_record["job_opening_id"]).eq("candidate_id", app_record["candidate_id"]).execute()
+            if not existing_jc_cand.data:
+                existing_jc = db.table("job_candidates").select("*").eq("job_opening_id", app_record["job_opening_id"]).execute()
+                rank = len(existing_jc.data) + 1
+                db.table("job_candidates").upsert({
+                    "job_opening_id": app_record["job_opening_id"],
+                    "candidate_id": app_record["candidate_id"],
+                    "application_id": app_record["id"],
+                    "fuzzy_score": app_record.get("fuzzy_score") or 0,
+                    "rank_order": rank,
+                    "strengths": app_record.get("strengths") or [],
+                    "skill_gaps": app_record.get("skill_gaps") or [],
+                    "parsed_resume": cand.get("parsed_resume_json")
+                }, on_conflict="job_opening_id,candidate_id").execute()
+        except Exception as jc_err:
+            logger.error(f"Failed to upsert to job_candidates in handle_accept_application_logic: {jc_err}")
+            
         req_res = db.table("requirements").select("*").eq("id", job.get("requirement_id", "")).execute()
         req = req_res.data[0] if req_res.data else {}
         
@@ -4197,8 +4260,11 @@ async def update_application_stage(app_id: str, background_tasks: BackgroundTask
                 job_info = job_res.data[0]
                 stage_notifs = job_info.get("stage_notifications") or {}
                 
+                # Normalize stage key for dictionary lookup
+                stage_key = stage.lower().replace(" ", "_")
+                
                 # Check if notification is enabled for this stage
-                if stage_notifs.get(stage) is True:
+                if stage_notifs.get(stage_key) is True or stage_notifs.get(stage) is True:
                     # Fetch candidate info
                     cand_res = db.table("candidates").select("full_name", "email", "phone").eq("id", candidate_id).execute()
                     if cand_res.data:
@@ -4230,7 +4296,7 @@ async def update_application_stage(app_id: str, background_tasks: BackgroundTask
                             
                         # Send email
                         subject = f"Application Status Update - {job_title} at {client_name}"
-                        tracking_url = f"http://localhost:3000/apply/status?email={cand_email}&appId={app_id}"
+                        tracking_url = f"{FRONTEND_BASE_URL}/apply/status?email={cand_email}&appId={app_id}"
                         
                         html_body = f"""
                         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e5e5; border-radius: 4px;">
@@ -4275,21 +4341,21 @@ async def update_application_stage(app_id: str, background_tasks: BackgroundTask
                                 "candidate_email": cand_email
                             }
                         }).execute()
+                        
+                        # Trigger REAL WhatsApp stage update notification
+                        auth_header = request.headers.get("Authorization", "")
+                        jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
+                        background_tasks.add_task(
+                            trigger_whatsapp_notification_background,
+                            jwt_token,
+                            candidate_id,
+                            job_id,
+                            "stage_updated",
+                            {"stage": stage, "status": stage_status}
+                        )
         except Exception as e:
             logger.error(f"Error sending stage update notification: {e}")
-    
-    # Trigger WhatsApp stage update notification
-    auth_header = request.headers.get("Authorization", "")
-    jwt_token = auth_header.split(" ")[1] if auth_header.startswith("Bearer ") else ""
-    background_tasks.add_task(
-        trigger_whatsapp_notification_background,
-        jwt_token,
-        app_record["candidate_id"],
-        app_record["job_opening_id"],
-        "stage_updated",
-        {"stage": stage, "status": stage_status}
-    )
-    
+            
     return app_record
 
 # 6. Screening Questions Endpoints

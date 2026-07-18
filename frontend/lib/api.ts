@@ -10,6 +10,50 @@ const isBrowser = typeof window !== "undefined";
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
   || (isBrowser ? `${window.location.origin}/api/v1` : "http://backend:8000/api/v1");
 
+export function obfuscateId(uuidStr: string): string {
+  if (!uuidStr) return "";
+  const clean = uuidStr.replace(/-/g, "").toLowerCase();
+  if (clean.length !== 32) return uuidStr;
+  try {
+    const bytes = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+      bytes[i] = parseInt(clean.substring(i * 2, i * 2 + 2), 16);
+    }
+    let binary = "";
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    const urlSafe = base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return `rec_${urlSafe}`;
+  } catch (e) {
+    return uuidStr;
+  }
+}
+
+export function deobfuscateId(obfuscated: string): string {
+  if (!obfuscated || !obfuscated.startsWith("rec_")) return obfuscated;
+  try {
+    const clean = obfuscated.substring(4);
+    let base64 = clean.replace(/-/g, "+").replace(/_/g, "/");
+    while (base64.length % 4) {
+      base64 += "=";
+    }
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    let hex = "";
+    for (let i = 0; i < bytes.length; i++) {
+      hex += bytes[i].toString(16).padStart(2, "0");
+    }
+    return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}`;
+  } catch (e) {
+    return obfuscated;
+  }
+}
+
 // Persistent memory-store for mock fallback
 // Serves as a local stateful database to make the UI completely interactive
 class MockDatabase {

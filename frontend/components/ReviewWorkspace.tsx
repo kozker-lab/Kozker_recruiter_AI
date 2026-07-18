@@ -749,63 +749,74 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
           {activeTab === "stages" && (
             <div className="space-y-6 text-xs font-sans select-none">
               
-              {/* Advance pipeline stage form */}
-              <form onSubmit={handleAdvanceStageSubmit} className="bg-neutral-50 p-4 border border-neutral-200 rounded-sm space-y-3.5">
-                <span className="text-[10px] uppercase font-bold text-neutral-400 font-mono block">Advance Hiring Stage</span>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-neutral-500 font-semibold block uppercase text-[9px] tracking-wider">Next Step Stage</label>
-                    <select
-                      value={nextStage}
-                      onChange={(e) => setNextStage(e.target.value as any)}
-                      className="w-full px-2.5 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-neutral-800"
-                    >
-                      {getJobStages(job).map((stage) => (
-                        <option key={stage} value={stage}>
-                          {stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                        </option>
-                      ))}
-                      <option value="hired">Confirm Hire</option>
-                      <option value="rejected">Mark Rejected / Fail</option>
-                    </select>
+              {app.screening_status === "pending" ? (
+                <div className="p-4 bg-amber-500/10 border border-amber-500/25 rounded-sm space-y-2 text-center">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 mx-auto" />
+                  <span className="text-[10px] uppercase font-bold text-amber-800 font-mono block">Screening Review Required</span>
+                  <p className="text-amber-700 leading-relaxed text-[11px]">
+                    This candidate has applied via the public form and is currently in the initial <strong className="text-amber-800 font-semibold font-mono">[screening]</strong> phase. 
+                    You must review and explicitly accept their sourcing credentials using the <strong>Accept Sourcing</strong> button at the top right before you can schedule, configure, or advance their interview pipeline stages.
+                  </p>
+                </div>
+              ) : (
+                /* Advance pipeline stage form */
+                <form onSubmit={handleAdvanceStageSubmit} className="bg-neutral-50 p-4 border border-neutral-200 rounded-sm space-y-3.5">
+                  <span className="text-[10px] uppercase font-bold text-neutral-400 font-mono block">Advance Hiring Stage</span>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-neutral-500 font-semibold block uppercase text-[9px] tracking-wider">Next Step Stage</label>
+                      <select
+                        value={nextStage}
+                        onChange={(e) => setNextStage(e.target.value as any)}
+                        className="w-full px-2.5 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-neutral-800"
+                      >
+                        {getJobStages(job).map((stage) => (
+                          <option key={stage} value={stage}>
+                            {stage.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                          </option>
+                        ))}
+                        <option value="hired">Confirm Hire</option>
+                        <option value="rejected">Mark Rejected / Fail</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-neutral-500 font-semibold block uppercase text-[9px] tracking-wider">Stage Outcome</label>
+                      <select
+                        value={stageStatus}
+                        onChange={(e) => setStageStatus(e.target.value as any)}
+                        className="w-full px-2.5 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-neutral-800"
+                      >
+                        <option value="passed">Passed (Advance)</option>
+                        <option value="failed">Failed (Terminate)</option>
+                        <option value="in_progress">In Progress (Scheduling)</option>
+                        <option value="on_hold">On Hold</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-neutral-500 font-semibold block uppercase text-[9px] tracking-wider">Stage Outcome</label>
-                    <select
-                      value={stageStatus}
-                      onChange={(e) => setStageStatus(e.target.value as any)}
-                      className="w-full px-2.5 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-neutral-800"
-                    >
-                      <option value="passed">Passed (Advance)</option>
-                      <option value="failed">Failed (Terminate)</option>
-                      <option value="in_progress">In Progress (Scheduling)</option>
-                      <option value="on_hold">On Hold</option>
-                    </select>
+                    <label className="text-neutral-500 font-semibold block uppercase text-[9px] tracking-wider">Decision Notes & Feedback</label>
+                    <textarea
+                      placeholder="Enter interview details or reasons for failing stage..."
+                      rows={2}
+                      value={stageNotes}
+                      onChange={(e) => setStageNotes(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary"
+                    />
                   </div>
-                </div>
 
-                <div className="space-y-1">
-                  <label className="text-neutral-500 font-semibold block uppercase text-[9px] tracking-wider">Decision Notes & Feedback</label>
-                  <textarea
-                    placeholder="Enter interview details or reasons for failing stage..."
-                    rows={2}
-                    value={stageNotes}
-                    onChange={(e) => setStageNotes(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={updateStageMutation.isPending}
-                  className="w-full py-2 bg-primary hover:bg-primary/95 text-neutral-white font-medium uppercase font-mono text-[9px] tracking-wider cursor-pointer rounded-sm flex items-center justify-center gap-1"
-                >
-                  {updateStageMutation.isPending && <RefreshCw className="w-3 animate-spin" />}
-                  Advance Stage State
-                </button>
-              </form>
+                  <button
+                    type="submit"
+                    disabled={updateStageMutation.isPending}
+                    className="w-full py-2 bg-primary hover:bg-primary/95 text-neutral-white font-medium uppercase font-mono text-[9px] tracking-wider cursor-pointer rounded-sm flex items-center justify-center gap-1"
+                  >
+                    {updateStageMutation.isPending && <RefreshCw className="w-3 animate-spin" />}
+                    Advance Stage State
+                  </button>
+                </form>
+              )}
 
               {/* History Stages timeline */}
               <div className="space-y-3">

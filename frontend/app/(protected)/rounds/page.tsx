@@ -173,6 +173,14 @@ export default function RoundsPage() {
     const currentRoundIdx = roundsOrder.indexOf(app.stage);
     const targetRoundIdx = roundsOrder.indexOf(roundName);
 
+    // Initial screening checks (public candidate submissions start in 'pending' screening_status)
+    if (app.screening_status === "pending") {
+      if (roundName === "screening") {
+        return { label: "Awaiting Review", style: "bg-warning/15 border-warning/25 text-warning font-medium animate-pulse" };
+      }
+      return { label: "Blocked", style: "bg-neutral-100 border-neutral-250 text-neutral-400 opacity-60" };
+    }
+
     // If candidate has a rejected/failed state in their profile
     if (app.screening_status === "rejected" || app.stage === "rejected") {
       if (roundName === "screening") {
@@ -182,6 +190,10 @@ export default function RoundsPage() {
     }
 
     if (app.stage === "hired") {
+      return { label: "Passed", style: "bg-success/15 border-success/25 text-success font-semibold" };
+    }
+
+    if (roundName === "screening" && app.screening_status === "accepted") {
       return { label: "Passed", style: "bg-success/15 border-success/25 text-success font-semibold" };
     }
 

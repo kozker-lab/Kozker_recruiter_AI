@@ -88,6 +88,7 @@ export interface JobOpening {
   form_fields?: any[] | null;
   form_theme?: string | null;
   form_bg_mode?: string | null;
+  custom_stages?: string[];
 }
 
 export interface JobOpeningSkill {
@@ -172,6 +173,9 @@ export interface JobCandidate {
   // Extra fields for ranking view
   candidate_id?: string;
   candidate_name?: string;
+  candidate_email?: string;
+  candidate_phone?: string;
+  candidate_skills?: string;
   experience_years?: number;
   skills?: string[];
   strengths?: string[];
