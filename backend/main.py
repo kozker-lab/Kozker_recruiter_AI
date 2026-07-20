@@ -1260,7 +1260,7 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str, matching
             },
             "approved_skills": approved_skills,
             "matching_scope": matching_scope,
-            "candidates": candidates,
+            "candidate_ids": [c.get("id") for c in candidates if c.get("id")],
             "callback_url": callback_url,
             "authorization": f"Bearer {CALLBACK_SECRET}",
             "auth_header": f"Bearer {CALLBACK_SECRET}"
