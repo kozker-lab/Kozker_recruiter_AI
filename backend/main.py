@@ -1223,6 +1223,9 @@ async def handle_scan_publish_dispatch(job: dict, jwt_token: str):
 async def handle_match_candidates_dispatch(job_id: str, jwt_token: str, matching_scope: str = "both"):
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
     try:
+        # Clear existing job_candidates for this job before starting matching process
+        db.table("job_candidates").delete().eq("job_opening_id", job_id).execute()
+        
         # Fetch job title and tags
         job_res = db.table("job_openings").select("title, category, sub_category").eq("id", job_id).execute()
         job_data = job_res.data[0] if job_res.data else {}

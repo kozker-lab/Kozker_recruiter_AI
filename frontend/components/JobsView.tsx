@@ -685,7 +685,13 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const { data: candidates = [] } = useQuery<Candidate[]>({
     queryKey: ["candidates"],
     queryFn: () => apiRequest<Candidate[]>("GET", "/candidates"),
-    enabled: activeTab === "candidates" && !!selectedJobId
+    enabled: !!selectedJobId
+  });
+
+  const { data: applications = [] } = useQuery<any[]>({
+    queryKey: ["applications"],
+    queryFn: () => apiRequest<any[]>("GET", "/applications"),
+    enabled: !!selectedJobId
   });
 
   const { data: queries = [], isLoading: loadingQueries } = useQuery<CandidateQuery[]>({
@@ -1661,6 +1667,27 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const eligibleCandidates = candidates.filter(
     c => !matchedCandidates.some(jc => jc.candidate_id === c.id)
   );
+
+  const getCandidateCountForScope = (scope: "applied" | "pool" | "both") => {
+    const linkedCandidateIds = new Set(
+      applications
+        .filter((a: any) => a.job_opening_id === selectedJobId)
+        .map((a: any) => a.candidate_id)
+        .filter(Boolean)
+    );
+
+    const appliedCandidatesCount = candidates.filter(
+      (c: any) => c.job_id === selectedJobId || linkedCandidateIds.has(c.id)
+    ).length;
+
+    const poolCandidatesCount = candidates.filter(
+      (c: any) => c.job_id !== selectedJobId && !linkedCandidateIds.has(c.id)
+    ).length;
+
+    if (scope === "applied") return appliedCandidatesCount;
+    if (scope === "pool") return poolCandidatesCount;
+    return appliedCandidatesCount + poolCandidatesCount;
+  };
 
   // 2. Active Job Workspace View
   return (
@@ -3319,7 +3346,13 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                   name="matching_scope"
                   value="both"
                   checked={selectedMatchingScope === "both"}
-                  onChange={() => setSelectedMatchingScope("both")}
+                  onChange={() => {
+                    const count = getCandidateCountForScope("both");
+                    if (count === 0) {
+                      showCustomAlert("No Candidates Available", "There are no candidates available in either the applied applications or the common sourcing pool.");
+                    }
+                    setSelectedMatchingScope("both");
+                  }}
                   className="mt-0.5 accent-primary"
                 />
                 <div className="space-y-0.5">
@@ -3336,7 +3369,13 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                   name="matching_scope"
                   value="applied"
                   checked={selectedMatchingScope === "applied"}
-                  onChange={() => setSelectedMatchingScope("applied")}
+                  onChange={() => {
+                    const count = getCandidateCountForScope("applied");
+                    if (count === 0) {
+                      showCustomAlert("No Candidates Applied", "No candidates have applied for this particular job opening yet.");
+                    }
+                    setSelectedMatchingScope("applied");
+                  }}
                   className="mt-0.5 accent-primary"
                 />
                 <div className="space-y-0.5">
@@ -3353,7 +3392,13 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                   name="matching_scope"
                   value="pool"
                   checked={selectedMatchingScope === "pool"}
-                  onChange={() => setSelectedMatchingScope("pool")}
+                  onChange={() => {
+                    const count = getCandidateCountForScope("pool");
+                    if (count === 0) {
+                      showCustomAlert("No Candidates in Pool", "There are no candidates currently available in the common sourcing pool.");
+                    }
+                    setSelectedMatchingScope("pool");
+                  }}
                   className="mt-0.5 accent-primary"
                 />
                 <div className="space-y-0.5">
@@ -3374,6 +3419,11 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               </button>
               <button
                 onClick={() => {
+                  const count = getCandidateCountForScope(selectedMatchingScope);
+                  if (count === 0) {
+                    showCustomAlert("Cannot Match Candidates", `Cannot trigger matching process because there are no candidates in the selected scope (${selectedMatchingScope === "both" ? "both sourcing pools" : selectedMatchingScope === "applied" ? "applied only" : "common pool only"}).`);
+                    return;
+                  }
                   saveSkillsMutation.mutate({
                     skills: localSkills,
                     matching_scope: selectedMatchingScope
