@@ -218,31 +218,6 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
 
   return (
     <div className="space-y-6 font-sans text-neutral-700 max-w-7xl mx-auto w-full select-none pb-12">
-      {/* 1. AI Processing Status Queue Banner */}
-      {processingJobs.length > 0 && (
-        <div className="bg-neutral-900 border border-primary/30 p-4 rounded-sm flex items-center justify-between shadow-md animate-pulse text-xs">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-sm">
-              <Sparkles className="w-4 h-4 text-primary animate-spin" />
-            </div>
-            <div>
-              <p className="font-tight font-semibold text-neutral-white">AI Automation Pipeline Active</p>
-              <div className="flex gap-4 mt-1 text-neutral-400 font-mono text-[10px]">
-                {processingJobs.map(j => (
-                  <span key={j.id} className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 bg-primary rounded-full animate-ping"></span>
-                    {j.title || "JD Generation"}: <span className="text-primary font-bold uppercase">{j.processing_status.replace("_", " ")}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-neutral-400 font-mono text-[10px]">
-            <RefreshCw className="w-3 h-3 animate-spin text-neutral-600" />
-            <span>SYNCING REALTIME STATES</span>
-          </div>
-        </div>
-      )}
 
       {/* 2. Top Statistics Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
