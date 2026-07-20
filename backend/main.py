@@ -1247,9 +1247,9 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str, matching
         
         # Filter candidates based on matching_scope
         if matching_scope == "applied":
-            candidates = [c for c in all_candidates if c.get("job_id") == job_id or c.get("id") in linked_cand_ids]
+            candidates = [c for c in all_candidates if c.get("job_id") == job_id]
         elif matching_scope == "pool":
-            candidates = [c for c in all_candidates if c.get("job_id") != job_id and c.get("id") not in linked_cand_ids]
+            candidates = [c for c in all_candidates if c.get("job_id") != job_id]
         else: # both
             candidates = all_candidates
         
@@ -2959,9 +2959,9 @@ def match_candidates_background(job_id: str, jwt_token: str, matching_scope: str
         
         # Filter candidates based on matching_scope
         if matching_scope == "applied":
-            candidates = [c for c in all_candidates if c.get("job_id") == job_id or c.get("id") in linked_cand_ids]
+            candidates = [c for c in all_candidates if c.get("job_id") == job_id]
         elif matching_scope == "pool":
-            candidates = [c for c in all_candidates if c.get("job_id") != job_id and c.get("id") not in linked_cand_ids]
+            candidates = [c for c in all_candidates if c.get("job_id") != job_id]
         else: # both
             candidates = all_candidates
         

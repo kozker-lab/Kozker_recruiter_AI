@@ -1669,19 +1669,12 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   );
 
   const getCandidateCountForScope = (scope: "applied" | "pool" | "both") => {
-    const linkedCandidateIds = new Set(
-      applications
-        .filter((a: any) => a.job_opening_id === selectedJobId)
-        .map((a: any) => a.candidate_id)
-        .filter(Boolean)
-    );
-
     const appliedCandidatesCount = candidates.filter(
-      (c: any) => c.job_id === selectedJobId || linkedCandidateIds.has(c.id)
+      (c: any) => c.job_id === selectedJobId
     ).length;
 
     const poolCandidatesCount = candidates.filter(
-      (c: any) => c.job_id !== selectedJobId && !linkedCandidateIds.has(c.id)
+      (c: any) => c.job_id !== selectedJobId
     ).length;
 
     if (scope === "applied") return appliedCandidatesCount;
