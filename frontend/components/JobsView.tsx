@@ -493,6 +493,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [clientFilter, setClientFilter] = useState("all");
+  const [requirementFilter, setRequirementFilter] = useState("all");
+  const [jobOpeningFilter, setJobOpeningFilter] = useState("all");
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -514,6 +516,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
           if (parsed.searchQuery !== undefined) setSearchQuery(parsed.searchQuery);
           if (parsed.statusFilter !== undefined) setStatusFilter(parsed.statusFilter);
           if (parsed.clientFilter !== undefined) setClientFilter(parsed.clientFilter);
+          if (parsed.requirementFilter !== undefined) setRequirementFilter(parsed.requirementFilter);
+          if (parsed.jobOpeningFilter !== undefined) setJobOpeningFilter(parsed.jobOpeningFilter);
         } catch (e) {
           console.error("Error parsing saved jobs view state", e);
         }
@@ -533,7 +537,9 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
         viewMode,
         searchQuery,
         statusFilter,
-        clientFilter
+        clientFilter,
+        requirementFilter,
+        jobOpeningFilter
       };
       localStorage.setItem("jobs_view_state", JSON.stringify(stateToSave));
     }
@@ -545,7 +551,9 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     viewMode,
     searchQuery,
     statusFilter,
-    clientFilter
+    clientFilter,
+    requirementFilter,
+    jobOpeningFilter
   ]);
 
   // State for AI JD Regeneration instruction
@@ -594,8 +602,36 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
         clientsSet.add(j.client_name);
       }
     });
-    return Array.from(clientsSet);
+    return Array.from(clientsSet).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [jobs]);
+
+  // 1b. Extract unique requirement/mandate titles for the filter dropdown (filtered by selected client if any, and sorted A-Z)
+  const uniqueRequirements = React.useMemo(() => {
+    const reqMap = new Map<string, { id: string; title: string }>();
+    jobs.forEach(j => {
+      const matchesClient = clientFilter === "all" || j.client_name === clientFilter;
+      if (matchesClient) {
+        const reqId = j.requirement_id || j.requirement_title || j.id;
+        const reqTitle = j.requirement_title || j.title || "General Postings";
+        if (!reqMap.has(reqId)) {
+          reqMap.set(reqId, { id: reqId, title: reqTitle });
+        }
+      }
+    });
+    return Array.from(reqMap.values()).sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: 'base' }));
+  }, [jobs, clientFilter]);
+
+  // 1c. Extract unique job openings for the filter dropdown (filtered by selected client & requirement if any, and sorted A-Z)
+  const uniqueJobOpenings = React.useMemo(() => {
+    return jobs
+      .filter(j => {
+        const matchesClient = clientFilter === "all" || j.client_name === clientFilter;
+        const reqId = j.requirement_id || j.requirement_title || j.id;
+        const matchesReq = requirementFilter === "all" || reqId === requirementFilter;
+        return matchesClient && matchesReq;
+      })
+      .sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: 'base' }));
+  }, [jobs, clientFilter, requirementFilter]);
 
   // 2. Filter the jobs list based on controls
   const filteredJobs = React.useMemo(() => {
@@ -613,11 +649,26 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       // Client filter
       const clientMatchesFilter = clientFilter === "all" ? true : j.client_name === clientFilter;
 
-      return textMatches && statusMatches && clientMatchesFilter;
-    });
-  }, [jobs, searchQuery, statusFilter, clientFilter]);
+      // Requirement filter
+      const reqId = j.requirement_id || j.requirement_title || j.id;
+      const reqMatchesFilter = requirementFilter === "all" ? true : reqId === requirementFilter;
 
-  // 3. Group jobs hierarchically by Client -> Requirement
+      // Job Opening filter
+      const jobMatchesFilter = jobOpeningFilter === "all" ? true : j.id === jobOpeningFilter;
+
+      return textMatches && statusMatches && clientMatchesFilter && reqMatchesFilter && jobMatchesFilter;
+    });
+  }, [jobs, searchQuery, statusFilter, clientFilter, requirementFilter, jobOpeningFilter]);
+
+  // Active Filter Count calculation
+  const activeFilterCount = 
+    (searchQuery.trim() !== "" ? 1 : 0) +
+    (clientFilter !== "all" ? 1 : 0) +
+    (requirementFilter !== "all" ? 1 : 0) +
+    (jobOpeningFilter !== "all" ? 1 : 0) +
+    (statusFilter !== "all" ? 1 : 0);
+
+  // 3. Group jobs hierarchically by Client -> Requirement (sorted alphabetically A-Z)
   const groupedJobs = React.useMemo(() => {
     const clientsMap: Record<string, {
       client_name: string;
@@ -651,14 +702,30 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
       clientsMap[clientName].requirements[reqId].jobs.push(j);
     });
 
-    // Sort jobs in each requirement group by post_index
-    Object.values(clientsMap).forEach(c => {
-      Object.values(c.requirements).forEach(r => {
-        r.jobs.sort((a, b) => (a.post_index || 0) - (b.post_index || 0));
+    // Sort clients, requirements, and jobs in ascending alphabetical order A-Z
+    const sortedClientsMap: typeof clientsMap = {};
+    const sortedClientNames = Object.keys(clientsMap).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+    sortedClientNames.forEach(clientName => {
+      const cData = clientsMap[clientName];
+      const sortedReqs: typeof cData.requirements = {};
+      const sortedReqIds = Object.keys(cData.requirements).sort((a, b) => 
+        (cData.requirements[a].requirement_title || "").localeCompare(cData.requirements[b].requirement_title || "", undefined, { sensitivity: 'base' })
+      );
+
+      sortedReqIds.forEach(reqId => {
+        const rData = cData.requirements[reqId];
+        rData.jobs.sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: 'base' }));
+        sortedReqs[reqId] = rData;
       });
+
+      sortedClientsMap[clientName] = {
+        client_name: clientName,
+        requirements: sortedReqs
+      };
     });
 
-    return clientsMap;
+    return sortedClientsMap;
   }, [filteredJobs]);
 
   const toggleNode = (nodeKey: string) => {
@@ -1203,50 +1270,122 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
         </div>
 
         {/* Filter Controls Bar */}
-        <div className="bg-neutral-white border border-neutral-200 rounded-sm p-4 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          {/* Search query */}
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-450" />
-            <input
-              type="text"
-              placeholder="Search job title, client, mandate..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 bg-neutral-white placeholder:text-neutral-400 focus:ring-1 focus:ring-primary focus:outline-hidden"
-            />
+        <div className="bg-neutral-white border border-neutral-200 rounded-sm p-3.5 space-y-3 shadow-sm text-xs text-neutral-600 font-sans">
+          {/* Card Header with Section Title & Clear Action */}
+          <div className="flex items-center justify-between border-b border-neutral-150 pb-2">
+            <div className="flex items-center gap-2">
+              <Filter className="w-3.5 h-3.5 text-primary" />
+              <span className="font-tight font-bold text-xs uppercase tracking-wider text-neutral-800">
+                Filter Job Catalog
+              </span>
+              {activeFilterCount > 0 && (
+                <span className="bg-primary/10 border border-primary/20 text-primary rounded-full px-2 py-0.2 text-[9px] font-mono font-bold">
+                  {activeFilterCount} Active
+                </span>
+              )}
+            </div>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  setClientFilter("all");
+                  setRequirementFilter("all");
+                  setJobOpeningFilter("all");
+                  setStatusFilter("all");
+                }}
+                className="px-2 py-0.5 text-primary border border-primary/25 bg-primary/5 hover:bg-primary/10 rounded-sm cursor-pointer text-[9px] font-mono font-semibold uppercase tracking-wider transition-colors"
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
 
-          {/* Client Filter */}
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-neutral-450 uppercase font-mono font-semibold shrink-0">Client:</span>
-            <select
-              value={clientFilter}
-              onChange={(e) => setClientFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
-            >
-              <option value="all">All Clients</option>
-              {uniqueClients.map((client) => (
-                <option key={client} value={client}>
-                  {client}
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3.5">
+            {/* Search query */}
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-450" />
+              <input
+                type="text"
+                placeholder="Search job title, client, mandate..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-neutral-200 rounded-sm text-neutral-800 bg-neutral-white placeholder:text-neutral-400 focus:ring-1 focus:ring-primary focus:outline-hidden"
+              />
+            </div>
 
-          {/* Status Filter */}
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-neutral-450 uppercase font-mono font-semibold shrink-0">Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
-            >
-              <option value="all">All Statuses</option>
-              <option value="draft">Draft</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="published">Published</option>
-              <option value="closed">Closed</option>
-            </select>
+            {/* Client Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-neutral-450 uppercase font-mono font-semibold shrink-0">Client:</span>
+              <select
+                value={clientFilter}
+                onChange={(e) => {
+                  setClientFilter(e.target.value);
+                  setRequirementFilter("all");
+                  setJobOpeningFilter("all");
+                }}
+                className="w-full px-3 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+              >
+                <option value="all">All Clients</option>
+                {uniqueClients.map((client) => (
+                  <option key={client} value={client}>
+                    {client}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Requirement / Mandate Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-neutral-450 uppercase font-mono font-semibold shrink-0">Mandate:</span>
+              <select
+                value={requirementFilter}
+                onChange={(e) => {
+                  setRequirementFilter(e.target.value);
+                  setJobOpeningFilter("all");
+                }}
+                className="w-full px-3 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+              >
+                <option value="all">All Mandates</option>
+                {uniqueRequirements.map((req) => (
+                  <option key={req.id} value={req.id}>
+                    {req.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Job Opening Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-neutral-450 uppercase font-mono font-semibold shrink-0">Job:</span>
+              <select
+                value={jobOpeningFilter}
+                onChange={(e) => setJobOpeningFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+              >
+                <option value="all">All Job Openings</option>
+                {uniqueJobOpenings.map((job) => (
+                  <option key={job.id} value={job.id}>
+                    {job.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-neutral-450 uppercase font-mono font-semibold shrink-0">Status:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-3 py-2 border border-neutral-200 bg-neutral-white rounded-sm text-neutral-800 focus:ring-1 focus:ring-primary focus:outline-hidden"
+              >
+                <option value="all">All Statuses</option>
+                <option value="draft">Draft</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="published">Published</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
           </div>
         </div>
 

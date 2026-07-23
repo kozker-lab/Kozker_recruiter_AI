@@ -671,12 +671,14 @@ export default function ClientsView() {
     }
     
     return true;
-  });
+  }).sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: 'base' }));
 
-  const filteredClients = clients.filter(c => 
-    c.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
-    c.id.toLowerCase().includes(clientSearchQuery.toLowerCase())
-  );
+  const filteredClients = clients
+    .filter(c => 
+      c.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
+      c.id.toLowerCase().includes(clientSearchQuery.toLowerCase())
+    )
+    .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: 'base' }));
 
   const activeClient = clients.find(c => c.id === selectedClientId);
 

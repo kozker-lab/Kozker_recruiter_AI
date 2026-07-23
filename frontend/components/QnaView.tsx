@@ -154,13 +154,13 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
   const pendingCount = conversations.filter(c => !c.is_resolved && !c.is_ended).length;
   const resolvedCount = conversations.filter(c => c.is_resolved || c.is_ended).length;
 
-  // Extract unique client names
+  // Extract unique client names (sorted A-Z)
   const uniqueClients = React.useMemo(() => {
     const clients = new Set<string>();
     conversations.forEach(c => {
       if (c.client_name) clients.add(c.client_name);
     });
-    return Array.from(clients);
+    return Array.from(clients).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [conversations]);
 
   // Filter conversations
@@ -193,7 +193,7 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
     });
   }, [conversations, searchQuery, clientFilter, statusFilter]);
 
-  // Group filtered conversations for Tree / File System view
+  // Group filtered conversations for Tree / File System view (sorted A-Z)
   const groupedConversations = React.useMemo(() => {
     const grouped: Record<string, {
       jobs: Record<string, {
@@ -217,7 +217,24 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
       grouped[c.client_name].jobs[c.job_id].conversations.push(c);
     });
 
-    return grouped;
+    const sortedGrouped: typeof grouped = {};
+    const sortedClientNames = Object.keys(grouped).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+    sortedClientNames.forEach(clientName => {
+      const cData = grouped[clientName];
+      const sortedJobs: typeof cData.jobs = {};
+      const sortedJobIds = Object.keys(cData.jobs).sort((a, b) => 
+        (cData.jobs[a].job_title || "").localeCompare(cData.jobs[b].job_title || "", undefined, { sensitivity: 'base' })
+      );
+
+      sortedJobIds.forEach(jobId => {
+        sortedJobs[jobId] = cData.jobs[jobId];
+      });
+
+      sortedGrouped[clientName] = { jobs: sortedJobs };
+    });
+
+    return sortedGrouped;
   }, [filteredConversations]);
 
   const toggleNode = (key: string) => {
