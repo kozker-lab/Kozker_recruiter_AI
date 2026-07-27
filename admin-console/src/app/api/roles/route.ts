@@ -1,0 +1,114 @@
+import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/db';
+import { verifyJwtToken } from '@/lib/auth';
+
+function getUserFromReq(request: Request) {
+  const authHeader = request.headers.get('authorization') || '';
+  const cookieHeader = request.headers.get('cookie') || '';
+  let token = authHeader.replace('Bearer ', '');
+  if (!token && cookieHeader) {
+    const match = cookieHeader.match(/kozker_sso_token=([^;]+)/);
+    if (match) token = match[1];
+  }
+  return verifyJwtToken(token);
+}
+
+export async function GET(request: Request) {
+  try {
+    const user = getUserFromReq(request);
+    if (!user || !user.organization_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: roles, error } = await supabase
+      .from('roles')
+      .select('*, role_permissions(*)')
+      .eq('organization_id', user.organization_id)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, roles: roles || [] });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Failed to fetch roles' }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const user = getUserFromReq(request);
+    if (!user || !user.organization_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { name, parent_id, level, color_hex, permissions } = await request.json();
+
+    if (!name) {
+      return NextResponse.json({ error: 'Role name is required' }, { status: 400 });
+    }
+
+    // Insert Role
+    const { data: role, error: roleError } = await supabase
+      .from('roles')
+      .insert({
+        organization_id: user.organization_id,
+        parent_id: parent_id || null,
+        name,
+        level: level || 'position',
+        color_hex: color_hex || '#ff6e30'
+      })
+      .select('*')
+      .single();
+
+    if (roleError) {
+      return NextResponse.json({ error: roleError.message }, { status: 500 });
+    }
+
+    // Insert Role Permissions
+    const defaultPerms = {
+      role_id: role.id,
+      administrator: false,
+      audit_logs: false,
+      manage_server: false,
+      access_recruitment: true,
+      recruiter_dashboard: true,
+      recruiter_mandates: true,
+      recruiter_jobs: true,
+      recruiter_sourcing: true,
+      recruiter_reports: true,
+      recruiter_qna: true,
+      recruiter_resumes: true,
+      recruiter_stage_move: true,
+      access_client: false,
+      client_contracts: false,
+      client_mandates: false,
+      client_shortlists: false,
+      access_employee: false,
+      employee_directory: false,
+      employee_org_chart: false,
+      manage_jobs: true,
+      view_resumes: true,
+      edit_status: true,
+      schedule_interviews: true,
+      ...(permissions || {})
+    };
+
+    await supabase.from('role_permissions').insert(defaultPerms);
+
+    // Audit Log
+    await supabase.from('audit_logs').insert({
+      organization_id: user.organization_id,
+      actor_id: user.id,
+      actor_name: user.name,
+      action_description: `Created master role profile '${name}'`,
+      target_name: name,
+      action_type: 'create'
+    });
+
+    return NextResponse.json({ success: true, role });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Failed to create role' }, { status: 500 });
+  }
+}

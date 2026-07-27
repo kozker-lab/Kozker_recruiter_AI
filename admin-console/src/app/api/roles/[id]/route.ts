@@ -1,0 +1,113 @@
+import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/db';
+import { verifyJwtToken } from '@/lib/auth';
+
+function getUserFromReq(request: Request) {
+  const authHeader = request.headers.get('authorization') || '';
+  const cookieHeader = request.headers.get('cookie') || '';
+  let token = authHeader.replace('Bearer ', '');
+  if (!token && cookieHeader) {
+    const match = cookieHeader.match(/kozker_sso_token=([^;]+)/);
+    if (match) token = match[1];
+  }
+  return verifyJwtToken(token);
+}
+
+export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  try {
+    const user = getUserFromReq(request);
+    if (!user || !user.organization_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const roleId = params.id;
+    const { name, parent_id, level, color_hex, permissions } = await request.json();
+
+    // Update Role metadata
+    const { data: role, error } = await supabase
+      .from('roles')
+      .update({
+        ...(name ? { name } : {}),
+        parent_id: parent_id !== undefined ? parent_id : undefined,
+        ...(level ? { level } : {}),
+        ...(color_hex ? { color_hex } : {}),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', roleId)
+      .eq('organization_id', user.organization_id)
+      .select('*')
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Update Role Permissions if provided
+    if (permissions) {
+      const { role_id, ...permUpdates } = permissions;
+      await supabase
+        .from('role_permissions')
+        .upsert({
+          role_id: roleId,
+          ...permUpdates
+        });
+    }
+
+    // Audit Log
+    await supabase.from('audit_logs').insert({
+      organization_id: user.organization_id,
+      actor_id: user.id,
+      actor_name: user.name,
+      action_description: `Updated configuration for role '${role.name}'`,
+      target_name: role.name,
+      action_type: 'update'
+    });
+
+    return NextResponse.json({ success: true, role });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Failed to update role' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  try {
+    const user = getUserFromReq(request);
+    if (!user || !user.organization_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const roleId = params.id;
+
+    // Fetch role name for audit
+    const { data: existingRole } = await supabase
+      .from('roles')
+      .select('name')
+      .eq('id', roleId)
+      .single();
+
+    const { error } = await supabase
+      .from('roles')
+      .delete()
+      .eq('id', roleId)
+      .eq('organization_id', user.organization_id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (existingRole) {
+      await supabase.from('audit_logs').insert({
+        organization_id: user.organization_id,
+        actor_id: user.id,
+        actor_name: user.name,
+        action_description: `Deleted role profile '${existingRole.name}'`,
+        target_name: existingRole.name,
+        action_type: 'danger'
+      });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Failed to delete role' }, { status: 500 });
+  }
+}

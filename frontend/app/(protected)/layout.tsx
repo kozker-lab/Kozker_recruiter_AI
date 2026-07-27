@@ -8,10 +8,11 @@ import ChatbotPanel from "@/components/ChatbotPanel";
 import UserAvatar from "@/components/UserAvatar";
 import { Logo } from "@/components/Logo";
 
+import { isRecruiterSectionVisible } from "@/lib/permissions";
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
   Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
-  X, AlertCircle, Layers, Bell, Clock, Check, Trash2, Sun, Moon, HelpCircle
+  X, AlertCircle, Layers, Bell, Clock, Check, Trash2, Sun, Moon, HelpCircle, ChevronDown, ExternalLink, Terminal
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
@@ -172,6 +173,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   // Keep track of last visited sub-paths for sidebar navigation
   const [lastVisitedUrls, setLastVisitedUrls] = useState<Record<string, string>>({});
+  const [isProjectSwitcherOpen, setIsProjectSwitcherOpen] = useState(false);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1152,10 +1154,42 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             </span>
           </div>
 
-          <div className="active-workspace-panel mx-4 mt-4 p-3 bg-neutral-50 border border-neutral-150 rounded-sm font-mono text-[10px]">
-            <p className="text-neutral-400 font-semibold uppercase tracking-wider">Active Workspace</p>
-            <p className="font-bold text-neutral-800 mt-0.5 truncate">{agencyName}</p>
-            <p className="text-primary font-bold mt-1 text-[9px]">@{subdomain}.kozker.ai</p>
+          <div className="active-workspace-panel mx-4 mt-4 p-3 bg-neutral-50 border border-neutral-150 rounded-sm font-mono text-[10px] relative">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-neutral-400 font-semibold uppercase tracking-wider">Active Workspace</p>
+                <p className="font-bold text-neutral-800 mt-0.5 truncate">{agencyName}</p>
+                <p className="text-primary font-bold mt-0.5 text-[9px]">@{subdomain}.kozker.ai</p>
+              </div>
+              <button
+                onClick={() => setIsProjectSwitcherOpen(!isProjectSwitcherOpen)}
+                className="p-1.5 hover:bg-neutral-200/60 rounded text-neutral-500 cursor-pointer"
+                title="Switch Application Portal"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {isProjectSwitcherOpen && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-neutral-white border border-neutral-200 rounded-sm shadow-lg z-50 py-1 text-xs font-sans divide-y divide-neutral-150">
+                <a href="https://admin.kozker.ai/dashboard" className="p-2 hover:bg-neutral-50 cursor-pointer flex items-center justify-between text-neutral-800 font-medium">
+                  <span>Kozker Admin Console</span>
+                  <ExternalLink className="w-3 h-3 text-neutral-400" />
+                </a>
+                <div className="p-2 bg-neutral-100 cursor-default flex items-center justify-between text-primary font-bold">
+                  <span>Kozker Recruiter AI App</span>
+                  <Check className="w-3 h-3 text-primary" />
+                </div>
+                <a href="https://client.kozker.ai/portal" className="p-2 hover:bg-neutral-50 cursor-pointer flex items-center justify-between text-neutral-800 font-medium">
+                  <span>Client Portal Space</span>
+                  <ExternalLink className="w-3 h-3 text-neutral-400" />
+                </a>
+                <a href="https://admin.kozker.ai/dev" className="p-2 hover:bg-neutral-50 cursor-pointer flex items-center justify-between text-neutral-600 font-mono text-[10px]">
+                  <span>Developer Access (/dev)</span>
+                  <Terminal className="w-3 h-3 text-neutral-400" />
+                </a>
+              </div>
+            )}
           </div>
 
           <nav className="mt-6 px-3 space-y-1 text-xs">

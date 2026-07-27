@@ -27,3 +27,14 @@ services:
     restart: always
     depends_on:
       - backend
+
+  admin-console:
+    build:
+      context: ./admin-console
+      dockerfile: Dockerfile
+    container_name: kozker_admin_console
+    expose:
+      - "3000"
+    env_file:
+      - .env
+    restart: always
