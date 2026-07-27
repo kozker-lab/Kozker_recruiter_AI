@@ -46,9 +46,46 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Attach role tags if provided
-    if (Array.isArray(role_ids) && role_ids.length > 0) {
-      const roleInserts = role_ids.map((rid: string) => ({
+    // Determine roles to assign: if provided, use role_ids; otherwise find/assign default org role
+    let assignedRoleIds: string[] = Array.isArray(role_ids) && role_ids.length > 0 ? role_ids : [];
+
+    if (assignedRoleIds.length === 0) {
+      // Find default org role or create 'Organization Director'
+      const { data: existingRoles } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('organization_id', organization_id)
+        .order('created_at', { ascending: true });
+
+      if (existingRoles && existingRoles.length > 0) {
+        assignedRoleIds = [existingRoles[0].id];
+      } else {
+        const { data: newRole } = await supabase
+          .from('roles')
+          .insert({
+            organization_id,
+            name: 'Organization Director',
+            level: 'org',
+            color_hex: '#ff6e30'
+          })
+          .select('id')
+          .single();
+
+        if (newRole) {
+          assignedRoleIds = [newRole.id];
+          await supabase.from('role_permissions').insert({
+            role_id: newRole.id,
+            administrator: true,
+            audit_logs: true,
+            manage_server: true,
+            access_recruitment: true
+          });
+        }
+      }
+    }
+
+    if (assignedRoleIds.length > 0) {
+      const roleInserts = assignedRoleIds.map((rid: string) => ({
         member_id: member.id,
         role_id: rid
       }));

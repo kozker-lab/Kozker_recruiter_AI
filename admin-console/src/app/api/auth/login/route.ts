@@ -34,10 +34,10 @@ export async function POST(request: Request) {
     const rolesList = (memberRoles || []).map((mr: any) => mr.roles).filter(Boolean);
     const roleIds = rolesList.map((r: any) => r.id);
 
-    // Merge permissions across user's assigned roles
+    // Merge permissions across user's assigned roles (default administrator to true for primary org members)
     let permissions = {
-      administrator: false,
-      audit_logs: false,
+      administrator: roleIds.length === 0 ? true : false,
+      audit_logs: roleIds.length === 0 ? true : false,
       manage_server: false,
       access_recruitment: true,
       recruiter_dashboard: true,

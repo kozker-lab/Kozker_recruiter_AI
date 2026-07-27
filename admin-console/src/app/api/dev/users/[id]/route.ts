@@ -44,16 +44,66 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     // 3. Update User Role Permissions (Admin Portal Access Toggle)
-    const roleIds = (member.member_roles || []).map((mr: any) => mr.role_id);
+    let roleIds = (member.member_roles || []).map((mr: any) => mr.role_id);
+
+    // If user currently has no role assigned, find or create default org role and assign
+    if (roleIds.length === 0 && member.organization_id) {
+      const { data: existingRoles } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('organization_id', member.organization_id)
+        .order('created_at', { ascending: true });
+
+      if (existingRoles && existingRoles.length > 0) {
+        roleIds = [existingRoles[0].id];
+      } else {
+        const { data: newRole } = await supabase
+          .from('roles')
+          .insert({
+            organization_id: member.organization_id,
+            name: 'Organization Director',
+            level: 'org',
+            color_hex: '#ff6e30'
+          })
+          .select('id')
+          .single();
+
+        if (newRole) {
+          roleIds = [newRole.id];
+          await supabase.from('role_permissions').insert({
+            role_id: newRole.id,
+            administrator: administrator !== undefined ? administrator : true,
+            access_recruitment: access_recruitment !== undefined ? access_recruitment : true
+          });
+        }
+      }
+
+      if (roleIds.length > 0) {
+        await supabase.from('member_roles').insert({
+          member_id: member.id,
+          role_id: roleIds[0]
+        });
+      }
+    }
+
     if (roleIds.length > 0 && (administrator !== undefined || access_recruitment !== undefined)) {
       for (const rid of roleIds) {
-        await supabase
-          .from('role_permissions')
-          .update({
-            ...(administrator !== undefined ? { administrator } : {}),
-            ...(access_recruitment !== undefined ? { access_recruitment } : {})
-          })
-          .eq('role_id', rid);
+        const { data: perm } = await supabase.from('role_permissions').select('*').eq('role_id', rid).single();
+        if (perm) {
+          await supabase
+            .from('role_permissions')
+            .update({
+              ...(administrator !== undefined ? { administrator } : {}),
+              ...(access_recruitment !== undefined ? { access_recruitment } : {})
+            })
+            .eq('role_id', rid);
+        } else {
+          await supabase.from('role_permissions').insert({
+            role_id: rid,
+            administrator: administrator !== undefined ? administrator : true,
+            access_recruitment: access_recruitment !== undefined ? access_recruitment : true
+          });
+        }
       }
     }
 
