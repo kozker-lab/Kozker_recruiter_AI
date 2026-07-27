@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Terminal, Building2, UserPlus, Users, Key, AlertCircle, CheckCircle2, Lock, Sliders, X, Settings, ShieldAlert, Check } from 'lucide-react';
+import { ShieldCheck, Terminal, Building2, UserPlus, Users, Key, AlertCircle, CheckCircle2, Lock, Sliders, X, RefreshCw, Send, Radio } from 'lucide-react';
 
 export default function DevProvisioningPage() {
   const [devKey, setDevKey] = useState('');
@@ -25,6 +25,14 @@ export default function DevProvisioningPage() {
   const [userEmail, setUserEmail] = useState('');
   const [userPassword, setUserPassword] = useState('');
   const [userMsg, setUserMsg] = useState({ error: '', success: '' });
+
+  // Rolling Updates Broadcast Form state
+  const [versionTag, setVersionTag] = useState('v3.2.0');
+  const [updateTitle, setUpdateTitle] = useState('');
+  const [updateDescription, setUpdateDescription] = useState('');
+  const [updateCategory, setUpdateCategory] = useState('Feature Release');
+  const [updatePriority, setUpdatePriority] = useState('Normal');
+  const [updateMsg, setUpdateMsg] = useState({ error: '', success: '' });
 
   // Governance Modal state
   const [selectedUser, setSelectedUser] = useState<any>(null);
@@ -147,6 +155,39 @@ export default function DevProvisioningPage() {
     }
   };
 
+  const handleBroadcastUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUpdateMsg({ error: '', success: '' });
+
+    try {
+      const res = await fetch('/api/dev/updates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${devToken}`
+        },
+        body: JSON.stringify({
+          version_tag: versionTag,
+          title: updateTitle,
+          description: updateDescription,
+          category: updateCategory,
+          priority: updatePriority
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setUpdateMsg({ error: data.error || 'Failed to broadcast update', success: '' });
+      } else {
+        setUpdateMsg({ error: '', success: `Platform update '${updateTitle}' (${versionTag}) broadcasted successfully!` });
+        setUpdateTitle('');
+        setUpdateDescription('');
+      }
+    } catch (err: any) {
+      setUpdateMsg({ error: err.message || 'Error broadcasting update', success: '' });
+    }
+  };
+
   const handleOpenUserModal = (u: any) => {
     setSelectedUser(u);
     setSaveGovMsg({ error: '', success: '' });
@@ -222,7 +263,7 @@ export default function DevProvisioningPage() {
             K
           </div>
           <div>
-            <h1 className="text-xl font-bold font-tight text-stone-900 flex items-center gap-2">
+            <h1 className="text-xl font-bold text-stone-900 flex items-center gap-2">
               <Terminal className="w-5 h-5 text-brand" />
               Developer Provisioning & Governance Portal
             </h1>
@@ -247,7 +288,7 @@ export default function DevProvisioningPage() {
               <div className="w-12 h-12 bg-brand/10 text-brand rounded-full flex items-center justify-center mx-auto">
                 <Key className="w-6 h-6" />
               </div>
-              <h2 className="text-lg font-bold text-stone-900 font-tight">Method 1 Developer Verification</h2>
+              <h2 className="text-lg font-bold text-stone-900">Method 1 Developer Verification</h2>
               <p className="text-xs text-stone-500 leading-relaxed">
                 Public user signup is disabled. Enter your 64+ character cryptographic <code className="font-mono bg-stone-100 px-1 py-0.5 rounded text-stone-700">DEV_ADMIN_KEY</code> to access provisioning controls.
               </p>
@@ -290,12 +331,12 @@ export default function DevProvisioningPage() {
         ) : (
           /* Authenticated Provisioning Workspace */
           <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Form 1: Create Organization */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Card 1: Create Organization */}
               <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 text-stone-900 font-bold text-sm border-b border-stone-150 pb-3">
+                <div className="flex items-center gap-2 text-stone-900 font-bold text-sm border-b border-stone-200 pb-3">
                   <Building2 className="w-4 h-4 text-brand" />
-                  <span>1. Establish Tenant Organization</span>
+                  <span>1. Establish Organization</span>
                 </div>
 
                 {orgMsg.error && (
@@ -311,14 +352,14 @@ export default function DevProvisioningPage() {
                   </div>
                 )}
 
-                <form onSubmit={handleCreateOrg} className="space-y-4 text-xs">
+                <form onSubmit={handleCreateOrg} className="space-y-3 text-xs">
                   <div>
                     <label className="block font-semibold text-stone-700 mb-1">Organization Name</label>
                     <input
                       type="text"
                       value={orgName}
                       onChange={(e) => setOrgName(e.target.value)}
-                      placeholder="e.g. Kozker Global Executive Search"
+                      placeholder="e.g. Kozker Global"
                       required
                       className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
                     />
@@ -331,38 +372,37 @@ export default function DevProvisioningPage() {
                       onChange={(e) => setOperatingMode(e.target.value)}
                       className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
                     >
-                      <option value="agency">Recruitment Agency Mode (Multi-Client & Branch Mandates)</option>
-                      <option value="internal">Internal Corporate Organization Mode (Single Enterprise)</option>
+                      <option value="agency">Recruitment Agency Mode</option>
+                      <option value="internal">Internal Corporate Mode</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-stone-700 mb-1">Default Landing Portal</label>
+                    <label className="block font-semibold text-stone-700 mb-1">Default Portal</label>
                     <select
                       value={defaultPortal}
                       onChange={(e) => setDefaultPortal(e.target.value)}
                       className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
                     >
-                      <option value="admin">Admin Governance Console (https://admin.kozker.ai)</option>
-                      <option value="recruiter">Recruiter AI Application (https://app.kozker.ai)</option>
-                      <option value="client">Client Portal Space (https://client.kozker.ai)</option>
+                      <option value="admin">Admin Console</option>
+                      <option value="recruiter">Recruiter AI App</option>
                     </select>
                   </div>
 
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-stone-900 hover:bg-black text-white font-mono text-xs uppercase font-bold tracking-wider rounded transition-colors cursor-pointer w-full"
+                    className="px-4 py-2 bg-stone-900 hover:bg-black text-white font-mono text-xs uppercase font-bold tracking-wider rounded transition-colors cursor-pointer w-full mt-2"
                   >
-                    Create Tenant Workspace
+                    Create Workspace
                   </button>
                 </form>
               </div>
 
-              {/* Form 2: Provision User Credentials */}
+              {/* Card 2: Provision User Credentials */}
               <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 text-stone-900 font-bold text-sm border-b border-stone-150 pb-3">
+                <div className="flex items-center gap-2 text-stone-900 font-bold text-sm border-b border-stone-200 pb-3">
                   <UserPlus className="w-4 h-4 text-brand" />
-                  <span>2. Provision User Credentials</span>
+                  <span>2. Provision Account</span>
                 </div>
 
                 {userMsg.error && (
@@ -378,9 +418,9 @@ export default function DevProvisioningPage() {
                   </div>
                 )}
 
-                <form onSubmit={handleCreateUser} className="space-y-4 text-xs">
+                <form onSubmit={handleCreateUser} className="space-y-3 text-xs">
                   <div>
-                    <label className="block font-semibold text-stone-700 mb-1">Target Tenant Organization</label>
+                    <label className="block font-semibold text-stone-700 mb-1">Target Organization</label>
                     <select
                       value={targetOrgId}
                       onChange={(e) => setTargetOrgId(e.target.value)}
@@ -388,17 +428,17 @@ export default function DevProvisioningPage() {
                       className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
                     >
                       {organizations.length === 0 ? (
-                        <option value="">No organizations available. Create one first.</option>
+                        <option value="">No orgs available</option>
                       ) : (
                         organizations.map(org => (
-                          <option key={org.id} value={org.id}>{org.name} ({org.operating_mode})</option>
+                          <option key={org.id} value={org.id}>{org.name}</option>
                         ))
                       )}
                     </select>
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-stone-700 mb-1">User Full Name</label>
+                    <label className="block font-semibold text-stone-700 mb-1">Full Name</label>
                     <input
                       type="text"
                       value={userName}
@@ -410,7 +450,7 @@ export default function DevProvisioningPage() {
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-stone-700 mb-1">Work Email Address</label>
+                    <label className="block font-semibold text-stone-700 mb-1">Email</label>
                     <input
                       type="email"
                       value={userEmail}
@@ -438,7 +478,88 @@ export default function DevProvisioningPage() {
                     disabled={!targetOrgId}
                     className="px-4 py-2 bg-brand hover:bg-brand-hover text-white font-mono text-xs uppercase font-bold tracking-wider rounded transition-colors cursor-pointer w-full disabled:opacity-50"
                   >
-                    Provision Account Access
+                    Provision Account
+                  </button>
+                </form>
+              </div>
+
+              {/* Card 3: Broadcast Platform Rolling Update */}
+              <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 text-stone-900 font-bold text-sm border-b border-stone-200 pb-3">
+                  <Radio className="w-4 h-4 text-brand" />
+                  <span>3. Broadcast Rolling Update</span>
+                </div>
+
+                {updateMsg.error && (
+                  <div className="p-2.5 bg-red-50 text-red-700 text-xs rounded border border-red-200 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{updateMsg.error}</span>
+                  </div>
+                )}
+                {updateMsg.success && (
+                  <div className="p-2.5 bg-emerald-50 text-emerald-700 text-xs rounded border border-emerald-200 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>{updateMsg.success}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleBroadcastUpdate} className="space-y-3 text-xs">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-semibold text-stone-700 mb-1">Version Tag</label>
+                      <input
+                        type="text"
+                        value={versionTag}
+                        onChange={(e) => setVersionTag(e.target.value)}
+                        placeholder="v3.2.0"
+                        required
+                        className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs font-mono focus:outline-none focus:border-brand"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-stone-700 mb-1">Priority</label>
+                      <select
+                        value={updatePriority}
+                        onChange={(e) => setUpdatePriority(e.target.value)}
+                        className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                      >
+                        <option value="Normal">Normal</option>
+                        <option value="High">High</option>
+                        <option value="Critical">Critical</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">Release Title</label>
+                    <input
+                      type="text"
+                      value={updateTitle}
+                      onChange={(e) => setUpdateTitle(e.target.value)}
+                      placeholder="e.g. Master Role Quota & SSO Update"
+                      required
+                      className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">Release Notes</label>
+                    <textarea
+                      value={updateDescription}
+                      onChange={(e) => setUpdateDescription(e.target.value)}
+                      placeholder="Detailed update notes for admin consoles..."
+                      required
+                      rows={3}
+                      className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand resize-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-stone-800 hover:bg-black text-white font-mono text-xs uppercase font-bold tracking-wider rounded transition-colors cursor-pointer w-full flex items-center justify-center gap-1.5"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Broadcast Release</span>
                   </button>
                 </form>
               </div>
@@ -446,7 +567,7 @@ export default function DevProvisioningPage() {
 
             {/* Provisioned Accounts Directory */}
             <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-stone-150 pb-3">
+              <div className="flex items-center justify-between border-b border-stone-200 pb-3">
                 <div className="flex items-center gap-2 text-stone-900 font-bold text-sm">
                   <Users className="w-4 h-4 text-brand" />
                   <span>Provisioned Accounts Directory ({users.length})</span>
@@ -468,7 +589,7 @@ export default function DevProvisioningPage() {
                       <th className="p-3 text-right">Account Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-stone-150">
+                  <tbody className="divide-y divide-stone-200">
                     {users.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="p-6 text-center text-stone-400 italic">
@@ -505,12 +626,10 @@ export default function DevProvisioningPage() {
                             <td className="p-3">
                               {isAdmin ? (
                                 <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
-                                  <Check className="w-3 h-3 text-emerald-600" />
                                   Granted
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase px-2 py-0.5 rounded bg-red-50 text-red-700 font-bold border border-red-200">
-                                  <X className="w-3 h-3 text-red-600" />
                                   Restricted
                                 </span>
                               )}
@@ -539,15 +658,15 @@ export default function DevProvisioningPage() {
 
       {/* Developer Governance & Quota Modal */}
       {selectedUser && (
-        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
           <div className="bg-white border border-stone-200 max-w-lg w-full p-6 rounded-xl shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-stone-150 pb-3">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-lg bg-brand/10 text-brand flex items-center justify-center font-bold">
                   <Sliders className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-stone-900 text-sm font-tight">Developer Governance & Quotas</h3>
+                  <h3 className="font-bold text-stone-900 text-sm">Developer Governance & Quotas</h3>
                   <p className="text-[11px] text-stone-500 font-mono">{selectedUser.name} ({selectedUser.email})</p>
                 </div>
               </div>
@@ -570,7 +689,6 @@ export default function DevProvisioningPage() {
             )}
 
             <form onSubmit={handleSaveGovernance} className="space-y-4 text-xs">
-              {/* Section 1: Admin Console Access Permission */}
               <div className="space-y-2 p-3 bg-stone-50 border border-stone-200 rounded-lg">
                 <div className="font-mono text-[10px] font-bold uppercase text-stone-500 tracking-wider">
                   1. Admin Console Portal Access
@@ -584,12 +702,8 @@ export default function DevProvisioningPage() {
                     className="accent-brand w-4 h-4 cursor-pointer"
                   />
                 </label>
-                <p className="text-[11px] text-stone-500">
-                  If disabled, this account cannot access the Admin Console dashboard or governance engine.
-                </p>
               </div>
 
-              {/* Section 2: Tenant Quota Limits */}
               <div className="space-y-3 p-3 bg-stone-50 border border-stone-200 rounded-lg">
                 <div className="font-mono text-[10px] font-bold uppercase text-stone-500 tracking-wider">
                   2. Tenant Quotas & Resource Limits
@@ -626,7 +740,6 @@ export default function DevProvisioningPage() {
                 </div>
               </div>
 
-              {/* Section 3: Feature Flag Rights */}
               <div className="space-y-2 p-3 bg-stone-50 border border-stone-200 rounded-lg">
                 <div className="font-mono text-[10px] font-bold uppercase text-stone-500 tracking-wider">
                   3. Admin Feature Flag Rights
@@ -653,7 +766,6 @@ export default function DevProvisioningPage() {
                 </div>
               </div>
 
-              {/* Section 4: Account Status */}
               <div>
                 <label className="block font-semibold text-stone-700 mb-1">Account Status</label>
                 <select
@@ -666,7 +778,7 @@ export default function DevProvisioningPage() {
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-150">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
                 <button
                   type="button"
                   onClick={() => setSelectedUser(null)}
@@ -677,9 +789,9 @@ export default function DevProvisioningPage() {
                 <button
                   type="submit"
                   disabled={isSavingGov}
-                  className="px-4 py-2 bg-brand hover:bg-brand-hover text-white font-mono text-xs font-bold uppercase rounded shadow-xs cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 bg-brand hover:bg-brand-hover text-white font-mono text-xs font-bold uppercase rounded shadow-sm cursor-pointer disabled:opacity-50"
                 >
-                  {isSavingGov ? 'Updating Settings...' : 'Save Developer Settings'}
+                  {isSavingGov ? 'Updating...' : 'Save Settings'}
                 </button>
               </div>
             </form>

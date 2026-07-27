@@ -34,20 +34,23 @@ export async function POST(request: Request) {
     const rolesList = (memberRoles || []).map((mr: any) => mr.roles).filter(Boolean);
     const roleIds = rolesList.map((r: any) => r.id);
 
-    // Merge permissions across user's assigned roles (default administrator to true for primary org members)
+    // Merge permissions across user's assigned roles
+    // REQUIREMENT: Member MUST be assigned at least one role to receive active recruitment app credentials
+    const hasAssignedRoles = roleIds.length > 0;
+
     let permissions = {
-      administrator: roleIds.length === 0 ? true : false,
-      audit_logs: roleIds.length === 0 ? true : false,
+      administrator: hasAssignedRoles ? false : true,
+      audit_logs: hasAssignedRoles ? false : true,
       manage_server: false,
-      access_recruitment: true,
-      recruiter_dashboard: true,
-      recruiter_mandates: true,
-      recruiter_jobs: true,
-      recruiter_sourcing: true,
-      recruiter_reports: true,
-      recruiter_qna: true,
-      recruiter_resumes: true,
-      recruiter_stage_move: true,
+      access_recruitment: hasAssignedRoles,
+      recruiter_dashboard: hasAssignedRoles,
+      recruiter_mandates: hasAssignedRoles,
+      recruiter_jobs: hasAssignedRoles,
+      recruiter_sourcing: hasAssignedRoles,
+      recruiter_reports: hasAssignedRoles,
+      recruiter_qna: hasAssignedRoles,
+      recruiter_resumes: hasAssignedRoles,
+      recruiter_stage_move: hasAssignedRoles,
       access_client: false,
       client_contracts: false,
       client_mandates: false,
@@ -55,20 +58,19 @@ export async function POST(request: Request) {
       access_employee: false,
       employee_directory: false,
       employee_org_chart: false,
-      manage_jobs: true,
-      view_resumes: true,
-      edit_status: true,
-      schedule_interviews: true
+      manage_jobs: hasAssignedRoles,
+      view_resumes: hasAssignedRoles,
+      edit_status: hasAssignedRoles,
+      schedule_interviews: hasAssignedRoles
     };
 
-    if (roleIds.length > 0) {
+    if (hasAssignedRoles) {
       const { data: rolePerms } = await supabase
         .from('role_permissions')
         .select('*')
         .in('role_id', roleIds);
 
       if (rolePerms && rolePerms.length > 0) {
-        // Any true flag grants that permission
         for (const rp of rolePerms) {
           for (const key of Object.keys(permissions)) {
             if ((rp as any)[key] === true) {
@@ -88,16 +90,19 @@ export async function POST(request: Request) {
       organization_name: member.organizations?.name,
       operating_mode: member.organizations?.operating_mode,
       must_change_password: member.must_change_password,
+      terms_accepted: member.terms_accepted || false,
+      has_assigned_roles: hasAssignedRoles,
       roles: rolesList,
       permissions
     };
 
     const token = createJwtToken(jwtPayload, '24h');
 
-    // Create response with HTTP-Only Cookie header
     const response = NextResponse.json({
       success: true,
       must_change_password: member.must_change_password,
+      must_accept_terms: !member.terms_accepted,
+      has_assigned_roles: hasAssignedRoles,
       user: jwtPayload,
       token,
       urls: {
