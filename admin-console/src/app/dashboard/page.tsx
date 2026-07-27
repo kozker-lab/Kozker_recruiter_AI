@@ -6,7 +6,7 @@ import {
   ShieldCheck, GitPullRequest, Users, History, Terminal, ChevronDown,
   Plus, Check, X, Building2, Briefcase, ExternalLink, Lock, Settings,
   Clock, AlertCircle, CheckCircle2, Sliders, ChevronRight, Layers, ArrowUpRight,
-  Radio, RefreshCw, Mail, UserPlus, Send, Tag, Info
+  Radio, RefreshCw, Mail, UserPlus, Send, Tag, Info, LayoutGrid, Award, Search, UserCheck, Shield
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -100,7 +100,10 @@ export default function DashboardPage() {
         setRoles(rData.roles);
         if (rData.roles.length > 0 && !selectedRole) {
           setSelectedRole(rData.roles[0]);
-          setRolePermissions(rData.roles[0].role_permissions?.[0] || rData.roles[0].role_permissions || {});
+          const permObj = Array.isArray(rData.roles[0].role_permissions)
+            ? rData.roles[0].role_permissions[0]
+            : rData.roles[0].role_permissions;
+          setRolePermissions(permObj || {});
         }
         if (rData.roles.length > 0 && !inviteRoleId) {
           setInviteRoleId(rData.roles[0].id);
@@ -149,7 +152,7 @@ export default function DashboardPage() {
       if (!res.ok) {
         setRoleSaveMsg({ error: data.error || 'Failed to update permissions', success: '' });
       } else {
-        setRoleSaveMsg({ error: '', success: `Permissions for '${selectedRole.name}' saved!` });
+        setRoleSaveMsg({ error: '', success: `Permissions for '${selectedRole.name}' saved successfully!` });
         fetchAllData();
       }
     } catch (err: any) {
@@ -169,13 +172,13 @@ export default function DashboardPage() {
       const res = await fetch(`/api/roles/${selectedRole.id}/apply-template`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template: templateKey })
+        body: JSON.stringify({ template_key: templateKey, template: templateKey })
       });
 
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && data.permissions) {
         setRolePermissions(data.permissions);
-        setRoleSaveMsg({ error: '', success: `Applied template to '${selectedRole.name}'` });
+        setRoleSaveMsg({ error: '', success: `Applied template authorizations to '${selectedRole.name}'` });
         fetchAllData();
       } else {
         setRoleSaveMsg({ error: data.error || 'Failed to apply template', success: '' });
@@ -308,7 +311,7 @@ export default function DashboardPage() {
               K
             </div>
             <div>
-              <div className="font-bold text-stone-900 text-sm tracking-tight font-tight">Kozker Admin</div>
+              <div className="font-bold text-stone-900 text-sm tracking-tight">Kozker Admin</div>
               <div className="text-[10px] text-stone-500 font-mono">Governance & RBAC Console</div>
             </div>
           </div>
@@ -479,7 +482,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left 1 Column: Role Hierarchy List */}
+                {/* Left 1 Column: Role Hierarchy Tree */}
                 <div className="bg-white border border-stone-200 rounded-lg p-4 shadow-sm space-y-3">
                   <div className="text-xs font-mono uppercase font-bold text-stone-400 tracking-wider">
                     Role Hierarchy Tree ({roles.length})
@@ -508,7 +511,7 @@ export default function DashboardPage() {
                           <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
                             isSelected ? 'bg-stone-800 text-stone-300' : 'bg-stone-200 text-stone-600'
                           }`}>
-                            {r.level}
+                            {r.level || 'ORG'}
                           </span>
                         </div>
                       );
@@ -516,10 +519,11 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Right 2 Columns: Permissions Matrix Editor */}
+                {/* Right 2 Columns: Granular Permissions Matrix Editor */}
                 <div className="lg:col-span-2 bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-6">
                   {selectedRole ? (
                     <>
+                      {/* Selected Role Header & Template Presets */}
                       <div className="flex items-center justify-between border-b border-stone-150 pb-4">
                         <div>
                           <div className="flex items-center gap-2">
@@ -529,7 +533,7 @@ export default function DashboardPage() {
                             />
                             <h3 className="text-base font-bold text-stone-900">{selectedRole.name}</h3>
                             <span className="font-mono text-[10px] uppercase font-bold px-2 py-0.5 bg-stone-100 border border-stone-200 rounded text-stone-600">
-                              {selectedRole.level} Level
+                              {selectedRole.level || 'ORG'} Level
                             </span>
                           </div>
                           <p className="text-xs text-stone-500 font-mono mt-1">Configure sub-section visibilities and action rights</p>
@@ -546,24 +550,89 @@ export default function DashboardPage() {
                             </button>
 
                             {isTemplateDropdownOpen && (
-                              <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-stone-200 rounded shadow-lg z-50 py-1 text-xs">
-                                <div onClick={() => handleApplyTemplate('org-director')} className="p-2 hover:bg-stone-50 cursor-pointer">
-                                  <div className="font-bold text-stone-900">Org Director Template</div>
-                                  <div className="text-[10px] text-stone-500">Full administrative & panel access</div>
+                              <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-stone-200 rounded shadow-lg z-50 py-1 text-xs divide-y divide-stone-100">
+                                <div onClick={() => handleApplyTemplate('org-director')} className="p-2.5 hover:bg-stone-50 cursor-pointer">
+                                  <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                                    <Shield className="w-3.5 h-3.5 text-brand" /> Organization Director
+                                  </div>
+                                  <div className="text-[10px] text-stone-500">Full administrative & panel authorizations</div>
                                 </div>
-                                <div onClick={() => handleApplyTemplate('branch-manager')} className="p-2 hover:bg-stone-50 cursor-pointer">
-                                  <div className="font-bold text-stone-900">Branch Manager Template</div>
+                                <div onClick={() => handleApplyTemplate('branch-manager')} className="p-2.5 hover:bg-stone-50 cursor-pointer">
+                                  <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                                    <GitPullRequest className="w-3.5 h-3.5 text-blue-600" /> Branch Manager
+                                  </div>
                                   <div className="text-[10px] text-stone-500">Recruitment & pipeline management</div>
                                 </div>
-                                <div onClick={() => handleApplyTemplate('senior-recruiter')} className="p-2 hover:bg-stone-50 cursor-pointer">
-                                  <div className="font-bold text-stone-900">Senior Recruiter Template</div>
+                                <div onClick={() => handleApplyTemplate('senior-recruiter')} className="p-2.5 hover:bg-stone-50 cursor-pointer">
+                                  <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                                    <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> Senior Recruiter
+                                  </div>
                                   <div className="text-[10px] text-stone-500">Full candidate & job controls</div>
+                                </div>
+                                <div onClick={() => handleApplyTemplate('sourcing-specialist')} className="p-2.5 hover:bg-stone-50 cursor-pointer">
+                                  <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                                    <Search className="w-3.5 h-3.5 text-cyan-600" /> Sourcing Specialist
+                                  </div>
+                                  <div className="text-[10px] text-stone-500 font-mono">Talent pool & resume search</div>
+                                </div>
+                                <div onClick={() => handleApplyTemplate('hiring-panel')} className="p-2.5 hover:bg-stone-50 cursor-pointer">
+                                  <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                                    <Award className="w-3.5 h-3.5 text-amber-600" /> Technical Interviewer
+                                  </div>
+                                  <div className="text-[10px] text-stone-500 font-mono">Q&A screening & interviews</div>
                                 </div>
                               </div>
                             )}
                           </div>
                         )}
                       </div>
+
+                      {/* Presets Chips Bar */}
+                      {isPrimaryAdmin && (
+                        <div className="p-3 bg-stone-50 border border-stone-200 rounded-lg space-y-2">
+                          <div className="flex items-center justify-between text-[10px] font-mono uppercase font-bold text-stone-400">
+                            <span>Quick Role Template Presets</span>
+                            <span className="text-brand font-semibold lowercase">click chip to apply authorizations</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => handleApplyTemplate('org-director')}
+                              className="px-2.5 py-1 bg-white border border-stone-200 hover:border-brand rounded-full font-medium text-stone-700 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            >
+                              <Shield className="w-3 h-3 text-brand" /> Org Director
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyTemplate('branch-manager')}
+                              className="px-2.5 py-1 bg-white border border-stone-200 hover:border-blue-500 rounded-full font-medium text-stone-700 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            >
+                              <GitPullRequest className="w-3 h-3 text-blue-600" /> Branch Manager
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyTemplate('senior-recruiter')}
+                              className="px-2.5 py-1 bg-white border border-stone-200 hover:border-emerald-500 rounded-full font-medium text-stone-700 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            >
+                              <UserCheck className="w-3 h-3 text-emerald-600" /> Senior Recruiter
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyTemplate('sourcing-specialist')}
+                              className="px-2.5 py-1 bg-white border border-stone-200 hover:border-cyan-500 rounded-full font-medium text-stone-700 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            >
+                              <Search className="w-3 h-3 text-cyan-600" /> Sourcing Specialist
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyTemplate('hiring-panel')}
+                              className="px-2.5 py-1 bg-white border border-stone-200 hover:border-amber-500 rounded-full font-medium text-stone-700 flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            >
+                              <Award className="w-3 h-3 text-amber-600" /> Technical Interviewer
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {roleSaveMsg.error && (
                         <div className="p-3 bg-red-50 text-red-700 text-xs rounded border border-red-200 flex items-center gap-2">
@@ -578,15 +647,15 @@ export default function DashboardPage() {
                         </div>
                       )}
 
-                      {/* Permissions Matrix Grid */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
-                        {/* Section 1: System Admin */}
-                        <div className="space-y-3 p-3 bg-stone-50 border border-stone-150 rounded">
+                      {/* Permissions Matrix Categories */}
+                      <div className="space-y-6 text-xs">
+                        {/* Category 1: Administration Rights */}
+                        <div className="space-y-3 p-3 bg-stone-50 border border-stone-200 rounded-lg">
                           <div className="font-mono text-[10px] font-bold uppercase text-stone-500 tracking-wider">
-                            Administration Rights
+                            1. Administration Rights
                           </div>
-                          <div className="space-y-2">
-                            <label className="flex items-center justify-between cursor-pointer">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label className="flex items-center justify-between p-2 bg-white border border-stone-200 rounded cursor-pointer">
                               <span className="font-semibold text-stone-800">Master Administrator</span>
                               <input
                                 type="checkbox"
@@ -596,7 +665,7 @@ export default function DashboardPage() {
                                 className="accent-brand w-4 h-4 cursor-pointer"
                               />
                             </label>
-                            <label className="flex items-center justify-between cursor-pointer">
+                            <label className="flex items-center justify-between p-2 bg-white border border-stone-200 rounded cursor-pointer">
                               <span className="font-semibold text-stone-800">View Audit Logs</span>
                               <input
                                 type="checkbox"
@@ -609,39 +678,92 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        {/* Section 2: Recruiter Panels */}
-                        <div className="space-y-3 p-3 bg-stone-50 border border-stone-150 rounded">
-                          <div className="font-mono text-[10px] font-bold uppercase text-stone-500 tracking-wider">
-                            Recruiter Panel Sub-Sections
+                        {/* Category 2: Recruiter Panel Access & Sub-Sections */}
+                        <div className="space-y-3 p-3 bg-emerald-50/50 border border-emerald-200 rounded-lg">
+                          <div className="flex items-center justify-between border-b border-emerald-200 pb-2">
+                            <div className="font-mono text-[10px] font-bold uppercase text-emerald-800 tracking-wider">
+                              2. Recruiter Panel Sub-Section Visibilities
+                            </div>
+                            <label className="flex items-center gap-2 cursor-pointer bg-white px-2.5 py-1 rounded border border-emerald-200 shadow-2xs">
+                              <span className="font-bold text-emerald-800 text-xs">Access Recruiter App</span>
+                              <input
+                                type="checkbox"
+                                checked={!!rolePermissions.access_recruitment}
+                                disabled={!isPrimaryAdmin}
+                                onChange={() => handlePermissionToggle('access_recruitment')}
+                                className="accent-emerald-600 w-4 h-4 cursor-pointer"
+                              />
+                            </label>
                           </div>
-                          <div className="space-y-2">
-                            <label className="flex items-center justify-between cursor-pointer">
-                              <span className="font-semibold text-stone-800">Recruiter Dashboard</span>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            {[
+                              { key: 'recruiter_dashboard', label: 'Recruiter Dashboard' },
+                              { key: 'recruiter_mandates', label: 'Mandates & Accounts' },
+                              { key: 'recruiter_jobs', label: 'Job Catalog & Specs' },
+                              { key: 'recruiter_sourcing', label: 'Talent Sourcing Pool' },
+                              { key: 'recruiter_reports', label: 'Recruiter Reports' },
+                              { key: 'recruiter_qna', label: 'Video Q&A Screening' },
+                              { key: 'recruiter_resumes', label: 'Candidate Resumes' },
+                              { key: 'recruiter_stage_move', label: 'Funnel Stage Move' },
+                            ].map(sub => (
+                              <label key={sub.key} className="flex items-center justify-between p-2 bg-white border border-stone-200 rounded cursor-pointer">
+                                <span className="font-medium text-stone-800">{sub.label}</span>
+                                <input
+                                  type="checkbox"
+                                  checked={!!rolePermissions[sub.key]}
+                                  disabled={!isPrimaryAdmin || !rolePermissions.access_recruitment}
+                                  onChange={() => handlePermissionToggle(sub.key)}
+                                  className="accent-brand w-4 h-4 cursor-pointer"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Category 3: Granular Recruiter Actions */}
+                        <div className="space-y-3 p-3 bg-stone-50 border border-stone-200 rounded-lg">
+                          <div className="font-mono text-[10px] font-bold uppercase text-stone-500 tracking-wider">
+                            3. Granular Recruiter Action Rights
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label className="flex items-center justify-between p-2 bg-white border border-stone-200 rounded cursor-pointer">
+                              <span className="font-semibold text-stone-800">Manage Job Vacancies</span>
                               <input
                                 type="checkbox"
-                                checked={!!rolePermissions.recruiter_dashboard}
+                                checked={!!rolePermissions.manage_jobs}
                                 disabled={!isPrimaryAdmin}
-                                onChange={() => handlePermissionToggle('recruiter_dashboard')}
+                                onChange={() => handlePermissionToggle('manage_jobs')}
                                 className="accent-brand w-4 h-4 cursor-pointer"
                               />
                             </label>
-                            <label className="flex items-center justify-between cursor-pointer">
-                              <span className="font-semibold text-stone-800">Job Catalog & Mandates</span>
+                            <label className="flex items-center justify-between p-2 bg-white border border-stone-200 rounded cursor-pointer">
+                              <span className="font-semibold text-stone-800">View Candidate Resumes</span>
                               <input
                                 type="checkbox"
-                                checked={!!rolePermissions.recruiter_jobs}
+                                checked={!!rolePermissions.view_resumes}
                                 disabled={!isPrimaryAdmin}
-                                onChange={() => handlePermissionToggle('recruiter_jobs')}
+                                onChange={() => handlePermissionToggle('view_resumes')}
                                 className="accent-brand w-4 h-4 cursor-pointer"
                               />
                             </label>
-                            <label className="flex items-center justify-between cursor-pointer">
-                              <span className="font-semibold text-stone-800">Talent Sourcing Pool</span>
+                            <label className="flex items-center justify-between p-2 bg-white border border-stone-200 rounded cursor-pointer">
+                              <span className="font-semibold text-stone-800">Edit Applicant Status</span>
                               <input
                                 type="checkbox"
-                                checked={!!rolePermissions.recruiter_sourcing}
+                                checked={!!rolePermissions.edit_status}
                                 disabled={!isPrimaryAdmin}
-                                onChange={() => handlePermissionToggle('recruiter_sourcing')}
+                                onChange={() => handlePermissionToggle('edit_status')}
+                                className="accent-brand w-4 h-4 cursor-pointer"
+                              />
+                            </label>
+                            <label className="flex items-center justify-between p-2 bg-white border border-stone-200 rounded cursor-pointer">
+                              <span className="font-semibold text-stone-800">Schedule Interviews</span>
+                              <input
+                                type="checkbox"
+                                checked={!!rolePermissions.schedule_interviews}
+                                disabled={!isPrimaryAdmin}
+                                onChange={() => handlePermissionToggle('schedule_interviews')}
                                 className="accent-brand w-4 h-4 cursor-pointer"
                               />
                             </label>
@@ -654,7 +776,7 @@ export default function DashboardPage() {
                           <button
                             onClick={handleSavePermissions}
                             disabled={isSavingRole}
-                            className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-mono uppercase font-bold rounded shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                            className="px-5 py-2.5 bg-brand hover:bg-brand-hover text-white text-xs font-mono uppercase font-bold rounded shadow-sm transition-colors cursor-pointer disabled:opacity-50"
                           >
                             {isSavingRole ? 'Saving Permissions...' : 'Save Matrix Permissions'}
                           </button>
@@ -896,7 +1018,91 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* Modal 1: Email Member Invitation Modal */}
+      {/* Modal 1: New Master Role Modal */}
+      {isNewRoleOpen && (
+        <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-white border border-stone-200 max-w-md w-full p-6 rounded-lg shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-stone-150 pb-3">
+              <h3 className="font-bold text-stone-900 text-sm">Create New Master Role Profile</h3>
+              <button onClick={() => setIsNewRoleOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRole} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-stone-700 mb-1">Role Title</label>
+                <input
+                  type="text"
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
+                  placeholder="e.g. Branch Talent Director"
+                  required
+                  className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-stone-700 mb-1">Hierarchy Level</label>
+                <select
+                  value={newRoleLevel}
+                  onChange={(e) => setNewRoleLevel(e.target.value)}
+                  className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                >
+                  <option value="organization">Organization Level</option>
+                  <option value="branch">Branch Level</option>
+                  <option value="position">Position Level</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-stone-700 mb-1">Parent Role (Optional)</label>
+                <select
+                  value={newRoleParentId}
+                  onChange={(e) => setNewRoleParentId(e.target.value)}
+                  className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                >
+                  <option value="">(None - Standalone Root Role)</option>
+                  {roles.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-stone-700 mb-1">Role Color Indicator</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={newRoleColor}
+                    onChange={(e) => setNewRoleColor(e.target.value)}
+                    className="w-8 h-8 rounded border border-stone-200 cursor-pointer"
+                  />
+                  <span className="font-mono text-stone-600">{newRoleColor}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-150">
+                <button
+                  type="button"
+                  onClick={() => setIsNewRoleOpen(false)}
+                  className="px-3.5 py-2 border border-stone-200 hover:bg-stone-100 rounded text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-mono uppercase font-bold rounded transition-colors cursor-pointer"
+                >
+                  Create Role
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: Email Member Invitation Modal */}
       {isInviteModalOpen && (
         <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
           <div className="bg-white border border-stone-200 max-w-md w-full p-6 rounded-lg shadow-xl space-y-4">
@@ -983,7 +1189,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Modal 2: Member Role Assignment Modal */}
+      {/* Modal 3: Member Role Assignment Modal */}
       {isAssignRoleModalOpen && targetMember && (
         <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
           <div className="bg-white border border-stone-200 max-w-md w-full p-6 rounded-lg shadow-xl space-y-4">

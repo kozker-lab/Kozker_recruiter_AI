@@ -149,11 +149,12 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     const roleId = params.id;
-    const { template_key } = await request.json();
+    const body = await request.json();
+    const templateKey = body.template_key || body.template;
 
-    const templatePerms = TEMPLATES[template_key];
+    const templatePerms = TEMPLATES[templateKey];
     if (!templatePerms) {
-      return NextResponse.json({ error: `Invalid template key '${template_key}'` }, { status: 400 });
+      return NextResponse.json({ error: `Invalid template key '${templateKey}'` }, { status: 400 });
     }
 
     const { error } = await supabase
@@ -172,7 +173,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       organization_id: user.organization_id,
       actor_id: user.id,
       actor_name: user.name,
-      action_description: `Applied permission template '${template_key}' to role`,
+      action_description: `Applied permission template '${templateKey}' to role`,
       target_name: roleId,
       action_type: 'update'
     });
