@@ -278,16 +278,6 @@ export default function DashboardPage() {
                 <span>Client Portal Space</span>
                 <ArrowUpRight className="w-3.5 h-3.5 text-stone-400" />
               </div>
-              <div
-                onClick={() => {
-                  setIsProjectDropdownOpen(false);
-                  router.push('/dev');
-                }}
-                className="p-2.5 hover:bg-stone-50 cursor-pointer flex items-center justify-between text-stone-600 font-mono text-[11px]"
-              >
-                <span>Developer Access (/dev)</span>
-                <Terminal className="w-3.5 h-3.5 text-stone-400" />
-              </div>
             </div>
           )}
         </div>

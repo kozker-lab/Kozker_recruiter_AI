@@ -1184,10 +1184,6 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                   <span>Client Portal Space</span>
                   <ExternalLink className="w-3 h-3 text-neutral-400" />
                 </a>
-                <a href="https://admin.kozker.ai/dev" className="p-2 hover:bg-neutral-50 cursor-pointer flex items-center justify-between text-neutral-600 font-mono text-[10px]">
-                  <span>Developer Access (/dev)</span>
-                  <Terminal className="w-3 h-3 text-neutral-400" />
-                </a>
               </div>
             )}
           </div>
