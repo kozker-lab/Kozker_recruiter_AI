@@ -49,6 +49,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Role name is required' }, { status: 400 });
     }
 
+    // Check organization role quota limit
+    const { data: org } = await supabase.from('organizations').select('max_roles_limit').eq('id', user.organization_id).single();
+    if (org && org.max_roles_limit !== null && org.max_roles_limit !== undefined) {
+      const { count } = await supabase.from('roles').select('id', { count: 'exact', head: true }).eq('organization_id', user.organization_id);
+      if (count !== null && count >= org.max_roles_limit) {
+        return NextResponse.json({
+          error: `Organization master role quota reached (Limit: ${org.max_roles_limit}). Contact your system developer to expand tenant quota.`
+        }, { status: 403 });
+      }
+    }
+
     // Insert Role
     const { data: role, error: roleError } = await supabase
       .from('roles')

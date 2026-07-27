@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
     const { data: users, error } = await supabase
       .from('members')
-      .select('*, organizations(id, name, operating_mode)');
+      .select('*, organizations(id, name, operating_mode, max_members_limit, max_roles_limit, can_manage_pipelines, can_view_audit_logs), member_roles(role_id, roles(id, name, color_hex, role_permissions(*)))');
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

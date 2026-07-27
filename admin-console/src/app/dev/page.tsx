@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Terminal, Building2, UserPlus, Users, Key, AlertCircle, CheckCircle2, Lock } from 'lucide-react';
+import { ShieldCheck, Terminal, Building2, UserPlus, Users, Key, AlertCircle, CheckCircle2, Lock, Sliders, X, Settings, ShieldAlert, Check } from 'lucide-react';
 
 export default function DevProvisioningPage() {
   const [devKey, setDevKey] = useState('');
@@ -25,6 +25,18 @@ export default function DevProvisioningPage() {
   const [userEmail, setUserEmail] = useState('');
   const [userPassword, setUserPassword] = useState('');
   const [userMsg, setUserMsg] = useState({ error: '', success: '' });
+
+  // Governance Modal state
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [editAdminAccess, setEditAdminAccess] = useState(true);
+  const [editRecruiterAccess, setEditRecruiterAccess] = useState(true);
+  const [editMaxMembers, setEditMaxMembers] = useState<string>('10');
+  const [editMaxRoles, setEditMaxRoles] = useState<string>('5');
+  const [editCanPipelines, setEditCanPipelines] = useState(true);
+  const [editCanAudit, setEditCanAudit] = useState(true);
+  const [editUserStatus, setEditUserStatus] = useState('active');
+  const [saveGovMsg, setSaveGovMsg] = useState({ error: '', success: '' });
+  const [isSavingGov, setIsSavingGov] = useState(false);
 
   const handleDevAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +147,72 @@ export default function DevProvisioningPage() {
     }
   };
 
+  const handleOpenUserModal = (u: any) => {
+    setSelectedUser(u);
+    setSaveGovMsg({ error: '', success: '' });
+
+    const rolesList = (u.member_roles || []).map((mr: any) => mr.roles).filter(Boolean);
+    let isAdmin = true;
+    let isRecruiter = true;
+    if (rolesList.length > 0 && rolesList[0]?.role_permissions) {
+      const perms = Array.isArray(rolesList[0].role_permissions) 
+        ? rolesList[0].role_permissions[0] 
+        : rolesList[0].role_permissions;
+      if (perms) {
+        isAdmin = perms.administrator !== false;
+        isRecruiter = perms.access_recruitment !== false;
+      }
+    }
+
+    const org = u.organizations || {};
+    setEditAdminAccess(isAdmin);
+    setEditRecruiterAccess(isRecruiter);
+    setEditMaxMembers(org.max_members_limit !== undefined && org.max_members_limit !== null ? String(org.max_members_limit) : 'unlimited');
+    setEditMaxRoles(org.max_roles_limit !== undefined && org.max_roles_limit !== null ? String(org.max_roles_limit) : 'unlimited');
+    setEditCanPipelines(org.can_manage_pipelines !== false);
+    setEditCanAudit(org.can_view_audit_logs !== false);
+    setEditUserStatus(u.status || 'active');
+  };
+
+  const handleSaveGovernance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+    setIsSavingGov(true);
+    setSaveGovMsg({ error: '', success: '' });
+
+    try {
+      const res = await fetch(`/api/dev/users/${selectedUser.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${devToken}`
+        },
+        body: JSON.stringify({
+          status: editUserStatus,
+          administrator: editAdminAccess,
+          access_recruitment: editRecruiterAccess,
+          max_members_limit: editMaxMembers === 'unlimited' ? null : Number(editMaxMembers),
+          max_roles_limit: editMaxRoles === 'unlimited' ? null : Number(editMaxRoles),
+          can_manage_pipelines: editCanPipelines,
+          can_view_audit_logs: editCanAudit
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setSaveGovMsg({ error: data.error || 'Failed to update governance settings', success: '' });
+      } else {
+        setSaveGovMsg({ error: '', success: 'Account & Tenant Governance settings updated!' });
+        fetchDevData(devToken);
+        setTimeout(() => setSelectedUser(null), 1200);
+      }
+    } catch (err: any) {
+      setSaveGovMsg({ error: err.message || 'Error updating settings', success: '' });
+    } finally {
+      setIsSavingGov(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-stone-50 text-stone-800 p-6 flex flex-col font-sans">
       {/* Top Header */}
@@ -146,7 +224,7 @@ export default function DevProvisioningPage() {
           <div>
             <h1 className="text-xl font-bold font-tight text-stone-900 flex items-center gap-2">
               <Terminal className="w-5 h-5 text-brand" />
-              Developer Provisioning Portal
+              Developer Provisioning & Governance Portal
             </h1>
             <p className="text-xs text-stone-500 font-mono">Method 1 Developer Master Key Authentication (/admin/dev)</p>
           </div>
@@ -171,7 +249,7 @@ export default function DevProvisioningPage() {
               </div>
               <h2 className="text-lg font-bold text-stone-900 font-tight">Method 1 Developer Verification</h2>
               <p className="text-xs text-stone-500 leading-relaxed">
-                Public user signup is disabled. Enter your 64+ character high-entropy <code className="font-mono bg-stone-100 px-1 py-0.5 rounded text-stone-700">DEV_ADMIN_KEY</code> to access provisioning controls.
+                Public user signup is disabled. Enter your 64+ character cryptographic <code className="font-mono bg-stone-100 px-1 py-0.5 rounded text-stone-700">DEV_ADMIN_KEY</code> to access provisioning controls.
               </p>
             </div>
 
@@ -366,15 +444,15 @@ export default function DevProvisioningPage() {
               </div>
             </div>
 
-            {/* System Directory Table */}
+            {/* Provisioned Accounts Directory */}
             <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-stone-150 pb-3">
                 <div className="flex items-center gap-2 text-stone-900 font-bold text-sm">
                   <Users className="w-4 h-4 text-brand" />
                   <span>Provisioned Accounts Directory ({users.length})</span>
                 </div>
-                <span className="text-[10px] font-mono bg-stone-100 text-stone-600 px-2 py-0.5 rounded border border-stone-200">
-                  Cross-Tenant Overview
+                <span className="text-[10px] font-mono bg-amber-50 text-amber-800 px-2.5 py-1 rounded border border-amber-200 font-bold">
+                  Click any account row to configure Admin Access & Quotas
                 </span>
               </div>
 
@@ -385,9 +463,9 @@ export default function DevProvisioningPage() {
                       <th className="p-3">User Name</th>
                       <th className="p-3">Email</th>
                       <th className="p-3">Organization</th>
-                      <th className="p-3">Operating Mode</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3 text-right">Must Update Password</th>
+                      <th className="p-3">Admin Portal Access</th>
+                      <th className="p-3">Quotas (Members / Roles)</th>
+                      <th className="p-3 text-right">Account Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-150">
@@ -398,32 +476,58 @@ export default function DevProvisioningPage() {
                         </td>
                       </tr>
                     ) : (
-                      users.map(u => (
-                        <tr key={u.id} className="hover:bg-stone-50">
-                          <td className="p-3 font-semibold text-stone-900">{u.name}</td>
-                          <td className="p-3 font-mono text-stone-600">{u.email}</td>
-                          <td className="p-3 font-medium text-stone-700">{u.organizations?.name || u.organization_id}</td>
-                          <td className="p-3">
-                            <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 bg-stone-100 border border-stone-200 rounded font-semibold text-stone-600">
-                              {u.organizations?.operating_mode || 'internal'}
-                            </span>
-                          </td>
-                          <td className="p-3">
-                            <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
-                              {u.status}
-                            </span>
-                          </td>
-                          <td className="p-3 text-right font-mono">
-                            {u.must_change_password ? (
-                              <span className="text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 text-[10px]">
-                                YES (Pending Update)
+                      users.map(u => {
+                        const rolesList = (u.member_roles || []).map((mr: any) => mr.roles).filter(Boolean);
+                        let isAdmin = true;
+                        if (rolesList.length > 0 && rolesList[0]?.role_permissions) {
+                          const perms = Array.isArray(rolesList[0].role_permissions) 
+                            ? rolesList[0].role_permissions[0] 
+                            : rolesList[0].role_permissions;
+                          if (perms) isAdmin = perms.administrator !== false;
+                        }
+
+                        const org = u.organizations || {};
+                        const memLimitStr = org.max_members_limit !== undefined && org.max_members_limit !== null ? org.max_members_limit : '∞';
+                        const roleLimitStr = org.max_roles_limit !== undefined && org.max_roles_limit !== null ? org.max_roles_limit : '∞';
+
+                        return (
+                          <tr
+                            key={u.id}
+                            onClick={() => handleOpenUserModal(u)}
+                            className="hover:bg-stone-100/80 cursor-pointer transition-colors group"
+                          >
+                            <td className="p-3 font-semibold text-stone-900 group-hover:text-brand flex items-center gap-2">
+                              <span>{u.name}</span>
+                              <Sliders className="w-3.5 h-3.5 text-stone-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </td>
+                            <td className="p-3 font-mono text-stone-600">{u.email}</td>
+                            <td className="p-3 font-medium text-stone-700">{org.name || u.organization_id}</td>
+                            <td className="p-3">
+                              {isAdmin ? (
+                                <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  Granted
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase px-2 py-0.5 rounded bg-red-50 text-red-700 font-bold border border-red-200">
+                                  <X className="w-3 h-3 text-red-600" />
+                                  Restricted
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 font-mono text-[11px] text-stone-600">
+                              <span className="font-semibold">{memLimitStr}</span> Members / <span className="font-semibold">{roleLimitStr}</span> Roles
+                            </td>
+                            <td className="p-3 text-right">
+                              <span className={`inline-flex items-center gap-1 font-mono text-[9px] uppercase px-1.5 py-0.5 rounded font-bold border ${
+                                u.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
+                              }`}>
+                                {u.status || 'active'}
                               </span>
-                            ) : (
-                              <span className="text-stone-400 text-[10px]">Updated</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -432,6 +536,156 @@ export default function DevProvisioningPage() {
           </div>
         )}
       </div>
+
+      {/* Developer Governance & Quota Modal */}
+      {selectedUser && (
+        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-white border border-stone-200 max-w-lg w-full p-6 rounded-xl shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-stone-150 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-brand/10 text-brand flex items-center justify-center font-bold">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-sm font-tight">Developer Governance & Quotas</h3>
+                  <p className="text-[11px] text-stone-500 font-mono">{selectedUser.name} ({selectedUser.email})</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedUser(null)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {saveGovMsg.error && (
+              <div className="p-3 bg-red-50 text-red-700 text-xs rounded-md border border-red-200 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{saveGovMsg.error}</span>
+              </div>
+            )}
+            {saveGovMsg.success && (
+              <div className="p-3 bg-emerald-50 text-emerald-700 text-xs rounded-md border border-emerald-200 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{saveGovMsg.success}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveGovernance} className="space-y-4 text-xs">
+              {/* Section 1: Admin Console Access Permission */}
+              <div className="space-y-2 p-3 bg-stone-50 border border-stone-200 rounded-lg">
+                <div className="font-mono text-[10px] font-bold uppercase text-stone-500 tracking-wider">
+                  1. Admin Console Portal Access
+                </div>
+                <label className="flex items-center justify-between cursor-pointer pt-1">
+                  <span className="font-semibold text-stone-800">Grant Admin Portal Access (/dashboard)</span>
+                  <input
+                    type="checkbox"
+                    checked={editAdminAccess}
+                    onChange={(e) => setEditAdminAccess(e.target.checked)}
+                    className="accent-brand w-4 h-4 cursor-pointer"
+                  />
+                </label>
+                <p className="text-[11px] text-stone-500">
+                  If disabled, this account cannot access the Admin Console dashboard or governance engine.
+                </p>
+              </div>
+
+              {/* Section 2: Tenant Quota Limits */}
+              <div className="space-y-3 p-3 bg-stone-50 border border-stone-200 rounded-lg">
+                <div className="font-mono text-[10px] font-bold uppercase text-stone-500 tracking-wider">
+                  2. Tenant Quotas & Resource Limits
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">Max Members Limit</label>
+                    <select
+                      value={editMaxMembers}
+                      onChange={(e) => setEditMaxMembers(e.target.value)}
+                      className="w-full p-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                    >
+                      <option value="5">5 Members Max</option>
+                      <option value="10">10 Members Max</option>
+                      <option value="25">25 Members Max</option>
+                      <option value="50">50 Members Max</option>
+                      <option value="unlimited">Unlimited Members</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">Max Master Roles Limit</label>
+                    <select
+                      value={editMaxRoles}
+                      onChange={(e) => setEditMaxRoles(e.target.value)}
+                      className="w-full p-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                    >
+                      <option value="3">3 Roles Max</option>
+                      <option value="5">5 Roles Max</option>
+                      <option value="10">10 Roles Max</option>
+                      <option value="unlimited">Unlimited Roles</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Feature Flag Rights */}
+              <div className="space-y-2 p-3 bg-stone-50 border border-stone-200 rounded-lg">
+                <div className="font-mono text-[10px] font-bold uppercase text-stone-500 tracking-wider">
+                  3. Admin Feature Flag Rights
+                </div>
+                <div className="space-y-2 pt-1">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="font-semibold text-stone-800">Can Configure Approval Workflows</span>
+                    <input
+                      type="checkbox"
+                      checked={editCanPipelines}
+                      onChange={(e) => setEditCanPipelines(e.target.checked)}
+                      className="accent-brand w-4 h-4 cursor-pointer"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="font-semibold text-stone-800">Can View System Audit Ledger</span>
+                    <input
+                      type="checkbox"
+                      checked={editCanAudit}
+                      onChange={(e) => setEditCanAudit(e.target.checked)}
+                      className="accent-brand w-4 h-4 cursor-pointer"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Section 4: Account Status */}
+              <div>
+                <label className="block font-semibold text-stone-700 mb-1">Account Status</label>
+                <select
+                  value={editUserStatus}
+                  onChange={(e) => setEditUserStatus(e.target.value)}
+                  className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                >
+                  <option value="active">Active (Access Enabled)</option>
+                  <option value="disabled">Suspended / Disabled</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-150">
+                <button
+                  type="button"
+                  onClick={() => setSelectedUser(null)}
+                  className="px-3.5 py-2 border border-stone-200 hover:bg-stone-100 rounded text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingGov}
+                  className="px-4 py-2 bg-brand hover:bg-brand-hover text-white font-mono text-xs font-bold uppercase rounded shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingGov ? 'Updating Settings...' : 'Save Developer Settings'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
