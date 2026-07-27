@@ -38,7 +38,8 @@ export async function POST(request: Request) {
     }
 
     // Re-issue updated JWT token
-    const updatedPayload = { ...user, must_change_password: false };
+    const { iat, exp, nbf, ...userPayload } = user;
+    const updatedPayload = { ...userPayload, must_change_password: false };
     const newToken = createJwtToken(updatedPayload, '24h');
 
     const response = NextResponse.json({

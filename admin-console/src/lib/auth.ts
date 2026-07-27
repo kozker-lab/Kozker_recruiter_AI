@@ -43,7 +43,11 @@ export function validateDevAdminKey(inputKey: string): boolean {
 }
 
 export function createJwtToken(payload: object, expiresIn: string = '24h'): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: expiresIn as any });
+  const cleanPayload = { ...payload };
+  delete (cleanPayload as any).iat;
+  delete (cleanPayload as any).exp;
+  delete (cleanPayload as any).nbf;
+  return jwt.sign(cleanPayload, JWT_SECRET, { expiresIn: expiresIn as any });
 }
 
 export function verifyJwtToken(token: string): any {
