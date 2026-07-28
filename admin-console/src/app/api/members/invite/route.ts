@@ -50,6 +50,20 @@ export async function POST(request: Request) {
       wasPreExistingReplaced = true;
     }
 
+    // Check & delete old Supabase Auth user if exists
+    try {
+      if (supabase.auth?.admin) {
+        const { data: usersData } = await supabase.auth.admin.listUsers();
+        const existingAuthUser = (usersData?.users || []).find(u => u.email?.toLowerCase() === cleanEmail);
+        if (existingAuthUser) {
+          await supabase.auth.admin.deleteUser(existingAuthUser.id);
+          wasPreExistingReplaced = true;
+        }
+      }
+    } catch (authDelErr) {
+      console.error('Supabase Auth pre-existing cleanup notice:', authDelErr);
+    }
+
     const nameParts = name.trim().split(' ');
     const initials = nameParts.length >= 2 
       ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
@@ -86,41 +100,11 @@ export async function POST(request: Request) {
       });
     }
 
-    // 3. Generate Single-Use Tokenized Supabase Authentication Link
+    // 3. Set Direct Password Setup Page URL (Pointing to Admin Console Password Setup Page)
     const setPasswordBaseUrl = process.env.ADMIN_CONSOLE_URL ? `${process.env.ADMIN_CONSOLE_URL}/auth/set-password` : 'http://localhost:3001/auth/set-password';
-    let authActionLink = setPasswordBaseUrl;
+    const authActionLink = `${setPasswordBaseUrl}?email=${encodeURIComponent(cleanEmail)}`;
 
-    try {
-      if (supabase.auth?.admin) {
-        // Try invite link first
-        let { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
-          type: 'invite',
-          email: cleanEmail,
-          options: { redirectTo: setPasswordBaseUrl }
-        });
-
-        // Fallback to magiclink token if email is already registered in auth.users
-        if (linkErr || !linkData?.properties?.action_link) {
-          const { data: magicData, error: magicErr } = await supabase.auth.admin.generateLink({
-            type: 'magiclink',
-            email: cleanEmail,
-            options: { redirectTo: setPasswordBaseUrl }
-          });
-          if (!magicErr && magicData?.properties?.action_link) {
-            linkData = magicData;
-            wasPreExistingReplaced = true;
-          }
-        }
-
-        if (linkData?.properties?.action_link) {
-          authActionLink = linkData.properties.action_link;
-        }
-      }
-    } catch (authLinkErr) {
-      console.error('Supabase Auth single-use token link generation error:', authLinkErr);
-    }
-
-    // 4. Dispatch Email with Single-Use Supabase Token Link
+    // 4. Dispatch Email with Direct Password Setup Link & Replacement Notice
     let emailSent = false;
     try {
       const transporter = nodemailer.createTransport({
@@ -135,14 +119,14 @@ export async function POST(request: Request) {
 
       const replacementBannerHtml = wasPreExistingReplaced ? `
         <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px; border-radius: 4px; margin: 16px 0; font-size: 12px; color: #991b1b;">
-          ⚠️ <strong>Notice:</strong> A pre-existing account associated with <code>${cleanEmail}</code> was updated and re-provisioned for your new organization membership.
+          ⚠️ <strong>Notice:</strong> A pre-existing account associated with <code>${cleanEmail}</code> was replaced and re-provisioned for your new organization membership.
         </div>
       ` : '';
 
       const mailOptions = {
         from: `"Kozker Platform Auth" <${process.env.SMTP_FROM || 'kozklawtailscale@gmail.com'}>`,
         to: cleanEmail,
-        subject: `Complete Account Password Setup - ${org?.name || 'Kozker Platform'}`,
+        subject: `Set Up Your Portal Password - ${org?.name || 'Kozker Platform'}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e7e5e4; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
             <div style="background-color: #ff6e30; padding: 24px; text-align: center; color: white;">
@@ -156,21 +140,21 @@ export async function POST(request: Request) {
               
               <div style="background-color: #fff7ed; border-left: 4px solid #ff6e30; padding: 14px; border-radius: 4px; margin: 18px 0; font-size: 13px; color: #9a3412; leading-relaxed;">
                 <strong>⏳ Authentication Setup Process:</strong><br />
-                Member addition initiated. Please click below to verify your single-use Supabase Authentication token and set your password. Once set, your credentials will be confirmed. The exact same email and password will be used to log in to the recruitment panel.
+                Member addition initiated. Please click below to set up your password. Once set, your credentials will be confirmed in Supabase. The exact same email and password will be used to log in to the recruitment panel.
               </div>
 
               <p style="font-size: 14px; color: #44403c;">
-                You have been invited to join <strong>${org?.name || 'Kozker Platform'}</strong>. Please click the single-use token button below to complete Supabase authentication and set up your password.
+                You have been invited to join <strong>${org?.name || 'Kozker Platform'}</strong>. Please click the button below to set up your password and complete Supabase authentication.
               </p>
 
               <div style="text-align: center; margin: 28px 0;">
                 <a href="${authActionLink}" style="background-color: #1c1917; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                  🔐 Verify Supabase Auth & Set Password
+                  🔐 Set Password & Confirm Supabase Auth
                 </a>
               </div>
 
               <div style="background-color: white; border: 1px solid #e7e5e4; padding: 12px; border-radius: 6px; font-size: 12px; color: #78716c;">
-                💡 <strong>Single-Use Security Link:</strong> This button contains a single-use Supabase authentication token that will automatically expire after password confirmation.
+                💡 <strong>Unified Access Policy:</strong> The email (<code>${cleanEmail}</code>) and password you set on this page will grant access to both the Admin Console and the Recruitment Panel.
               </div>
             </div>
 
@@ -192,7 +176,7 @@ export async function POST(request: Request) {
       organization_id: user.organization_id,
       actor_id: user.id,
       actor_name: user.name,
-      action_description: `Sent single-use Supabase authentication token email to member '${name}' (${cleanEmail})`,
+      action_description: `Sent password setup link directly to member '${name}' (${cleanEmail})`,
       target_name: name,
       action_type: 'invite'
     });
@@ -200,7 +184,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       was_pre_existing_replaced: wasPreExistingReplaced,
-      message: `Single-use Supabase Authentication email sent to ${cleanEmail}. The link will expire after password setup.`,
+      message: `Password setup email sent to ${cleanEmail}. The member will set their password on the portal password setup page.`,
       email_sent: emailSent,
       member
     });
