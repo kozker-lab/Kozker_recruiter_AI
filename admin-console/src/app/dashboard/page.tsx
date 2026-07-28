@@ -1167,6 +1167,17 @@ export default function DashboardPage() {
                 </select>
               </div>
 
+              {/* Authentication Setup Process Notice */}
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 leading-relaxed space-y-1">
+                <div className="font-bold flex items-center gap-1 text-amber-950">
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Authentication Setup Process</span>
+                </div>
+                <p>
+                  Member addition initiated. Authentication setup will take about a minute. Once completed, a confirmation email with credentials to access the Admin Console will be sent to the user.
+                </p>
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-150">
                 <button
                   type="button"

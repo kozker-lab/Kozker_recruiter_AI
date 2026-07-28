@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { verifyJwtToken, hashPassword } from '@/lib/auth';
+import { verifyJwtToken, hashPassword, syncSupabaseAuthUser } from '@/lib/auth';
 import nodemailer from 'nodemailer';
 
 function getUserFromReq(request: Request) {
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
       : name.slice(0, 2).toUpperCase();
 
-    // Insert or update member
+    // Insert or update member in database
     const { data: member, error: memErr } = await supabase
       .from('members')
       .insert({
@@ -75,8 +75,12 @@ export async function POST(request: Request) {
       });
     }
 
-    // Dispatch SMTP Email
-    const loginUrl = process.env.ADMIN_CONSOLE_URL ? `${process.env.ADMIN_CONSOLE_URL}/login` : 'http://localhost:3001/login';
+    // Synchronize with Supabase GoTrue Auth (auth.users)
+    await syncSupabaseAuthUser(email, tempPassword);
+
+    // Dispatch SMTP Credentials Email
+    const adminLoginUrl = process.env.ADMIN_CONSOLE_URL ? `${process.env.ADMIN_CONSOLE_URL}/login` : 'http://localhost:3001/login';
+    const recruiterAppUrl = process.env.RECRUITER_APP_URL ? `${process.env.RECRUITER_APP_URL}/auth/login` : 'http://localhost:3000/auth/login';
     let emailSent = false;
 
     try {
@@ -91,34 +95,43 @@ export async function POST(request: Request) {
       });
 
       const mailOptions = {
-        from: `"Kozker AI Recruiter" <${process.env.SMTP_FROM || 'kozklawtailscale@gmail.com'}>`,
+        from: `"Kozker AI Admin" <${process.env.SMTP_FROM || 'kozklawtailscale@gmail.com'}>`,
         to: email,
-        subject: `Invitation to join ${org?.name || 'Kozker Platform'}`,
+        subject: `Welcome to ${org?.name || 'Kozker Platform'} - Admin Console Credentials`,
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e7e5e4; border-radius: 8px; overflow: hidden;">
-            <div style="background-color: #ff6e30; padding: 20px; text-align: center; color: white;">
-              <h1 style="margin: 0; font-size: 24px;">Kozker Platform Invitation</h1>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e7e5e4; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+            <div style="background-color: #ff6e30; padding: 24px; text-align: center; color: white;">
+              <h1 style="margin: 0; font-size: 22px;">Organization Portal Invitation</h1>
             </div>
+            
             <div style="padding: 24px; background-color: #fafaf9; color: #292524;">
               <p style="font-size: 16px;">Hello <strong>${name}</strong>,</p>
-              <p>You have been invited to join <strong>${org?.name || 'Kozker Platform'}</strong> as an organization member.</p>
+              <p>You have been provisioned as a member of <strong>${org?.name || 'Kozker Platform'}</strong>.</p>
               
-              <div style="background-color: white; border: 1px solid #e7e5e4; padding: 16px; border-radius: 6px; margin: 20px 0;">
-                <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold; color: #1c1917;">Your Temporary Login Credentials:</p>
-                <p style="margin: 4px 0; font-family: monospace; font-size: 14px;"><strong>Email:</strong> ${email}</p>
+              <div style="background-color: white; border: 1px solid #e7e5e4; padding: 18px; border-radius: 6px; margin: 20px 0;">
+                <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: bold; color: #ff6e30;">🔐 Your Unified Access Credentials:</p>
+                <p style="margin: 4px 0; font-family: monospace; font-size: 14px;"><strong>Work Email:</strong> ${email}</p>
                 <p style="margin: 4px 0; font-family: monospace; font-size: 14px;"><strong>Temporary Password:</strong> ${tempPassword}</p>
               </div>
 
-              <p style="font-size: 13px; color: #78716c;">Upon logging in, you will be prompted to set your personal password and accept the platform Terms & Conditions.</p>
+              <div style="background-color: #fff7ed; border-left: 4px solid #ff6e30; padding: 12px; font-size: 12px; color: #9a3412; margin-bottom: 20px;">
+                💡 <strong>Unified Credentials Notice:</strong> These exact credentials grant access to both the Admin Console and assigned applications (including the Recruitment Panel).
+              </div>
 
-              <div style="text-align: center; margin: 28px 0;">
-                <a href="${loginUrl}" style="background-color: #1c1917; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
-                  Access Kozker Gateway & Login
+              <p style="font-size: 13px; color: #78716c;">Upon your first login, you will be prompted to set your personal password and accept the platform Terms and Conditions.</p>
+
+              <div style="text-align: center; margin: 28px 0; display: flex; gap: 12px; justify-content: center;">
+                <a href="${adminLoginUrl}" style="background-color: #1c1917; color: white; padding: 12px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px; display: inline-block;">
+                  🔑 Log In to Admin Console
+                </a>
+                <a href="${recruiterAppUrl}" style="background-color: #ff6e30; color: white; padding: 12px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px; display: inline-block;">
+                  🚀 Log In to Recruitment Panel
                 </a>
               </div>
             </div>
-            <div style="background-color: #f5f5f4; padding: 12px; text-align: center; font-size: 12px; color: #a8a29e;">
-              Kozker Recruiter AI Platform • Enterprise Gateway
+
+            <div style="background-color: #f5f5f4; padding: 14px; text-align: center; font-size: 12px; color: #a8a29e; border-top: 1px solid #e7e5e4;">
+              Kozker Recruiter AI Platform • Unified Governance Gateway
             </div>
           </div>
         `
@@ -135,14 +148,14 @@ export async function POST(request: Request) {
       organization_id: user.organization_id,
       actor_id: user.id,
       actor_name: user.name,
-      action_description: `Sent invitation email to member '${name}' (${email})`,
+      action_description: `Provisioned organization member '${name}' (${email}) and dispatched authentication email`,
       target_name: name,
       action_type: 'invite'
     });
 
     return NextResponse.json({
       success: true,
-      message: emailSent ? `Invitation email sent to ${email}` : `Member provisioned (Email dispatch skipped). Temp Password: ${tempPassword}`,
+      message: `Member addition initiated. Authentication setup will take about a minute. Once completed, a confirmation email with credentials to access the Admin Console will be sent to the user.`,
       email_sent: emailSent,
       temp_password: tempPassword,
       member

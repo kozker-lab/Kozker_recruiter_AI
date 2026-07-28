@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { supabase } from './db';
 
 const DEV_ADMIN_KEY_DEFAULT = "a7f9b8c2d1e0456789abcde0123456789abcdef0123456789abcdef0123456789";
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-shared-key-change-in-production";
@@ -34,7 +35,6 @@ export function validateDevAdminKey(inputKey: string): boolean {
   const b = Buffer.from(masterKey);
 
   if (a.length !== b.length) {
-    // Perform dummy timing equalization to prevent length timing leakage
     crypto.timingSafeEqual(b, b);
     return false;
   }
@@ -71,4 +71,31 @@ export function getCookieDomainHeader(): string {
     return `Domain=${COOKIE_DOMAIN}; Path=/; HttpOnly; Secure; SameSite=Lax`;
   }
   return `Path=/; HttpOnly; SameSite=Lax`;
+}
+
+/**
+ * Synchronizes user credentials with Supabase GoTrue Auth (auth.users)
+ */
+export async function syncSupabaseAuthUser(email: string, password: string): Promise<void> {
+  try {
+    if (!supabase.auth.admin) return;
+    const cleanEmail = email.toLowerCase().trim();
+    const { data: usersData } = await supabase.auth.admin.listUsers();
+    const existingUser = (usersData?.users || []).find(u => u.email?.toLowerCase() === cleanEmail);
+
+    if (existingUser) {
+      await supabase.auth.admin.updateUserById(existingUser.id, {
+        password: password,
+        email_confirm: true
+      });
+    } else {
+      await supabase.auth.admin.createUser({
+        email: cleanEmail,
+        password: password,
+        email_confirm: true
+      });
+    }
+  } catch (err) {
+    console.error('Supabase Auth user sync error (non-fatal):', err);
+  }
 }
