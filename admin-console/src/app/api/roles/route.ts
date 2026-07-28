@@ -43,7 +43,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { name, parent_id, level, color_hex, permissions } = await request.json();
+    // Check user permissions to ensure unassigned/default members cannot create roles
+    if (user.has_assigned_roles === false) {
+      return NextResponse.json({
+        error: 'Forbidden: Default unassigned members have view-only access and cannot create new roles.'
+      }, { status: 403 });
+    }
+
+    const { name, parent_id, level, color_hex, permissions, scope_type, branch_name } = await request.json();
 
     if (!name) {
       return NextResponse.json({ error: 'Role name is required' }, { status: 400 });
@@ -60,18 +67,38 @@ export async function POST(request: Request) {
       }
     }
 
-    // Insert Role
-    const { data: role, error: roleError } = await supabase
+    // Insert Role with safe schema cache fallback
+    const roleInsertData: any = {
+      organization_id: user.organization_id,
+      parent_id: parent_id || null,
+      name,
+      level: level || 'position',
+      color_hex: color_hex || '#ff6e30',
+      scope_type: scope_type || 'organization',
+      branch_name: branch_name || 'Main Branch'
+    };
+
+    let { data: role, error: roleError } = await supabase
       .from('roles')
-      .insert({
-        organization_id: user.organization_id,
-        parent_id: parent_id || null,
-        name,
-        level: level || 'position',
-        color_hex: color_hex || '#ff6e30'
-      })
+      .insert(roleInsertData)
       .select('*')
       .single();
+
+    if (roleError && roleError.message.includes('schema cache')) {
+      delete roleInsertData.scope_type;
+      delete roleInsertData.branch_name;
+      const fallbackRes = await supabase
+        .from('roles')
+        .insert(roleInsertData)
+        .select('*')
+        .single();
+      role = fallbackRes.data;
+      roleError = fallbackRes.error;
+      if (role) {
+        role.scope_type = scope_type || 'organization';
+        role.branch_name = branch_name || 'Main Branch';
+      }
+    }
 
     if (roleError) {
       return NextResponse.json({ error: roleError.message }, { status: 500 });
@@ -113,7 +140,7 @@ export async function POST(request: Request) {
       organization_id: user.organization_id,
       actor_id: user.id,
       actor_name: user.name,
-      action_description: `Created master role profile '${name}'`,
+      action_description: `Created master role profile '${name}' [${scope_type || 'organization'}: ${branch_name || 'Main Branch'}]`,
       target_name: name,
       action_type: 'create'
     });

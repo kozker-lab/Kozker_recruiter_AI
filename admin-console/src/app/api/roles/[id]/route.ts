@@ -20,8 +20,14 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (user.has_assigned_roles === false) {
+      return NextResponse.json({
+        error: 'Forbidden: Default unassigned members have view-only access and cannot modify role configurations.'
+      }, { status: 403 });
+    }
+
     const roleId = params.id;
-    const { name, parent_id, level, color_hex, permissions } = await request.json();
+    const { name, parent_id, level, color_hex, permissions, scope_type, branch_name } = await request.json();
 
     // Update Role metadata
     const { data: role, error } = await supabase
@@ -31,6 +37,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         parent_id: parent_id !== undefined ? parent_id : undefined,
         ...(level ? { level } : {}),
         ...(color_hex ? { color_hex } : {}),
+        ...(scope_type ? { scope_type } : {}),
+        ...(branch_name ? { branch_name } : {}),
         updated_at: new Date().toISOString()
       })
       .eq('id', roleId)
@@ -58,7 +66,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       organization_id: user.organization_id,
       actor_id: user.id,
       actor_name: user.name,
-      action_description: `Updated configuration for role '${role.name}'`,
+      action_description: `Updated configuration for role '${role.name}' [Scope: ${role.scope_type || 'organization'} | Branch: ${role.branch_name || 'Main Branch'}]`,
       target_name: role.name,
       action_type: 'update'
     });
@@ -74,6 +82,12 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     const user = getUserFromReq(request);
     if (!user || !user.organization_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user.has_assigned_roles === false) {
+      return NextResponse.json({
+        error: 'Forbidden: Default unassigned members have view-only access and cannot delete roles.'
+      }, { status: 403 });
     }
 
     const roleId = params.id;

@@ -36,6 +36,8 @@ export default function DashboardPage() {
   const [newRoleLevel, setNewRoleLevel] = useState('position');
   const [newRoleParentId, setNewRoleParentId] = useState('');
   const [newRoleColor, setNewRoleColor] = useState('#ff6e30');
+  const [newRoleScopeType, setNewRoleScopeType] = useState('organization');
+  const [newRoleBranchName, setNewRoleBranchName] = useState('Main Branch');
 
   // New Pipeline Modal
   const [isNewPipelineOpen, setIsNewPipelineOpen] = useState(false);
@@ -54,7 +56,7 @@ export default function DashboardPage() {
   // Member Role Assignment Modal
   const [isAssignRoleModalOpen, setIsAssignRoleModalOpen] = useState(false);
   const [targetMember, setTargetMember] = useState<any>(null);
-  const [selectedRoleForMember, setSelectedRoleForMember] = useState<string>('');
+  const [selectedRolesForMember, setSelectedRolesForMember] = useState<string[]>([]);
   const [assignRoleMsg, setAssignRoleMsg] = useState({ error: '', success: '' });
   const [isSavingMemberRole, setIsSavingMemberRole] = useState(false);
 
@@ -151,14 +153,18 @@ export default function DashboardPage() {
       const res = await fetch(`/api/roles/${selectedRole.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ permissions: rolePermissions })
+        body: JSON.stringify({
+          permissions: rolePermissions,
+          scope_type: selectedRole.scope_type || 'organization',
+          branch_name: selectedRole.branch_name || 'Main Branch'
+        })
       });
 
       const data = await res.json();
       if (!res.ok) {
         setRoleSaveMsg({ error: data.error || 'Failed to update permissions', success: '' });
       } else {
-        setRoleSaveMsg({ error: '', success: `Permissions for '${selectedRole.name}' saved successfully!` });
+        setRoleSaveMsg({ error: '', success: `Permissions & Scope for '${selectedRole.name}' saved successfully!` });
         fetchAllData();
       }
     } catch (err: any) {
@@ -208,7 +214,9 @@ export default function DashboardPage() {
           name: newRoleName,
           level: newRoleLevel,
           parent_id: newRoleParentId || null,
-          color_hex: newRoleColor
+          color_hex: newRoleColor,
+          scope_type: newRoleScopeType,
+          branch_name: newRoleBranchName
         })
       });
 
@@ -261,35 +269,33 @@ export default function DashboardPage() {
   const handleOpenAssignRoleModal = (m: any) => {
     setTargetMember(m);
     setAssignRoleMsg({ error: '', success: '' });
-    const currentRoles = (m.member_roles || []).map((mr: any) => mr.role_id);
-    setSelectedRoleForMember(currentRoles[0] || (roles[0]?.id || ''));
+    const currentRoles = (m.member_roles || []).map((mr: any) => mr.role_id).filter(Boolean);
+    setSelectedRolesForMember(currentRoles);
     setIsAssignRoleModalOpen(true);
   };
 
   const handleSaveMemberRole = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetMember || !selectedRoleForMember) return;
+    if (!targetMember) return;
     setIsSavingMemberRole(true);
     setAssignRoleMsg({ error: '', success: '' });
 
     try {
-      const res = await fetch(`/api/dev/users/${targetMember.id}`, {
-        method: 'PUT',
+      const res = await fetch(`/api/members/${targetMember.id}/roles`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          role_id: selectedRoleForMember,
-          administrator: true,
-          access_recruitment: true
+          role_ids: selectedRolesForMember
         })
       });
 
       const data = await res.json();
       if (!res.ok) {
-        setAssignRoleMsg({ error: data.error || 'Failed to assign role', success: '' });
+        setAssignRoleMsg({ error: data.error || 'Failed to assign roles', success: '' });
       } else {
-        setAssignRoleMsg({ error: '', success: `Role assigned to ${targetMember.name} successfully!` });
+        setAssignRoleMsg({ error: '', success: `Roles updated for ${targetMember.name}! Executive email notification dispatched.` });
         fetchAllData();
-        setTimeout(() => setIsAssignRoleModalOpen(false), 1200);
+        setTimeout(() => setIsAssignRoleModalOpen(false), 1400);
       }
     } catch (err: any) {
       setAssignRoleMsg({ error: err.message || 'Network error', success: '' });
@@ -525,31 +531,48 @@ export default function DashboardPage() {
                     Role Hierarchy Tree ({roles.length})
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {roles.map(r => {
                       const isSelected = selectedRole?.id === r.id;
+                      const scopeType = r.scope_type || 'organization';
+                      const branchName = r.branch_name || 'Main Branch';
+                      const tagBadgeClass = scopeType === 'branch'
+                        ? (isSelected ? 'bg-blue-900 text-blue-200 border-blue-700' : 'bg-blue-50 text-blue-700 border-blue-200')
+                        : scopeType === 'multi_branch'
+                        ? (isSelected ? 'bg-purple-900 text-purple-200 border-purple-700' : 'bg-purple-50 text-purple-700 border-purple-200')
+                        : (isSelected ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-amber-50 text-amber-800 border-amber-200');
+
                       return (
                         <div
                           key={r.id}
                           onClick={() => handleSelectRole(r)}
-                          className={`p-3 rounded border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                          className={`p-3 rounded-lg border text-xs cursor-pointer transition-all space-y-1.5 ${
                             isSelected
                               ? 'bg-stone-900 text-white border-stone-900 shadow-sm font-semibold'
                               : 'bg-stone-50 border-stone-200 text-stone-800 hover:bg-stone-100'
                           }`}
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div
-                              className="w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ backgroundColor: r.color_hex || '#ff6e30' }}
-                            />
-                            <span className="truncate">{r.name}</span>
+                          <div className="flex items-center justify-between min-w-0 gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: r.color_hex || '#ff6e30' }}
+                              />
+                              <span className="truncate font-bold">{r.name}</span>
+                            </div>
+                            <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
+                              isSelected ? 'bg-stone-800 text-stone-300' : 'bg-stone-200 text-stone-600'
+                            }`}>
+                              {r.level || 'ORG'}
+                            </span>
                           </div>
-                          <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
-                            isSelected ? 'bg-stone-800 text-stone-300' : 'bg-stone-200 text-stone-600'
-                          }`}>
-                            {r.level || 'ORG'}
-                          </span>
+
+                          {/* Dynamic Left Scope Tag */}
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded-full font-bold border ${tagBadgeClass}`}>
+                              [{scopeType === 'branch' ? `BRANCH: ${branchName}` : scopeType === 'multi_branch' ? `MULTI: ${branchName}` : `ORG: ${currentUser?.organization_name || 'Organization'}`}]
+                            </span>
+                          </div>
                         </div>
                       );
                     })}
@@ -600,6 +623,45 @@ export default function DashboardPage() {
                                   </div>
                                   <div className="text-[10px] text-stone-500">Recruitment & pipeline management</div>
                                 </div>
+
+                      {/* Scope Coverage & Branch Configuration */}
+                      <div className="p-3.5 bg-stone-50 border border-stone-200 rounded-lg grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block font-bold text-stone-700 mb-1 font-mono uppercase text-[10px]">
+                            Organization Scope Coverage
+                          </label>
+                          <select
+                            value={selectedRole.scope_type || 'organization'}
+                            disabled={!isPrimaryAdmin}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setSelectedRole({ ...selectedRole, scope_type: val });
+                            }}
+                            className="w-full p-2 bg-white border border-stone-200 rounded text-xs font-semibold focus:outline-none focus:border-brand"
+                          >
+                            <option value="organization">Organization-Wide [ORG]</option>
+                            <option value="branch">Branch-Specific [BRANCH]</option>
+                            <option value="multi_branch">Multi-Branch [MULTI-BRANCH]</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block font-bold text-stone-700 mb-1 font-mono uppercase text-[10px]">
+                            Branch Assignment / Location Context
+                          </label>
+                          <input
+                            type="text"
+                            value={selectedRole.branch_name || 'Main Branch'}
+                            disabled={!isPrimaryAdmin}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setSelectedRole({ ...selectedRole, branch_name: val });
+                            }}
+                            placeholder="e.g. HQ London, APAC Regional"
+                            className="w-full p-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-brand font-mono"
+                          />
+                        </div>
+                      </div>
                                 <div onClick={() => handleApplyTemplate('senior-recruiter')} className="p-2.5 hover:bg-stone-50 cursor-pointer">
                                   <div className="font-bold text-stone-900 flex items-center gap-1.5">
                                     <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> Senior Recruiter
@@ -925,15 +987,20 @@ export default function DashboardPage() {
                           <td className="p-3">
                             <div className="flex flex-wrap gap-1">
                               {rolesList.length === 0 ? (
-                                <span className="text-amber-600 font-mono text-[10px] italic">Pending Role Assignment</span>
+                                <span className="px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-stone-100 text-stone-700 border border-stone-200">
+                                  Default Member (View-Only Pipeline & Admin)
+                                </span>
                               ) : (
                                 rolesList.map((r: any) => (
                                   <span
                                     key={r.id}
-                                    className="px-2 py-0.5 rounded text-[10px] font-mono font-bold text-white shadow-2xs"
+                                    className="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold text-white shadow-2xs flex items-center gap-1"
                                     style={{ backgroundColor: r.color_hex || '#ff6e30' }}
                                   >
-                                    {r.name}
+                                    <span>{r.name}</span>
+                                    <span className="opacity-80 text-[8px] uppercase">
+                                      [{r.scope_type === 'branch' ? r.branch_name : r.scope_type === 'multi_branch' ? 'MULTI' : 'ORG'}]
+                                    </span>
                                   </span>
                                 ))
                               )}
@@ -1261,18 +1328,60 @@ export default function DashboardPage() {
             )}
 
             <form onSubmit={handleSaveMemberRole} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-semibold text-stone-700 mb-1">Select Role Profile</label>
-                <select
-                  value={selectedRoleForMember}
-                  onChange={(e) => setSelectedRoleForMember(e.target.value)}
-                  required
-                  className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
-                >
-                  {roles.map(r => (
-                    <option key={r.id} value={r.id}>{r.name} ({r.level})</option>
-                  ))}
-                </select>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block font-semibold text-stone-700 font-mono uppercase text-[10px] tracking-wider">
+                    Select Active Roles & Scope Tags
+                  </label>
+                  <span className="text-[10px] text-stone-400 font-mono">Multiple allowed</span>
+                </div>
+
+                <div className="p-3 bg-stone-50 border border-stone-200 rounded-lg max-h-56 overflow-y-auto space-y-2">
+                  {roles.map(r => {
+                    const isChecked = selectedRolesForMember.includes(r.id);
+                    const scopeLabel = (r.scope_type || 'organization').toUpperCase();
+                    const branchLabel = r.branch_name || 'Main Branch';
+                    const tagBg = r.scope_type === 'branch' ? 'bg-blue-100 text-blue-800' : r.scope_type === 'multi_branch' ? 'bg-purple-100 text-purple-800' : 'bg-amber-100 text-amber-800';
+
+                    return (
+                      <label
+                        key={r.id}
+                        className={`p-2.5 bg-white border rounded-lg flex items-center justify-between cursor-pointer transition-all ${
+                          isChecked ? 'border-brand ring-1 ring-brand/30 shadow-2xs' : 'border-stone-200 hover:border-stone-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedRolesForMember([...selectedRolesForMember, r.id]);
+                              } else {
+                                setSelectedRolesForMember(selectedRolesForMember.filter(id => id !== r.id));
+                              }
+                            }}
+                            className="accent-brand w-4 h-4 cursor-pointer"
+                          />
+                          <div className="min-w-0">
+                            <div className="font-bold text-stone-900 truncate">{r.name}</div>
+                            <div className="text-[10px] text-stone-500 font-mono">Branch Context: {branchLabel}</div>
+                          </div>
+                        </div>
+
+                        <span className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded-full font-bold ${tagBg}`}>
+                          [{scopeLabel}: {branchLabel}]
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {selectedRolesForMember.length === 0 && (
+                  <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-800 text-[11px] rounded font-mono">
+                    💡 <strong>Default Member Mode:</strong> Unassigned members retain the Default Member role (View-Only Pipeline & Admin Panel access).
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-150">
@@ -1286,9 +1395,10 @@ export default function DashboardPage() {
                 <button
                   type="submit"
                   disabled={isSavingMemberRole}
-                  className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-mono uppercase font-bold rounded transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-mono uppercase font-bold rounded transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  {isSavingMemberRole ? 'Saving Role...' : 'Save Role Assignment'}
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isSavingMemberRole ? 'Saving & Sending Email...' : 'Save & Send Executive Notification Email'}</span>
                 </button>
               </div>
             </form>
