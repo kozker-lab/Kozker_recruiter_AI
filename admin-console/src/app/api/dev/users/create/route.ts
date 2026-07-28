@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
       : name.slice(0, 2).toUpperCase();
 
-    // Create member
+    // Create member (Primary Organization Admin)
     const { data: member, error } = await supabase
       .from('members')
       .insert({
@@ -37,6 +37,7 @@ export async function POST(request: Request) {
         password_hash,
         avatar_initials: initials,
         must_change_password: true,
+        is_primary_admin: true,
         status: 'active'
       })
       .select('*')

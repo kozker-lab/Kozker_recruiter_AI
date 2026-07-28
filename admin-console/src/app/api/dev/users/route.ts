@@ -20,9 +20,26 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Filter to ONLY Organization Admins (Primary Admins / Master Administrators)
+    const adminUsers = (users || []).filter((u: any) => {
+      // 1. Explicit primary admin flag
+      if (u.is_primary_admin === true) return true;
+
+      // 2. Check if any assigned role has master administrator rights (administrator: true)
+      const rolesArr = u.member_roles || [];
+      const hasAdminRights = rolesArr.some((mr: any) => {
+        const perms = Array.isArray(mr.roles?.role_permissions)
+          ? mr.roles?.role_permissions[0]
+          : mr.roles?.role_permissions;
+        return perms?.administrator === true;
+      });
+      
+      return hasAdminRights;
+    });
+
     const { data: orgs } = await supabase.from('organizations').select('*');
 
-    return NextResponse.json({ success: true, users: users || [], organizations: orgs || [] });
+    return NextResponse.json({ success: true, users: adminUsers, organizations: orgs || [] });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to list users' }, { status: 500 });
   }
