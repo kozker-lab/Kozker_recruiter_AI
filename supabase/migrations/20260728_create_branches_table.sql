@@ -6,7 +6,7 @@
 -- 1. Create public.branches table
 CREATE TABLE IF NOT EXISTS public.branches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    organization_id VARCHAR(100) NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
     name VARCHAR(150) NOT NULL,
     code VARCHAR(50) DEFAULT 'MAIN',
     location VARCHAR(200) DEFAULT 'HQ',
