@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { verifyJwtToken, hashPassword, syncSupabaseAuthUser } from '@/lib/auth';
+import { verifyJwtToken, hashPassword } from '@/lib/auth';
 import nodemailer from 'nodemailer';
 
 function getUserFromReq(request: Request) {
@@ -26,6 +26,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email and full name are required' }, { status: 400 });
     }
 
+    const cleanEmail = email.toLowerCase().trim();
+
     // Check organization member quota
     const { data: org } = await supabase.from('organizations').select('name, max_members_limit').eq('id', user.organization_id).single();
     if (org && org.max_members_limit !== null && org.max_members_limit !== undefined) {
@@ -37,14 +39,13 @@ export async function POST(request: Request) {
       }
     }
 
-    // Generate temporary password
-    const tempPassword = 'Kozker#' + Math.random().toString(36).slice(-6) + '!' + Math.floor(Math.random() * 100);
-    const password_hash = await hashPassword(tempPassword);
-
     const nameParts = name.trim().split(' ');
     const initials = nameParts.length >= 2 
       ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
       : name.slice(0, 2).toUpperCase();
+
+    // Generate placeholder hash for database until member completes Supabase authentication setup
+    const initialPlaceholderHash = await hashPassword('PendingSupabaseAuth#' + Math.random().toString(36).slice(-8));
 
     // Insert or update member in database
     const { data: member, error: memErr } = await supabase
@@ -52,8 +53,8 @@ export async function POST(request: Request) {
       .insert({
         organization_id: user.organization_id,
         name,
-        email: email.toLowerCase().trim(),
-        password_hash,
+        email: cleanEmail,
+        password_hash: initialPlaceholderHash,
         avatar_initials: initials,
         must_change_password: true,
         terms_accepted: false,
@@ -75,14 +76,30 @@ export async function POST(request: Request) {
       });
     }
 
-    // Synchronize with Supabase GoTrue Auth (auth.users)
-    await syncSupabaseAuthUser(email, tempPassword);
-
-    // Dispatch SMTP Credentials Email
+    // Generate Official Supabase Authentication Invite Link
     const adminLoginUrl = process.env.ADMIN_CONSOLE_URL ? `${process.env.ADMIN_CONSOLE_URL}/login` : 'http://localhost:3001/login';
-    const recruiterAppUrl = process.env.RECRUITER_APP_URL ? `${process.env.RECRUITER_APP_URL}/auth/login` : 'http://localhost:3000/auth/login';
-    let emailSent = false;
+    let authActionLink = adminLoginUrl;
 
+    try {
+      if (supabase.auth.admin) {
+        const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
+          type: 'invite',
+          email: cleanEmail,
+          options: {
+            redirectTo: adminLoginUrl
+          }
+        });
+
+        if (!linkErr && linkData?.properties?.action_link) {
+          authActionLink = linkData.properties.action_link;
+        }
+      }
+    } catch (authLinkErr) {
+      console.error('Supabase Auth link generation error:', authLinkErr);
+    }
+
+    // Dispatch Email to Added Member
+    let emailSent = false;
     try {
       const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -95,43 +112,40 @@ export async function POST(request: Request) {
       });
 
       const mailOptions = {
-        from: `"Kozker AI Admin" <${process.env.SMTP_FROM || 'kozklawtailscale@gmail.com'}>`,
-        to: email,
-        subject: `Welcome to ${org?.name || 'Kozker Platform'} - Admin Console Credentials`,
+        from: `"Kozker Platform Auth" <${process.env.SMTP_FROM || 'kozklawtailscale@gmail.com'}>`,
+        to: cleanEmail,
+        subject: `Supabase Authentication Setup - ${org?.name || 'Kozker Platform'}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e7e5e4; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
             <div style="background-color: #ff6e30; padding: 24px; text-align: center; color: white;">
-              <h1 style="margin: 0; font-size: 22px;">Organization Portal Invitation</h1>
+              <h1 style="margin: 0; font-size: 22px;">Supabase Authentication Invitation</h1>
             </div>
             
             <div style="padding: 24px; background-color: #fafaf9; color: #292524;">
               <p style="font-size: 16px;">Hello <strong>${name}</strong>,</p>
-              <p>You have been provisioned as a member of <strong>${org?.name || 'Kozker Platform'}</strong>.</p>
               
-              <div style="background-color: white; border: 1px solid #e7e5e4; padding: 18px; border-radius: 6px; margin: 20px 0;">
-                <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: bold; color: #ff6e30;">🔐 Your Unified Access Credentials:</p>
-                <p style="margin: 4px 0; font-family: monospace; font-size: 14px;"><strong>Work Email:</strong> ${email}</p>
-                <p style="margin: 4px 0; font-family: monospace; font-size: 14px;"><strong>Temporary Password:</strong> ${tempPassword}</p>
+              <div style="background-color: #fff7ed; border-left: 4px solid #ff6e30; padding: 14px; border-radius: 4px; margin: 18px 0; font-size: 13px; color: #9a3412; leading-relaxed;">
+                <strong>⏳ Authentication Setup Process:</strong><br />
+                Member addition initiated. Authentication setup will take about a minute. Once completed, your credentials to access the Admin Console will be finalized. The exact same credentials will be used when given access to the recruitment panel.
               </div>
 
-              <div style="background-color: #fff7ed; border-left: 4px solid #ff6e30; padding: 12px; font-size: 12px; color: #9a3412; margin-bottom: 20px;">
-                💡 <strong>Unified Credentials Notice:</strong> These exact credentials grant access to both the Admin Console and assigned applications (including the Recruitment Panel).
+              <p style="font-size: 14px; color: #44403c;">
+                You have been invited to join <strong>${org?.name || 'Kozker Platform'}</strong>. Please click the button below to complete your Supabase Authentication setup and create your account password.
+              </p>
+
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${authActionLink}" style="background-color: #1c1917; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  🔐 Complete Supabase Authentication Setup
+                </a>
               </div>
 
-              <p style="font-size: 13px; color: #78716c;">Upon your first login, you will be prompted to set your personal password and accept the platform Terms and Conditions.</p>
-
-              <div style="text-align: center; margin: 28px 0; display: flex; gap: 12px; justify-content: center;">
-                <a href="${adminLoginUrl}" style="background-color: #1c1917; color: white; padding: 12px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px; display: inline-block;">
-                  🔑 Log In to Admin Console
-                </a>
-                <a href="${recruiterAppUrl}" style="background-color: #ff6e30; color: white; padding: 12px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px; display: inline-block;">
-                  🚀 Log In to Recruitment Panel
-                </a>
+              <div style="background-color: white; border: 1px solid #e7e5e4; padding: 12px; border-radius: 6px; font-size: 12px; color: #78716c;">
+                💡 <strong>Unified Credentials Notice:</strong> The email (<code>${cleanEmail}</code>) and password you set during this authentication process will serve as your single set of credentials for both the Admin Console and the Recruitment Panel.
               </div>
             </div>
 
             <div style="background-color: #f5f5f4; padding: 14px; text-align: center; font-size: 12px; color: #a8a29e; border-top: 1px solid #e7e5e4;">
-              Kozker Recruiter AI Platform • Unified Governance Gateway
+              Kozker Recruiter AI Platform • Supabase Authentication Gateway
             </div>
           </div>
         `
@@ -148,16 +162,15 @@ export async function POST(request: Request) {
       organization_id: user.organization_id,
       actor_id: user.id,
       actor_name: user.name,
-      action_description: `Provisioned organization member '${name}' (${email}) and dispatched authentication email`,
+      action_description: `Sent Supabase Authentication email to added member '${name}' (${cleanEmail})`,
       target_name: name,
       action_type: 'invite'
     });
 
     return NextResponse.json({
       success: true,
-      message: `Member addition initiated. Authentication setup will take about a minute. Once completed, a confirmation email with credentials to access the Admin Console will be sent to the user.`,
+      message: `Supabase Authentication email sent to ${cleanEmail}. The member will complete authentication setup via the email link.`,
       email_sent: emailSent,
-      temp_password: tempPassword,
       member
     });
   } catch (error: any) {
