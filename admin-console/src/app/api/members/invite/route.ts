@@ -76,12 +76,19 @@ export async function POST(request: Request) {
       });
     }
 
-    // Generate Official Supabase Authentication Invite Link
+    // Generate Official Supabase Authentication Invite Link & Trigger Supabase Auth Invite
     const adminLoginUrl = process.env.ADMIN_CONSOLE_URL ? `${process.env.ADMIN_CONSOLE_URL}/login` : 'http://localhost:3001/login';
     let authActionLink = adminLoginUrl;
 
     try {
       if (supabase.auth.admin) {
+        // 1. Direct Supabase Auth Invite trigger (sends native Supabase Auth email if configured)
+        await supabase.auth.admin.inviteUserByEmail(cleanEmail, {
+          redirectTo: adminLoginUrl,
+          data: { name, organization_id: user.organization_id }
+        }).catch(err => console.log('Supabase native invite notice:', err?.message));
+
+        // 2. Generate Supabase Auth Verification Action Link
         const { data: linkData, error: linkErr } = await supabase.auth.admin.generateLink({
           type: 'invite',
           email: cleanEmail,
@@ -98,7 +105,7 @@ export async function POST(request: Request) {
       console.error('Supabase Auth link generation error:', authLinkErr);
     }
 
-    // Dispatch Email to Added Member
+    // Dispatch Custom HTML Credentials & Setup Email directly to Added Member's Email
     let emailSent = false;
     try {
       const transporter = nodemailer.createTransport({
@@ -162,7 +169,7 @@ export async function POST(request: Request) {
       organization_id: user.organization_id,
       actor_id: user.id,
       actor_name: user.name,
-      action_description: `Sent Supabase Authentication email to added member '${name}' (${cleanEmail})`,
+      action_description: `Sent Supabase Authentication email directly to added member '${name}' (${cleanEmail})`,
       target_name: name,
       action_type: 'invite'
     });
