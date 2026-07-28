@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { KeyRound, Mail, Lock, ShieldCheck, CheckCircle2, AlertCircle, Eye, EyeOff, ArrowRight } from 'lucide-react';
-import { supabase } from '@/lib/db';
+import { supabaseClient } from '@/lib/supabase-client';
 
 export default function SetPasswordPage() {
   const router = useRouter();
@@ -49,8 +49,8 @@ export default function SetPasswordPage() {
     try {
       // 1. Client-side Supabase GoTrue Auth password update
       try {
-        if (supabase.auth) {
-          await supabase.auth.updateUser({ password });
+        if (supabaseClient.auth) {
+          await supabaseClient.auth.updateUser({ password });
         }
       } catch (sbErr) {
         console.log('Client Supabase Auth updateUser notice:', sbErr);
