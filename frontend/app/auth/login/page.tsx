@@ -22,14 +22,47 @@ export default function LoginPage() {
     setError(null);
 
     try {
+      const cleanEmail = email.trim().toLowerCase();
+
+      // 1. Try Supabase Auth
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
+        email: cleanEmail,
         password,
       });
 
-      if (authError) throw authError;
+      if (!authError) {
+        window.location.href = "/dashboard";
+        return;
+      }
 
-      window.location.href = "/dashboard";
+      // 2. Fallback to Admin Console SSO Authentication Endpoint
+      const adminConsoleUrl = process.env.NEXT_PUBLIC_ADMIN_CONSOLE_URL || "http://localhost:3001";
+      try {
+        const ssoRes = await fetch(`${adminConsoleUrl}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          mode: "cors",
+          body: JSON.stringify({ email: cleanEmail, password })
+        });
+
+        if (ssoRes.ok) {
+          const ssoData = await ssoRes.json();
+          if (ssoData.token) {
+            document.cookie = `kozker_sso_token=${ssoData.token}; path=/; max-age=86400; SameSite=Lax`;
+            window.location.href = "/dashboard";
+            return;
+          }
+        } else {
+          const errData = await ssoRes.json().catch(() => ({}));
+          throw new Error(errData.error || "Invalid email or password");
+        }
+      } catch (fetchErr: any) {
+        if (fetchErr.message && fetchErr.message !== "Failed to fetch") {
+          throw fetchErr;
+        }
+      }
+
+      throw new Error(authError?.message || "Invalid login credentials");
     } catch (err: any) {
       setError(err.message || "Failed to log in");
       setLoading(false);
@@ -37,7 +70,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-8 animate-in fade-in duration-500 font-sans">
       <div className="space-y-2 text-center md:text-left">
         <h2 className="text-2xl font-tight font-semibold text-neutral-white tracking-tight">
           Welcome back
@@ -53,7 +86,7 @@ export default function LoginPage() {
         </div>
       )}
 
-      <form onSubmit={handleLogin} className="space-y-4 font-sans text-sm">
+      <form onSubmit={handleLogin} className="space-y-4 text-sm">
         <div className="space-y-1.5">
           <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Email Address</label>
           <div className="relative">
@@ -104,15 +137,6 @@ export default function LoginPage() {
           {loading ? "Logging in..." : "Log In"}
         </button>
       </form>
-
-      <div className="text-center font-sans text-xs pt-2">
-        <Link
-          href="/auth/signup"
-          className="text-neutral-400 hover:text-primary transition-colors cursor-pointer underline underline-offset-4"
-        >
-          Need an account? Sign up
-        </Link>
-      </div>
     </div>
   );
 }
