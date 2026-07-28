@@ -78,19 +78,28 @@ export function getCookieDomainHeader(): string {
  */
 export async function syncSupabaseAuthUser(email: string, password: string): Promise<void> {
   try {
-    if (!supabase.auth.admin) return;
+    if (!supabase.auth?.admin) return;
     const cleanEmail = email.toLowerCase().trim();
-    const { data: usersData } = await supabase.auth.admin.listUsers();
-    const existingUser = (usersData?.users || []).find(u => u.email?.toLowerCase() === cleanEmail);
 
-    if (existingUser) {
-      await supabase.auth.admin.updateUserById(existingUser.id, {
-        password: password,
-        email_confirm: true
-      });
-    } else {
-      await supabase.auth.admin.createUser({
-        email: cleanEmail,
+    // 1. Try creating fresh user in auth.users
+    const { data: createData, error: createErr } = await supabase.auth.admin.createUser({
+      email: cleanEmail,
+      password: password,
+      email_confirm: true
+    });
+
+    if (!createErr && createData?.user) {
+      return;
+    }
+
+    // 2. If user already exists in auth.users, retrieve user ID via recovery link generator & update password
+    const { data: linkData } = await supabase.auth.admin.generateLink({
+      type: 'recovery',
+      email: cleanEmail
+    });
+
+    if (linkData?.user?.id) {
+      await supabase.auth.admin.updateUserById(linkData.user.id, {
         password: password,
         email_confirm: true
       });

@@ -74,6 +74,7 @@ export default function SetPasswordPage() {
         });
 
         if (data.token) {
+          document.cookie = "kozker_sso_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;";
           document.cookie = `kozker_sso_token=${data.token}; path=/; max-age=86400; SameSite=Lax`;
         }
 
