@@ -6,7 +6,7 @@ import {
   ShieldCheck, GitPullRequest, Users, History, Terminal, ChevronDown,
   Plus, Check, X, Building2, Briefcase, ExternalLink, Lock, Settings,
   Clock, AlertCircle, CheckCircle2, Sliders, ChevronRight, Layers, ArrowUpRight,
-  Radio, RefreshCw, Mail, UserPlus, Send, Tag, Info, LayoutGrid, Award, Search, UserCheck, Shield
+  Radio, RefreshCw, Mail, UserPlus, Send, Tag, Info, LayoutGrid, Award, Search, UserCheck, Shield, Trash2
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -57,6 +57,12 @@ export default function DashboardPage() {
   const [selectedRoleForMember, setSelectedRoleForMember] = useState<string>('');
   const [assignRoleMsg, setAssignRoleMsg] = useState({ error: '', success: '' });
   const [isSavingMemberRole, setIsSavingMemberRole] = useState(false);
+
+  // Member Removal Modal
+  const [isRemoveMemberModalOpen, setIsRemoveMemberModalOpen] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<any>(null);
+  const [removeMemberMsg, setRemoveMemberMsg] = useState({ error: '', success: '' });
+  const [isRemovingMember, setIsRemovingMember] = useState(false);
 
   // Dropdown States
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
@@ -289,6 +295,37 @@ export default function DashboardPage() {
       setAssignRoleMsg({ error: err.message || 'Network error', success: '' });
     } finally {
       setIsSavingMemberRole(false);
+    }
+  };
+
+  const handleOpenRemoveMemberModal = (m: any) => {
+    setMemberToRemove(m);
+    setRemoveMemberMsg({ error: '', success: '' });
+    setIsRemoveMemberModalOpen(true);
+  };
+
+  const handleConfirmRemoveMember = async () => {
+    if (!memberToRemove) return;
+    setIsRemovingMember(true);
+    setRemoveMemberMsg({ error: '', success: '' });
+
+    try {
+      const res = await fetch(`/api/members/${memberToRemove.id}`, {
+        method: 'DELETE'
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setRemoveMemberMsg({ error: data.error || 'Failed to remove member', success: '' });
+      } else {
+        setRemoveMemberMsg({ error: '', success: data.message || `Member ${memberToRemove.name} removed successfully.` });
+        fetchAllData();
+        setTimeout(() => setIsRemoveMemberModalOpen(false), 1400);
+      }
+    } catch (err: any) {
+      setRemoveMemberMsg({ error: err.message || 'Network error', success: '' });
+    } finally {
+      setIsRemovingMember(false);
     }
   };
 
@@ -907,12 +944,19 @@ export default function DashboardPage() {
                               {m.status || 'active'}
                             </span>
                           </td>
-                          <td className="p-3 text-right">
+                          <td className="p-3 text-right flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => handleOpenAssignRoleModal(m)}
                               className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-mono font-semibold rounded border border-stone-200 transition-colors cursor-pointer"
                             >
                               Assign Roles
+                            </button>
+                            <button
+                              onClick={() => handleOpenRemoveMemberModal(m)}
+                              className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded border border-red-200 transition-colors cursor-pointer"
+                              title="Remove member from organization"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </td>
                         </tr>
@@ -1259,6 +1303,64 @@ export default function DashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Remove Member Confirmation Modal */}
+      {isRemoveMemberModalOpen && memberToRemove && (
+        <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-white border border-stone-200 max-w-md w-full p-6 rounded-lg shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-stone-150 pb-3">
+              <div className="flex items-center gap-2 text-red-700">
+                <Trash2 className="w-5 h-5" />
+                <h3 className="font-bold text-stone-900 text-sm">Remove Organization Member</h3>
+              </div>
+              <button onClick={() => setIsRemoveMemberModalOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {removeMemberMsg.error && (
+              <div className="p-2.5 bg-red-50 text-red-700 text-xs rounded border border-red-200 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{removeMemberMsg.error}</span>
+              </div>
+            )}
+            {removeMemberMsg.success && (
+              <div className="p-2.5 bg-emerald-50 text-emerald-700 text-xs rounded border border-emerald-200 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{removeMemberMsg.success}</span>
+              </div>
+            )}
+
+            <div className="space-y-2 text-xs text-stone-600">
+              <p>
+                Are you sure you want to remove <strong className="text-stone-900">{memberToRemove.name}</strong> (<span className="font-mono text-stone-700">{memberToRemove.email}</span>) from the organization?
+              </p>
+              <div className="p-3 bg-red-50 border border-red-200 rounded text-red-900 text-[11px] leading-relaxed">
+                ⚠️ <strong>Warning:</strong> This action will permanently revoke their assigned roles, portal access, and organization permissions.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-150">
+              <button
+                type="button"
+                onClick={() => setIsRemoveMemberModalOpen(false)}
+                className="px-3.5 py-2 border border-stone-200 hover:bg-stone-100 rounded text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRemoveMember}
+                disabled={isRemovingMember}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-mono uppercase font-bold rounded transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isRemovingMember ? 'Removing Member...' : 'Confirm Remove Member'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
