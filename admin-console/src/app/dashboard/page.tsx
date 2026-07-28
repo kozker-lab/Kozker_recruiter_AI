@@ -18,11 +18,20 @@ export default function DashboardPage() {
 
   // Data states
   const [roles, setRoles] = useState<any[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<any>(null); // null = Organization-Wide Root
   const [pipelines, setPipelines] = useState<any[]>([]);
   const [approvals, setApprovals] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [rollingUpdates, setRollingUpdates] = useState<any[]>([]);
+
+  // Branch Modal states
+  const [isNewBranchOpen, setIsNewBranchOpen] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [newBranchCode, setNewBranchCode] = useState('');
+  const [newBranchLocation, setNewBranchLocation] = useState('');
+  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
 
   // Selected Role for Permission Matrix Editing
   const [selectedRole, setSelectedRole] = useState<any>(null);
@@ -88,13 +97,14 @@ export default function DashboardPage() {
 
   const fetchAllData = async () => {
     try {
-      const [rRes, pRes, aRes, mRes, lRes, uRes] = await Promise.all([
+      const [rRes, pRes, aRes, mRes, lRes, uRes, bRes] = await Promise.all([
         fetch('/api/roles'),
         fetch('/api/pipelines'),
         fetch('/api/approvals/pending'),
         fetch('/api/members'),
         fetch('/api/audit-logs'),
         fetch('/api/updates'),
+        fetch('/api/branches')
       ]);
 
       const rData = await rRes.json();
@@ -103,6 +113,11 @@ export default function DashboardPage() {
       const mData = await mRes.json();
       const lData = await lRes.json();
       const uData = await uRes.json();
+      const bData = await bRes.json();
+
+      if (bData.branches) {
+        setBranches(bData.branches);
+      }
 
       if (rData.roles) {
         setRoles(rData.roles);
@@ -199,6 +214,39 @@ export default function DashboardPage() {
       setRoleSaveMsg({ error: err.message || 'Error applying template', success: '' });
     } finally {
       setIsSavingRole(false);
+    }
+  };
+
+  const handleCreateBranch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isPrimaryAdmin || !newBranchName.trim()) return;
+    setIsCreatingBranch(true);
+
+    try {
+      const res = await fetch('/api/branches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newBranchName.trim(),
+          code: newBranchCode.trim() || newBranchName.trim().slice(0, 4).toUpperCase(),
+          location: newBranchLocation.trim() || 'Main Location'
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setIsNewBranchOpen(false);
+        setNewBranchName('');
+        setNewBranchCode('');
+        setNewBranchLocation('');
+        fetchAllData();
+      } else {
+        alert(data.error || 'Failed to create branch');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Network error');
+    } finally {
+      setIsCreatingBranch(false);
     }
   };
 
@@ -509,69 +557,110 @@ export default function DashboardPage() {
               {/* Roles Header */}
               <div className="flex items-center justify-between bg-white p-4 border border-stone-200 rounded-lg shadow-sm">
                 <div>
-                  <h2 className="text-base font-bold text-stone-900">Organization Role Tree & RBAC Matrix</h2>
-                  <p className="text-xs text-stone-500 font-mono">Configure custom role hierarchy levels and granular panel permissions</p>
+                  <h2 className="text-base font-bold text-stone-900 flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-brand" />
+                    <span>Organization Branch Catalog & Master Role Matrix</span>
+                  </h2>
+                  <p className="text-xs text-stone-500 font-mono mt-0.5">Manage organizational branch locations and configure role authorizations per branch</p>
                 </div>
 
                 {isPrimaryAdmin && (
-                  <button
-                    onClick={() => setIsNewRoleOpen(true)}
-                    className="px-3.5 py-2 bg-stone-900 hover:bg-black text-white text-xs font-mono font-bold uppercase rounded transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add New Role</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsNewBranchOpen(true)}
+                      className="px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-mono font-bold uppercase rounded border border-stone-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-stone-600" />
+                      <span>Add Branch</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setNewRoleScopeType(selectedBranch ? 'branch' : 'organization');
+                        setNewRoleBranchName(selectedBranch ? selectedBranch.name : 'Main Branch');
+                        setIsNewRoleOpen(true);
+                      }}
+                      className="px-3.5 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-mono font-bold uppercase rounded transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-white" />
+                      <span>Add Role {selectedBranch ? `for ${selectedBranch.name}` : ''}</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left 1 Column: Role Hierarchy Tree */}
-                <div className="bg-white border border-stone-200 rounded-lg p-4 shadow-sm space-y-3">
-                  <div className="text-xs font-mono uppercase font-bold text-stone-400 tracking-wider">
-                    Role Hierarchy Tree ({roles.length})
+                {/* Left 1 Column: Branch Navigation */}
+                <div className="bg-white border border-stone-200 rounded-lg p-4 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b border-stone-150 pb-2">
+                    <div className="text-xs font-mono uppercase font-bold text-stone-700 tracking-wider flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-brand" />
+                      <span>Branch Catalog ({branches.length + 1})</span>
+                    </div>
+                    {isPrimaryAdmin && (
+                      <button
+                        onClick={() => setIsNewBranchOpen(true)}
+                        className="px-2 py-1 bg-stone-900 hover:bg-black text-white text-[10px] font-mono font-bold uppercase rounded flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Branch</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="space-y-2">
-                    {roles.map(r => {
-                      const isSelected = selectedRole?.id === r.id;
-                      const scopeType = r.scope_type || 'organization';
-                      const branchName = r.branch_name || 'Main Branch';
-                      const tagBadgeClass = scopeType === 'branch'
-                        ? (isSelected ? 'bg-blue-900 text-blue-200 border-blue-700' : 'bg-blue-50 text-blue-700 border-blue-200')
-                        : scopeType === 'multi_branch'
-                        ? (isSelected ? 'bg-purple-900 text-purple-200 border-purple-700' : 'bg-purple-50 text-purple-700 border-purple-200')
-                        : (isSelected ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-amber-50 text-amber-800 border-amber-200');
+                    {/* Root Item: Organization-Wide / All */}
+                    <div
+                      onClick={() => setSelectedBranch(null)}
+                      className={`p-3 rounded-lg border text-xs cursor-pointer transition-all space-y-1 ${
+                        selectedBranch === null
+                          ? 'bg-stone-900 text-white border-stone-900 shadow-sm font-semibold'
+                          : 'bg-stone-50 border-stone-200 text-stone-800 hover:bg-stone-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold flex items-center gap-1.5">
+                          <span>🌐</span> All Branches & Global
+                        </span>
+                        <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${
+                          selectedBranch === null ? 'bg-stone-800 text-amber-300' : 'bg-stone-200 text-stone-700'
+                        }`}>
+                          {roles.length} roles
+                        </span>
+                      </div>
+                      <div className={`text-[10px] font-mono ${selectedBranch === null ? 'text-stone-300' : 'text-stone-500'}`}>
+                        Root Organization Scope
+                      </div>
+                    </div>
+
+                    {/* Custom Branch List */}
+                    {branches.map(b => {
+                      const isSelected = selectedBranch?.id === b.id;
+                      const branchRolesCount = roles.filter(r => r.branch_name === b.name || r.branch_id === b.id).length;
 
                       return (
                         <div
-                          key={r.id}
-                          onClick={() => handleSelectRole(r)}
-                          className={`p-3 rounded-lg border text-xs cursor-pointer transition-all space-y-1.5 ${
+                          key={b.id}
+                          onClick={() => setSelectedBranch(b)}
+                          className={`p-3 rounded-lg border text-xs cursor-pointer transition-all space-y-1 ${
                             isSelected
                               ? 'bg-stone-900 text-white border-stone-900 shadow-sm font-semibold'
                               : 'bg-stone-50 border-stone-200 text-stone-800 hover:bg-stone-100'
                           }`}
                         >
-                          <div className="flex items-center justify-between min-w-0 gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: r.color_hex || '#ff6e30' }}
-                              />
-                              <span className="truncate font-bold">{r.name}</span>
-                            </div>
-                            <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
-                              isSelected ? 'bg-stone-800 text-stone-300' : 'bg-stone-200 text-stone-600'
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold flex items-center gap-1.5 truncate">
+                              <span>🏢</span> {b.name}
+                            </span>
+                            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${
+                              isSelected ? 'bg-blue-900 text-blue-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
                             }`}>
-                              {r.level || 'ORG'}
+                              {branchRolesCount} roles
                             </span>
                           </div>
-
-                          {/* Dynamic Left Scope Tag */}
-                          <div className="flex items-center gap-1.5">
-                            <span className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded-full font-bold border ${tagBadgeClass}`}>
-                              [{scopeType === 'branch' ? `BRANCH: ${branchName}` : scopeType === 'multi_branch' ? `MULTI: ${branchName}` : `ORG: ${currentUser?.organization_name || 'Organization'}`}]
-                            </span>
+                          <div className={`text-[10px] font-mono flex items-center justify-between ${isSelected ? 'text-stone-300' : 'text-stone-500'}`}>
+                            <span>{b.location || 'Branch Hub'}</span>
+                            <span className="uppercase font-bold">[{b.code || 'MAIN'}]</span>
                           </div>
                         </div>
                       );
@@ -1129,67 +1218,216 @@ export default function DashboardPage() {
         </div>
       </main>
 
+      {/* Modal 0: New Branch Modal */}
+      {isNewBranchOpen && (
+        <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-white border border-stone-200 max-w-md w-full p-6 rounded-xl shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-stone-150 pb-3">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-brand" />
+                <h3 className="font-bold text-stone-900 text-sm">Add New Organizational Branch</h3>
+              </div>
+              <button onClick={() => setIsNewBranchOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateBranch} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-stone-700 mb-1">Branch Name</label>
+                <input
+                  type="text"
+                  value={newBranchName}
+                  onChange={(e) => setNewBranchName(e.target.value)}
+                  placeholder="e.g. Kakkanad Tech Hub, HQ London"
+                  required
+                  className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-stone-700 mb-1">Branch Code</label>
+                  <input
+                    type="text"
+                    value={newBranchCode}
+                    onChange={(e) => setNewBranchCode(e.target.value)}
+                    placeholder="e.g. KAK, LON"
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand uppercase font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-stone-700 mb-1">Location Context</label>
+                  <input
+                    type="text"
+                    value={newBranchLocation}
+                    onChange={(e) => setNewBranchLocation(e.target.value)}
+                    placeholder="e.g. Kochi, London UK"
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-150">
+                <button
+                  type="button"
+                  onClick={() => setIsNewBranchOpen(false)}
+                  className="px-3.5 py-2 border border-stone-200 hover:bg-stone-100 rounded text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingBranch}
+                  className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-mono uppercase font-bold rounded transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isCreatingBranch ? 'Creating Branch...' : 'Create Branch'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal 1: New Master Role Modal */}
       {isNewRoleOpen && (
         <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
-          <div className="bg-white border border-stone-200 max-w-md w-full p-6 rounded-lg shadow-xl space-y-4">
+          <div className="bg-white border border-stone-200 max-w-lg w-full p-6 rounded-xl shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-stone-150 pb-3">
-              <h3 className="font-bold text-stone-900 text-sm">Create New Master Role Profile</h3>
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-brand" />
+                <h3 className="font-bold text-stone-900 text-sm">Create Role for {newRoleBranchName || 'Branch'}</h3>
+              </div>
               <button onClick={() => setIsNewRoleOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleCreateRole} className="space-y-4 text-xs">
+              {/* Predefined Role Presets Quick Bar */}
+              <div className="p-3 bg-stone-50 border border-stone-200 rounded-lg space-y-1.5">
+                <div className="text-[10px] font-mono uppercase font-bold text-stone-500">
+                  Quick Predefined Role Presets (Customizable Name)
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewRoleName('Branch Manager');
+                      setNewRoleLevel('branch');
+                      setNewRoleScopeType('branch');
+                    }}
+                    className="px-2.5 py-1 bg-white border border-stone-200 hover:border-blue-500 rounded-full text-[11px] font-semibold text-stone-700 flex items-center gap-1 cursor-pointer"
+                  >
+                    <GitPullRequest className="w-3 h-3 text-blue-600" /> Manager
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewRoleName('Senior Recruiter');
+                      setNewRoleLevel('position');
+                      setNewRoleScopeType('branch');
+                    }}
+                    className="px-2.5 py-1 bg-white border border-stone-200 hover:border-emerald-500 rounded-full text-[11px] font-semibold text-stone-700 flex items-center gap-1 cursor-pointer"
+                  >
+                    <UserCheck className="w-3 h-3 text-emerald-600" /> Recruiter
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewRoleName('Sourcing Specialist');
+                      setNewRoleLevel('position');
+                      setNewRoleScopeType('branch');
+                    }}
+                    className="px-2.5 py-1 bg-white border border-stone-200 hover:border-cyan-500 rounded-full text-[11px] font-semibold text-stone-700 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Search className="w-3 h-3 text-cyan-600" /> Sourcing Specialist
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewRoleName('Technical Interviewer');
+                      setNewRoleLevel('position');
+                      setNewRoleScopeType('branch');
+                    }}
+                    className="px-2.5 py-1 bg-white border border-stone-200 hover:border-amber-500 rounded-full text-[11px] font-semibold text-stone-700 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Award className="w-3 h-3 text-amber-600" /> Technical Interviewer
+                  </button>
+                </div>
+              </div>
+
+              {/* Role Name */}
               <div>
-                <label className="block font-semibold text-stone-700 mb-1">Role Title</label>
+                <label className="block font-semibold text-stone-700 mb-1">Role Title / Name</label>
                 <input
                   type="text"
                   value={newRoleName}
                   onChange={(e) => setNewRoleName(e.target.value)}
-                  placeholder="e.g. Branch Talent Director"
+                  placeholder="e.g. Kakkanad Recruitment Manager"
                   required
-                  className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
+                  className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand font-semibold"
                 />
               </div>
 
-              <div>
-                <label className="block font-semibold text-stone-700 mb-1">Hierarchy Level</label>
-                <select
-                  value={newRoleLevel}
-                  onChange={(e) => setNewRoleLevel(e.target.value)}
-                  className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
-                >
-                  <option value="organization">Organization Level</option>
-                  <option value="branch">Branch Level</option>
-                  <option value="position">Position Level</option>
-                </select>
+              {/* Read-only Organization Name & Branch Context */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-stone-50 border border-stone-200 rounded-lg">
+                <div>
+                  <label className="block font-mono text-[10px] font-bold uppercase text-stone-500 mb-1">
+                    Organization
+                  </label>
+                  <div className="font-bold text-stone-900 font-mono text-xs truncate">
+                    {currentUser?.organization_name || 'Big Corpo'}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-mono text-[10px] font-bold uppercase text-stone-500 mb-1">
+                    Branch Assignment
+                  </label>
+                  <select
+                    value={newRoleBranchName}
+                    onChange={(e) => setNewRoleBranchName(e.target.value)}
+                    className="w-full p-1.5 bg-white border border-stone-200 rounded text-xs font-semibold focus:outline-none focus:border-brand"
+                  >
+                    <option value="Main Branch">Main Branch (Global)</option>
+                    {branches.map(b => (
+                      <option key={b.id} value={b.name}>{b.name} ({b.location || 'Branch'})</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-stone-700 mb-1">Parent Role (Optional)</label>
-                <select
-                  value={newRoleParentId}
-                  onChange={(e) => setNewRoleParentId(e.target.value)}
-                  className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand"
-                >
-                  <option value="">(None - Standalone Root Role)</option>
-                  {roles.map(r => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-              </div>
+              {/* Scope Type & Color */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-stone-700 mb-1">Scope Type</label>
+                  <select
+                    value={newRoleScopeType}
+                    onChange={(e) => setNewRoleScopeType(e.target.value)}
+                    className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand font-semibold"
+                  >
+                    <option value="organization">Organization-Wide [ORG]</option>
+                    <option value="branch">Branch-Specific [BRANCH]</option>
+                    <option value="multi_branch">Multi-Branch [MULTI-BRANCH]</option>
+                  </select>
+                </div>
 
-              <div>
-                <label className="block font-semibold text-stone-700 mb-1">Role Color Indicator</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={newRoleColor}
-                    onChange={(e) => setNewRoleColor(e.target.value)}
-                    className="w-8 h-8 rounded border border-stone-200 cursor-pointer"
-                  />
-                  <span className="font-mono text-stone-600">{newRoleColor}</span>
+                <div>
+                  <label className="block font-semibold text-stone-700 mb-1">Role Color Tag</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={newRoleColor}
+                      onChange={(e) => setNewRoleColor(e.target.value)}
+                      className="w-8 h-8 rounded border border-stone-200 cursor-pointer"
+                    />
+                    <span className="font-mono text-stone-600">{newRoleColor}</span>
+                  </div>
                 </div>
               </div>
 
@@ -1203,9 +1441,9 @@ export default function DashboardPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-mono uppercase font-bold rounded transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-mono uppercase font-bold rounded transition-colors cursor-pointer font-semibold"
                 >
-                  Create Role
+                  Create Branch Role
                 </button>
               </div>
             </form>

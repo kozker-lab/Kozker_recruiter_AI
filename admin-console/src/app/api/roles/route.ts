@@ -30,7 +30,24 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, roles: roles || [] });
+    // Fetch member assignment counts for each role
+    const { data: memberRoles } = await supabase
+      .from('member_roles')
+      .select('role_id');
+
+    const countsMap: Record<string, number> = {};
+    (memberRoles || []).forEach((mr: any) => {
+      if (mr.role_id) {
+        countsMap[mr.role_id] = (countsMap[mr.role_id] || 0) + 1;
+      }
+    });
+
+    const rolesWithCounts = (roles || []).map((r: any) => ({
+      ...r,
+      assigned_members_count: countsMap[r.id] || 0
+    }));
+
+    return NextResponse.json({ success: true, roles: rolesWithCounts });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to fetch roles' }, { status: 500 });
   }
