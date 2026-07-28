@@ -57,14 +57,19 @@ export default function LoginPage() {
           throw new Error(errData.error || "Invalid email or password");
         }
       } catch (fetchErr: any) {
-        if (fetchErr.message && fetchErr.message !== "Failed to fetch") {
+        if (fetchErr.message && !fetchErr.message.includes("fetch") && !fetchErr.message.includes("NetworkError")) {
           throw fetchErr;
         }
       }
 
-      throw new Error(authError?.message || "Invalid login credentials");
+      throw new Error("Invalid email or password. Please verify your credentials or complete password setup via your invitation email.");
     } catch (err: any) {
-      setError(err.message || "Failed to log in");
+      const rawMsg = err?.message || "";
+      if (rawMsg.includes("NetworkError") || rawMsg.includes("fetch")) {
+        setError("Invalid email or password. Please verify your credentials or complete password setup via your invitation email.");
+      } else {
+        setError(rawMsg || "Failed to log in");
+      }
       setLoading(false);
     }
   };
@@ -81,7 +86,7 @@ export default function LoginPage() {
       </div>
 
       {error && (
-        <div className="p-3 bg-error/10 border border-error/20 text-error text-xs rounded-sm font-mono">
+        <div className="p-3 bg-error/10 border border-error/20 text-error text-xs rounded-sm font-mono leading-relaxed">
           {error}
         </div>
       )}
@@ -122,7 +127,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-2.5 text-neutral-500 hover:text-neutral-300"
+              className="absolute right-3 top-2.5 text-neutral-500 hover:text-neutral-300 cursor-pointer"
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>

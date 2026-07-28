@@ -2,12 +2,22 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { comparePassword, createJwtToken, getCookieDomainHeader } from '@/lib/auth';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+};
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function POST(request: Request) {
   try {
     const { email, password } = await request.json();
 
     if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
+      return NextResponse.json({ error: 'Email and password are required' }, { status: 400, headers: corsHeaders });
     }
 
     const { data: member, error } = await supabase
@@ -17,12 +27,12 @@ export async function POST(request: Request) {
       .single();
 
     if (error || !member) {
-      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401, headers: corsHeaders });
     }
 
     const validPassword = await comparePassword(password, member.password_hash);
     if (!validPassword) {
-      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401, headers: corsHeaders });
     }
 
     // Fetch user roles and permissions
@@ -34,8 +44,6 @@ export async function POST(request: Request) {
     const rolesList = (memberRoles || []).map((mr: any) => mr.roles).filter(Boolean);
     const roleIds = rolesList.map((r: any) => r.id);
 
-    // Merge permissions across user's assigned roles
-    // REQUIREMENT: Member MUST be assigned at least one role to receive active recruitment app credentials
     const hasAssignedRoles = roleIds.length > 0;
 
     let permissions = {
@@ -106,17 +114,17 @@ export async function POST(request: Request) {
       user: jwtPayload,
       token,
       urls: {
-        admin_console: process.env.ADMIN_CONSOLE_URL || 'https://admin.kozker.ai',
-        recruiter_app: process.env.RECRUITER_APP_URL || 'https://app.kozker.ai',
+        admin_console: process.env.ADMIN_CONSOLE_URL || 'http://localhost:3001',
+        recruiter_app: process.env.RECRUITER_APP_URL || 'http://localhost:3000',
         client_portal: process.env.CLIENT_PORTAL_URL || 'https://client.kozker.ai',
       }
-    });
+    }, { headers: corsHeaders });
 
     const cookieOptions = getCookieDomainHeader();
     response.headers.append('Set-Cookie', `kozker_sso_token=${token}; ${cookieOptions}`);
 
     return response;
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Login failed' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Login failed' }, { status: 500, headers: corsHeaders });
   }
 }

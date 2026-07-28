@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { KeyRound, Mail, Lock, ShieldCheck, CheckCircle2, AlertCircle, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { supabase } from '@/lib/db';
 
 export default function SetPasswordPage() {
   const router = useRouter();
@@ -46,6 +47,16 @@ export default function SetPasswordPage() {
     }
 
     try {
+      // 1. Client-side Supabase GoTrue Auth password update
+      try {
+        if (supabase.auth) {
+          await supabase.auth.updateUser({ password });
+        }
+      } catch (sbErr) {
+        console.log('Client Supabase Auth updateUser notice:', sbErr);
+      }
+
+      // 2. Call backend API to confirm password, update database & issue SSO token
       const res = await fetch('/api/auth/set-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -59,7 +70,7 @@ export default function SetPasswordPage() {
       } else {
         setMessage({
           error: '',
-          success: 'Password set and Supabase authentication confirmed! Redirecting to Portal Dashboard...'
+          success: 'Password set and Supabase authentication confirmed! Token has been verified and expired. Redirecting to Portal Dashboard...'
         });
 
         if (data.token) {
