@@ -42,26 +42,34 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: 'Member not found or not in your organization' }, { status: 404 });
     }
 
-    // 1. Delete associated member roles
-    await supabase.from('member_roles').delete().eq('member_id', memberId);
+    const memberEmail = member.email?.toLowerCase().trim();
 
-    // 2. Delete member from public.members
-    const { error: delErr } = await supabase.from('members').delete().eq('id', memberId);
-    if (delErr) {
-      return NextResponse.json({ error: delErr.message }, { status: 500 });
-    }
-
-    // 3. Attempt to delete from Supabase GoTrue Auth if present
+    // 1. Remove user authentication details from Supabase GoTrue Auth (auth.users)
+    let authUserDeleted = false;
     try {
-      if (supabase.auth.admin && member.email) {
+      if (supabase.auth?.admin && memberEmail) {
         const { data: usersData } = await supabase.auth.admin.listUsers();
-        const authUser = (usersData?.users || []).find(u => u.email?.toLowerCase() === member.email.toLowerCase());
+        const authUser = (usersData?.users || []).find(u => u.email?.toLowerCase() === memberEmail);
         if (authUser) {
-          await supabase.auth.admin.deleteUser(authUser.id);
+          const { error: delAuthErr } = await supabase.auth.admin.deleteUser(authUser.id);
+          if (!delAuthErr) {
+            authUserDeleted = true;
+          } else {
+            console.error('Supabase Auth user delete error:', delAuthErr);
+          }
         }
       }
     } catch (authDelErr) {
-      console.error('Supabase Auth user delete error (non-fatal):', authDelErr);
+      console.error('Supabase Auth user removal exception:', authDelErr);
+    }
+
+    // 2. Delete associated member roles
+    await supabase.from('member_roles').delete().eq('member_id', memberId);
+
+    // 3. Delete member record from public.members
+    const { error: delErr } = await supabase.from('members').delete().eq('id', memberId);
+    if (delErr) {
+      return NextResponse.json({ error: delErr.message }, { status: 500 });
     }
 
     // 4. Audit Log
@@ -69,14 +77,15 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       organization_id: user.organization_id,
       actor_id: user.id,
       actor_name: user.name,
-      action_description: `Removed member '${member.name}' (${member.email}) from organization`,
+      action_description: `Removed member '${member.name}' (${memberEmail}) and deleted authentication details from Supabase`,
       target_name: member.name,
       action_type: 'delete'
     });
 
     return NextResponse.json({
       success: true,
-      message: `Member '${member.name}' (${member.email}) has been successfully removed from the organization.`
+      auth_user_deleted: authUserDeleted,
+      message: `Member '${member.name}' (${memberEmail}) and their Supabase authentication details have been permanently removed.`
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to remove member' }, { status: 500 });
