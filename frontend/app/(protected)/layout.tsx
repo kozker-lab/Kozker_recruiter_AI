@@ -255,6 +255,44 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [subdomain, setSubdomain] = useState("default");
   const [agencyName, setAgencyName] = useState("Enterprise recruiter");
 
+  const [accessibleOrgs, setAccessibleOrgs] = useState<any[]>([]);
+  const [activeOrgId, setActiveOrgId] = useState<string>("");
+  const [activeOrgName, setActiveOrgName] = useState<string>("");
+  const [switchingModal, setSwitchingModal] = useState<{ isOpen: boolean; targetOrgName: string }>({ isOpen: false, targetOrgName: "" });
+
+  React.useEffect(() => {
+    const fetchOrgs = async () => {
+      try {
+        const res = await fetch("/api/organizations");
+        const data = await res.json();
+        if (data.success && Array.isArray(data.organizations)) {
+          setAccessibleOrgs(data.organizations);
+          const savedOrgId = typeof window !== "undefined" ? localStorage.getItem("kozker_selected_org") : "";
+          const target = data.organizations.find((o: any) => o.id === savedOrgId) || data.organizations[0];
+          if (target) {
+            setActiveOrgId(target.id);
+            setActiveOrgName(target.name);
+          }
+        }
+      } catch {
+        // Background fetch error ignored
+      }
+    };
+    fetchOrgs();
+  }, [profile]);
+
+  const handleOrganizationSwitch = (orgId: string) => {
+    const targetOrg = accessibleOrgs.find(o => o.id === orgId);
+    if (!targetOrg) return;
+    setSwitchingModal({ isOpen: true, targetOrgName: targetOrg.name });
+    if (typeof window !== "undefined") {
+      localStorage.setItem("kozker_selected_org", orgId);
+    }
+    setTimeout(() => {
+      window.location.reload();
+    }, 1200);
+  };
+
   React.useEffect(() => {
     const savedMode = localStorage.getItem("kozker_pref_mode") as "light" | "dark" | null;
     const initialMode = savedMode || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -1034,110 +1072,15 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // Onboarding Gate
-  if (!profile.is_onboarded) {
-    return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-6 text-neutral-200">
-        <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 p-8 rounded-sm space-y-6">
-          <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 bg-primary rounded-sm"></span>
-              <span className="font-tight font-bold tracking-wider text-xs text-neutral-white">RECRUITER ONBOARDING</span>
-            </div>
-            <span className="font-mono text-xs text-neutral-500">Step {onboardStep} of 2</span>
-          </div>
-
-          {onboardStep === 1 && (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-lg font-tight font-semibold text-neutral-white">Personal Profile Setup</h3>
-                <p className="text-neutral-400 text-xs">Specify your recruiter name for client audit logging.</p>
-              </div>
-
-              <div className="space-y-1.5 pt-2">
-                <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Full Name</label>
-                <input
-                  type="text"
-                  placeholder="Alex Mercer"
-                  value={onboardName}
-                  onChange={(e) => setOnboardName(e.target.value)}
-                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-sm text-neutral-white placeholder:text-neutral-600 transition-all text-xs"
-                />
-              </div>
-
-              <button
-                disabled={!onboardName}
-                onClick={() => setOnboardStep(2)}
-                className="w-full py-2 bg-primary disabled:opacity-50 hover:bg-primary/95 text-neutral-white font-medium text-xs tracking-wider uppercase transition-colors rounded-sm cursor-pointer mt-2"
-              >
-                Continue Setup
-              </button>
-            </div>
-          )}
-
-          {onboardStep === 2 && (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-lg font-tight font-semibold text-neutral-white">Recruitment Workspace</h3>
-                <p className="text-neutral-400 text-xs">Configure your organization and workspace subdomains.</p>
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <div className="space-y-1.5">
-                  <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Agency / Organization Name</label>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-2.5 h-4 w-4 text-neutral-600" />
-                    <input
-                      type="text"
-                      placeholder="Kozker Talent Hub"
-                      value={onboardAgency}
-                      onChange={(e) => setOnboardAgency(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 bg-neutral-950 border border-neutral-800 rounded-sm text-neutral-white placeholder:text-neutral-600 transition-all text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Subdomain Mapping</label>
-                  <div className="flex rounded-sm overflow-hidden border border-neutral-800">
-                    <input
-                      type="text"
-                      placeholder="kozker-agency"
-                      value={onboardDomain}
-                      onChange={(e) => setOnboardDomain(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-neutral-950 text-neutral-white placeholder:text-neutral-600 transition-all text-xs border-r border-neutral-800"
-                    />
-                    <span className="bg-neutral-850 px-3 py-2 text-xs text-neutral-500 font-mono flex items-center">.kozker.ai</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setOnboardStep(1)}
-                  className="flex-1 py-2 border border-neutral-800 hover:bg-neutral-850 text-neutral-400 text-xs tracking-wider uppercase transition-colors rounded-sm cursor-pointer"
-                >
-                  Back
-                </button>
-                <button
-                  disabled={!onboardAgency || !onboardDomain || updateProfile.isPending}
-                  onClick={handleOnboard}
-                  className="flex-1 py-2 bg-primary hover:bg-primary/95 disabled:opacity-50 text-neutral-white text-xs tracking-wider uppercase transition-colors rounded-sm cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {updateProfile.isPending ? "Finishing..." : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Complete Onboarding
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // Auto-complete onboarding since profile details come from Admin Console / DB
+  React.useEffect(() => {
+    if (profile && !profile.is_onboarded) {
+      updateProfile.mutate({
+        full_name: profile.full_name || profile.email?.split('@')[0] || "Recruiter",
+        is_onboarded: true,
+      });
+    }
+  }, [profile]);
 
   // Main App Shell
   return (
@@ -1157,11 +1100,11 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             </span>
           </div>
 
-          <div className="active-workspace-panel mx-4 mt-4 p-3 bg-neutral-50 border border-neutral-150 rounded-sm font-mono text-[10px] relative">
+          <div className="active-workspace-panel mx-4 mt-4 p-3 bg-neutral-50 border border-neutral-150 rounded-sm font-mono text-[10px] relative space-y-2">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-neutral-400 font-semibold uppercase tracking-wider">Active Workspace</p>
-                <p className="font-bold text-neutral-800 mt-0.5 truncate">{agencyName}</p>
+                <p className="text-neutral-400 font-semibold uppercase tracking-wider">Active Organization</p>
+                <p className="font-bold text-neutral-900 mt-0.5 truncate">{activeOrgName || agencyName}</p>
                 <p className="text-primary font-bold mt-0.5 text-[9px]">@{subdomain}.kozker.ai</p>
               </div>
               <button
@@ -1172,6 +1115,22 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
             </div>
+
+            {/* Organization Workspace Switcher Select */}
+            {accessibleOrgs.length > 0 && (
+              <div className="pt-2 border-t border-neutral-200">
+                <label className="text-[9px] text-neutral-400 font-semibold uppercase tracking-wider block mb-1">Switch Organization Workspace</label>
+                <select
+                  value={activeOrgId}
+                  onChange={(e) => handleOrganizationSwitch(e.target.value)}
+                  className="w-full px-2 py-1 bg-white border border-neutral-300 rounded text-neutral-900 font-semibold text-[11px] cursor-pointer focus:outline-none focus:border-primary"
+                >
+                  {accessibleOrgs.map((org: any) => (
+                    <option key={org.id} value={org.id}>{org.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {isProjectSwitcherOpen && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-neutral-white border border-neutral-200 rounded-sm shadow-lg z-50 py-1 text-xs font-sans divide-y divide-neutral-150">
@@ -1750,6 +1709,27 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               >
                 OK
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Organization Switching Notification Modal */}
+      {switchingModal.isOpen && (
+        <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in font-sans">
+          <div className="bg-neutral-900 border border-neutral-800 max-w-sm w-full p-6 rounded-md shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto border border-primary/30 animate-pulse">
+              <Building2 className="w-6 h-6 text-primary" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-neutral-white">Switching Organization Workspace</h3>
+              <p className="text-xs text-primary font-mono font-semibold">{switchingModal.targetOrgName}</p>
+            </div>
+            <p className="text-xs text-neutral-400 leading-relaxed font-mono">
+              Reloading interface configuration and adaptive panel visibilities based on your assigned role permissions...
+            </p>
+            <div className="w-full bg-neutral-950 h-1.5 rounded-full overflow-hidden border border-neutral-800">
+              <div className="bg-primary h-full w-full animate-pulse"></div>
             </div>
           </div>
         </div>

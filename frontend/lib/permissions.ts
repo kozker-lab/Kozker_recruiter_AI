@@ -18,6 +18,10 @@ export interface UserPermissions {
   access_employee?: boolean;
   employee_directory?: boolean;
   employee_org_chart?: boolean;
+  recruiter_stages?: boolean;
+  recruiter_pipelines?: boolean;
+  team_monitoring?: boolean;
+  interviewer_workspace?: boolean;
   manage_jobs?: boolean;
   view_resumes?: boolean;
   edit_status?: boolean;

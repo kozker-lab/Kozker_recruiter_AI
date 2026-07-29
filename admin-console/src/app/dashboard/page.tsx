@@ -1385,14 +1385,15 @@ export default function DashboardPage() {
 
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { key: 'recruiter_dashboard', label: 'Recruiter Dashboard' },
-                      { key: 'recruiter_mandates', label: 'Mandates & Accounts' },
-                      { key: 'recruiter_jobs', label: 'Job Catalog & Specs' },
-                      { key: 'recruiter_sourcing', label: 'Talent Sourcing Pool' },
-                      { key: 'recruiter_reports', label: 'Recruiter Reports' },
-                      { key: 'recruiter_qna', label: 'Video Q&A Screening' },
-                      { key: 'recruiter_resumes', label: 'Candidate Resumes' },
-                      { key: 'recruiter_stage_move', label: 'Funnel Stage Move' },
+                      { key: 'recruiter_dashboard', label: 'Dashboard' },
+                      { key: 'recruiter_mandates', label: 'Clients & Mandates' },
+                      { key: 'recruiter_jobs', label: 'Job Catalog' },
+                      { key: 'recruiter_sourcing', label: 'Sourcing Pool' },
+                      { key: 'recruiter_stages', label: 'Stages' },
+                      { key: 'recruiter_pipelines', label: 'Approval Workflows' },
+                      { key: 'recruiter_qna', label: 'Candidate Q&A' },
+                      { key: 'team_monitoring', label: 'Team Operations' },
+                      { key: 'interviewer_workspace', label: 'Interview Workspace' },
                     ].map(item => (
                       <label key={item.key} className="p-2 bg-white border border-stone-200 rounded flex items-center justify-between cursor-pointer">
                         <span className="font-medium text-stone-800">{item.label}</span>

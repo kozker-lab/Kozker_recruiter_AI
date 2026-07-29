@@ -116,27 +116,6 @@ export default function LoginPage() {
       )}
 
       <form onSubmit={handleLogin} className="space-y-4 text-sm">
-        {/* Optional Organization Workspace Selector */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between items-center">
-            <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Target Organization Workspace</label>
-            <span className="text-[10px] text-neutral-500 font-mono font-normal uppercase">(Optional)</span>
-          </div>
-          <div className="relative">
-            <Building2 className="absolute left-3 top-2.5 h-4 w-4 text-neutral-500" />
-            <select
-              value={selectedOrg}
-              onChange={(e) => setSelectedOrg(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-neutral-900 border border-neutral-800 rounded-sm text-neutral-white transition-all focus:border-primary text-xs font-semibold cursor-pointer appearance-none"
-            >
-              <option value="">Select Organization...</option>
-              <option value="none">None / Unassigned</option>
-              {organizations.map((org: any) => (
-                <option key={org.id} value={org.id}>{org.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
 
         <div className="space-y-1.5">
           <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Email Address</label>
