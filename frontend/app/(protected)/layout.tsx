@@ -305,6 +305,25 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     fetchUserData();
   }, [profile]);
 
+  const getDisplayName = () => {
+    const emailPrefix = (user?.email || profile?.email || "").split('@')[0];
+    if (recruiterName && recruiterName.toLowerCase() !== emailPrefix.toLowerCase()) {
+      return recruiterName;
+    }
+    if (profile?.full_name && profile.full_name.toLowerCase() !== emailPrefix.toLowerCase()) {
+      return profile.full_name;
+    }
+    if (recruiterName) {
+      return recruiterName;
+    }
+    if (profile?.full_name) {
+      return profile.full_name;
+    }
+    return user?.email || "Recruiter";
+  };
+
+  const displayName = getDisplayName();
+
   // Auto-complete onboarding since profile details come from Admin Console / DB
   React.useEffect(() => {
     if (profile && !profile.is_onboarded) {
@@ -1229,12 +1248,12 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           <Link href="/profile" className="flex items-center gap-2.5 hover:bg-neutral-100 p-1.5 rounded-sm transition-all cursor-pointer group">
             <UserAvatar 
               avatarUrl={profile?.avatar_url} 
-              fullName={recruiterName || profile?.full_name} 
+              fullName={displayName} 
               email={user?.email} 
               className="w-7 h-7"
             />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold text-neutral-800 truncate group-hover:text-primary transition-colors">{recruiterName || profile?.full_name || user?.email}</p>
+              <p className="text-[11px] font-semibold text-neutral-800 truncate group-hover:text-primary transition-colors">{displayName}</p>
               <p className="text-[9px] text-neutral-400 font-mono uppercase">{activeRoleName || profile?.role || "RECRUITER"}</p>
             </div>
           </Link>
