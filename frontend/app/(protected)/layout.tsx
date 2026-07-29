@@ -1228,14 +1228,14 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         <div className="profile-footer-panel p-4 border-t border-neutral-200 bg-neutral-50/50 space-y-3">
           <Link href="/profile" className="flex items-center gap-2.5 hover:bg-neutral-100 p-1.5 rounded-sm transition-all cursor-pointer group">
             <UserAvatar 
-              avatarUrl={profile.avatar_url} 
-              fullName={recruiterName || profile.full_name} 
+              avatarUrl={profile?.avatar_url} 
+              fullName={recruiterName || profile?.full_name} 
               email={user?.email} 
               className="w-7 h-7"
             />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold text-neutral-800 truncate group-hover:text-primary transition-colors">{recruiterName || profile.full_name || user?.email}</p>
-              <p className="text-[9px] text-neutral-400 font-mono uppercase">{activeRoleName || profile.role || "RECRUITER"}</p>
+              <p className="text-[11px] font-semibold text-neutral-800 truncate group-hover:text-primary transition-colors">{recruiterName || profile?.full_name || user?.email}</p>
+              <p className="text-[9px] text-neutral-400 font-mono uppercase">{activeRoleName || profile?.role || "RECRUITER"}</p>
             </div>
           </Link>
           <div className="flex gap-2">
