@@ -268,7 +268,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     const fetchUserData = async () => {
       try {
         const savedOrgId = typeof window !== "undefined" ? localStorage.getItem("kozker_selected_org") || "" : "";
-        const storedEmail = user?.email || (typeof window !== "undefined" ? localStorage.getItem("kozker_user_email") || "" : "");
+        const storedEmail = user?.email || profile?.email || (typeof window !== "undefined" ? localStorage.getItem("kozker_user_email") || "" : "");
         const storedToken = typeof window !== "undefined" ? localStorage.getItem("token") || "" : "";
 
         const headers: Record<string, string> = {};

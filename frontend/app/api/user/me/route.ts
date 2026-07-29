@@ -6,6 +6,12 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+const PRIMARY_ADMIN_EMAILS = [
+  "smaranlm10@gmail.com",
+  "adithyacherian24@gmail.com",
+  "aderhamsk@gmail.com"
+];
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -17,13 +23,13 @@ export async function GET(request: Request) {
     
     let userEmail = headerEmail.trim().toLowerCase();
 
-    // Parse cookie header for fallback email
+    // Parse cookie header for user email
     if (!userEmail && cookieHeader) {
       const emailMatch = cookieHeader.match(/kozker_user_email=([^;]+)/);
       if (emailMatch) userEmail = decodeURIComponent(emailMatch[1]).trim().toLowerCase();
     }
 
-    // Try decoding JWT tokens or Supabase auth cookies if email is still empty
+    // Try decoding JWT token if email is still empty
     if (!userEmail) {
       let token = authHeader.replace("Bearer ", "");
       if (!token && cookieHeader) {
@@ -41,81 +47,61 @@ export async function GET(request: Request) {
             }
           }
         } catch {
-          // Token parse fallback ignored
+          // Token decode fallback ignored
         }
       }
     }
+
+    // If still no email, return 401 unauthenticated
+    if (!userEmail) {
+      return NextResponse.json({ authenticated: false, error: "Unauthenticated" }, { status: 401 });
+    }
+
+    const isPrimaryAdmin = PRIMARY_ADMIN_EMAILS.includes(userEmail);
 
     // 1. Fetch member record from Supabase by email
-    let member: any = null;
-    if (userEmail) {
-      const { data: mData } = await supabase
-        .from("members")
-        .select("*, organizations(*)")
-        .ilike("email", userEmail)
-        .maybeSingle();
-      member = mData;
+    let { data: member } = await supabase
+      .from("members")
+      .select("*, organizations(*)")
+      .ilike("email", userEmail)
+      .maybeSingle();
 
-      if (!member) {
-        const emailPrefix = userEmail.split("@")[0];
-        const { data: altMembers } = await supabase
-          .from("members")
-          .select("*, organizations(*)")
-          .ilike("email", `${emailPrefix}%`);
-        if (altMembers && altMembers.length > 0) {
-          member = altMembers[0];
-        }
-      }
-    }
-
-    // Fallback: If member is still null, retrieve the first registered non-primary member or primary admin
+    // Auto-create/upsert member record if not found in public.members
     if (!member) {
-      const { data: defaultMember } = await supabase
+      const formattedName = userEmail.split("@")[0].split(".")[0];
+      const capitalizedName = formattedName.charAt(0).toUpperCase() + formattedName.slice(1);
+      
+      const { data: newMember } = await supabase
         .from("members")
+        .insert({
+          name: isPrimaryAdmin ? (userEmail.includes("smaran") ? "Smaran Devaki" : capitalizedName) : capitalizedName,
+          email: userEmail,
+          password_hash: "autocreated_sso_hash",
+          avatar_initials: capitalizedName.slice(0, 2).toUpperCase(),
+          is_primary_admin: isPrimaryAdmin,
+          status: "active"
+        })
         .select("*, organizations(*)")
-        .eq("email", "adithyacherian24@outlook.com")
-        .maybeSingle();
-      member = defaultMember;
+        .single();
+        
+      member = newMember;
     }
 
+    // Fallback object if insertion was prevented
     if (!member) {
-      const { data: anyMember } = await supabase
-        .from("members")
-        .select("*, organizations(*)")
-        .limit(1)
-        .maybeSingle();
-      member = anyMember;
+      member = {
+        id: "auto-generated-id",
+        name: isPrimaryAdmin ? (userEmail.includes("smaran") ? "Smaran Devaki" : userEmail.split("@")[0]) : userEmail.split("@")[0],
+        email: userEmail,
+        is_primary_admin: isPrimaryAdmin
+      };
     }
-
-    if (!member) {
-      return NextResponse.json({
-        authenticated: true,
-        user: { email: "adithyacherian24@outlook.com", name: "Ahmed", is_primary_admin: false },
-        active_organization: { id: "default", name: "Big Corpo" },
-        active_role: { name: "Recruiter" },
-        permissions: {
-          recruiter_dashboard: true,
-          recruiter_mandates: true,
-          recruiter_jobs: true,
-          recruiter_sourcing: false,
-          recruiter_stages: false,
-          recruiter_pipelines: true,
-          recruiter_qna: true,
-          team_monitoring: false,
-          interviewer_workspace: false
-        },
-        organizations: [{ id: "default", name: "Big Corpo" }]
-      });
-    }
-
-    const isPrimaryAdmin = member.is_primary_admin === true || 
-      ["smaranlm10@gmail.com", "adithyacherian24@gmail.com", "aderhamsk@gmail.com"].includes(member.email.toLowerCase());
 
     // 2. Fetch member assigned roles & permissions from Supabase
     const { data: mRoles } = await supabase
       .from("member_roles")
       .select("*, roles(*, role_permissions(*), organizations(*))")
-      .eq("member_id", member.id);
+      .eq("member_id", member.id || "");
 
     const rolesList = (mRoles || []).map((mr: any) => mr.roles).filter(Boolean);
 
@@ -148,27 +134,31 @@ export async function GET(request: Request) {
       activeOrg = accessibleOrgs[0];
     }
     if (!activeOrg) {
-      activeOrg = { id: member.organization_id || "default", name: member.organizations?.name || "Big Corpo" };
+      activeOrg = { id: "default-org-id", name: "Big Corpo" };
     }
 
     // 5. Select active role & calculate permissions for the active organization
     const activeRole = rolesList.find((r: any) => r.organization_id === activeOrg.id) || rolesList[0] || null;
 
-    let permissions: any = {
-      administrator: isPrimaryAdmin,
-      recruiter_dashboard: isPrimaryAdmin,
-      recruiter_mandates: isPrimaryAdmin,
-      recruiter_jobs: isPrimaryAdmin,
-      recruiter_sourcing: isPrimaryAdmin,
-      recruiter_stages: isPrimaryAdmin,
-      recruiter_pipelines: isPrimaryAdmin,
-      recruiter_qna: isPrimaryAdmin,
-      team_monitoring: isPrimaryAdmin,
-      interviewer_workspace: isPrimaryAdmin
-    };
+    let permissions: any = {};
 
     if (isPrimaryAdmin) {
-      Object.keys(permissions).forEach(k => permissions[k] = true);
+      permissions = {
+        administrator: true,
+        recruiter_dashboard: true,
+        recruiter_mandates: true,
+        recruiter_jobs: true,
+        recruiter_sourcing: true,
+        recruiter_stages: true,
+        recruiter_pipelines: true,
+        recruiter_qna: true,
+        team_monitoring: true,
+        interviewer_workspace: true,
+        manage_jobs: true,
+        view_resumes: true,
+        edit_status: true,
+        schedule_interviews: true
+      };
     } else if (activeRole && activeRole.role_permissions) {
       const rpArray = Array.isArray(activeRole.role_permissions) ? activeRole.role_permissions : [activeRole.role_permissions];
       if (rpArray.length > 0) {
@@ -183,9 +173,27 @@ export async function GET(request: Request) {
           recruiter_pipelines: rp.recruiter_pipelines === true,
           recruiter_qna: rp.recruiter_qna === true,
           team_monitoring: rp.team_monitoring === true,
-          interviewer_workspace: rp.interviewer_workspace === true
+          interviewer_workspace: rp.interviewer_workspace === true,
+          manage_jobs: rp.manage_jobs === true,
+          view_resumes: rp.view_resumes === true,
+          edit_status: rp.edit_status === true,
+          schedule_interviews: rp.schedule_interviews === true
         };
       }
+    } else {
+      // Default non-admin role permissions if no specific role row found
+      permissions = {
+        administrator: false,
+        recruiter_dashboard: true,
+        recruiter_mandates: true,
+        recruiter_jobs: true,
+        recruiter_sourcing: false,
+        recruiter_stages: false,
+        recruiter_pipelines: true,
+        recruiter_qna: true,
+        team_monitoring: false,
+        interviewer_workspace: false
+      };
     }
 
     return NextResponse.json({
@@ -194,7 +202,7 @@ export async function GET(request: Request) {
         id: member.id,
         name: member.name,
         email: member.email,
-        avatar_initials: member.avatar_initials,
+        avatar_initials: member.avatar_initials || member.name?.slice(0, 2).toUpperCase(),
         is_primary_admin: isPrimaryAdmin
       },
       active_organization: activeOrg,
