@@ -253,7 +253,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [customAlert, setCustomAlert] = useState<{ message: string; isOpen: boolean } | null>(null);
 
   const [subdomain, setSubdomain] = useState("default");
-  const [agencyName, setAgencyName] = useState("Enterprise recruiter");
+  const [agencyName, setAgencyName] = useState("Big Corpo");
 
   const [accessibleOrgs, setAccessibleOrgs] = useState<any[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string>("");
