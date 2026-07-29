@@ -23,11 +23,11 @@ export async function GET(request: Request) {
       if (emailMatch) userEmail = decodeURIComponent(emailMatch[1]).trim().toLowerCase();
     }
 
-    // Try decoding JWT tokens if email is still empty
+    // Try decoding JWT tokens or Supabase auth cookies if email is still empty
     if (!userEmail) {
       let token = authHeader.replace("Bearer ", "");
       if (!token && cookieHeader) {
-        const tokenMatch = cookieHeader.match(/kozker_sso_token=([^;]+)/);
+        const tokenMatch = cookieHeader.match(/kozker_sso_token=([^;]+)/) || cookieHeader.match(/sb-[^=]+-auth-token=([^;]+)/);
         if (tokenMatch) token = tokenMatch[1];
       }
       if (token) {
@@ -52,13 +52,24 @@ export async function GET(request: Request) {
     }
 
     // 1. Fetch member record from Supabase by email
-    const { data: member, error: memErr } = await supabase
+    let { data: member } = await supabase
       .from("members")
       .select("*, organizations(*)")
       .ilike("email", userEmail)
-      .single();
+      .maybeSingle();
 
-    if (memErr || !member) {
+    if (!member) {
+      const emailPrefix = userEmail.split("@")[0];
+      const { data: altMembers } = await supabase
+        .from("members")
+        .select("*, organizations(*)")
+        .ilike("email", `${emailPrefix}%`);
+      if (altMembers && altMembers.length > 0) {
+        member = altMembers[0];
+      }
+    }
+
+    if (!member) {
       return NextResponse.json({
         authenticated: true,
         user: { email: userEmail, name: userEmail.split("@")[0], is_primary_admin: false },

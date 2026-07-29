@@ -259,6 +259,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [activeOrgId, setActiveOrgId] = useState<string>("");
   const [activeOrgName, setActiveOrgName] = useState<string>("");
   const [activeRoleName, setActiveRoleName] = useState<string>("");
+  const [recruiterName, setRecruiterName] = useState<string>("");
   const [userPermissions, setUserPermissions] = useState<any>(null);
   const [isPrimaryAdmin, setIsPrimaryAdmin] = useState(false);
   const [switchingModal, setSwitchingModal] = useState<{ isOpen: boolean; targetOrgName: string }>({ isOpen: false, targetOrgName: "" });
@@ -292,6 +293,9 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           }
           if (data.user) {
             setIsPrimaryAdmin(data.user.is_primary_admin === true);
+            if (data.user.name) {
+              setRecruiterName(data.user.name);
+            }
           }
         }
       } catch {
@@ -1225,13 +1229,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           <Link href="/profile" className="flex items-center gap-2.5 hover:bg-neutral-100 p-1.5 rounded-sm transition-all cursor-pointer group">
             <UserAvatar 
               avatarUrl={profile.avatar_url} 
-              fullName={profile.full_name} 
+              fullName={recruiterName || profile.full_name} 
               email={user?.email} 
               className="w-7 h-7"
             />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold text-neutral-800 truncate group-hover:text-primary transition-colors">{profile.full_name || user?.email}</p>
-              <p className="text-[9px] text-neutral-400 font-mono uppercase">{profile.role || "RECRUITER"}</p>
+              <p className="text-[11px] font-semibold text-neutral-800 truncate group-hover:text-primary transition-colors">{recruiterName || profile.full_name || user?.email}</p>
+              <p className="text-[9px] text-neutral-400 font-mono uppercase">{activeRoleName || profile.role || "RECRUITER"}</p>
             </div>
           </Link>
           <div className="flex gap-2">
