@@ -557,20 +557,6 @@ export default function DashboardPage() {
               <span>Master Roles & RBAC</span>
             </button>
 
-            <a
-              href={`${urls.recruiter_app || 'http://localhost:3000'}/pipelines`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full px-3 py-2 rounded text-xs font-semibold flex items-center justify-between transition-colors text-stone-700 hover:bg-stone-100 cursor-pointer"
-            >
-              <div className="flex items-center gap-2.5">
-                <GitPullRequest className="w-4 h-4 text-brand" />
-                <span>Approval Workflows</span>
-              </div>
-              <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded font-mono text-[9px] font-bold">
-                Recruiter App ↗
-              </span>
-            </a>
 
             <button
               onClick={() => setActiveTab('members')}
