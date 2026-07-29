@@ -557,22 +557,20 @@ export default function DashboardPage() {
               <span>Master Roles & RBAC</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab('pipelines')}
-              className={`w-full px-3 py-2 rounded text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                activeTab === 'pipelines' ? 'bg-brand/10 text-brand font-bold' : 'text-stone-700 hover:bg-stone-100'
-              }`}
+            <a
+              href={`${urls.recruiter_app || 'http://localhost:3000'}/pipelines`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full px-3 py-2 rounded text-xs font-semibold flex items-center justify-between transition-colors text-stone-700 hover:bg-stone-100 cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
-                <GitPullRequest className="w-4 h-4" />
-                <span>Approval Pipelines</span>
+                <GitPullRequest className="w-4 h-4 text-brand" />
+                <span>Approval Workflows</span>
               </div>
-              {approvals.length > 0 && (
-                <span className="px-1.5 py-0.5 bg-amber-500 text-white rounded-full font-mono text-[9px] font-bold">
-                  {approvals.length}
-                </span>
-              )}
-            </button>
+              <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded font-mono text-[9px] font-bold">
+                Recruiter App ↗
+              </span>
+            </a>
 
             <button
               onClick={() => setActiveTab('members')}
