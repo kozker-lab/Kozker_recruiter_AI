@@ -22,7 +22,8 @@ export async function GET(request: Request) {
 
     const { data: approvals, error } = await supabase
       .from('pending_approvals')
-      .select('*, members!pending_approvals_requestor_id_fkey(name, email, avatar_initials), roles(name, color_hex), approval_pipelines(name, category)')
+      .select('*, members!pending_approvals_requestor_id_fkey(name, email, avatar_initials), roles(name, color_hex), approval_pipelines!inner(organization_id, name, category)')
+      .eq('approval_pipelines.organization_id', user.organization_id)
       .order('submitted_at', { ascending: false });
 
     if (error) {
