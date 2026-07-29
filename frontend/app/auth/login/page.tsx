@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Mail, Lock, Eye, EyeOff } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Mail, Lock, Eye, EyeOff, Building2 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -9,12 +9,30 @@ import { useRouter } from "next/navigation";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selectedOrg, setSelectedOrg] = useState("");
+  const [organizations, setOrganizations] = useState<any[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
   const router = useRouter();
   const supabase = createClient();
+
+  useEffect(() => {
+    fetchOrganizations();
+  }, []);
+
+  const fetchOrganizations = async () => {
+    try {
+      const res = await fetch("/api/organizations");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.organizations)) {
+        setOrganizations(data.organizations);
+      }
+    } catch {
+      // Ignore background fetch error
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +41,9 @@ export default function LoginPage() {
 
     try {
       const cleanEmail = email.trim().toLowerCase();
+      if (selectedOrg) {
+        localStorage.setItem("kozker_selected_org", selectedOrg);
+      }
 
       // 1. Try Supabase Auth
       const { error: authError } = await supabase.auth.signInWithPassword({
@@ -42,7 +63,7 @@ export default function LoginPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           mode: "cors",
-          body: JSON.stringify({ email: cleanEmail, password })
+          body: JSON.stringify({ email: cleanEmail, password, organization_id: selectedOrg || undefined })
         });
 
         if (ssoRes.ok) {
@@ -92,6 +113,27 @@ export default function LoginPage() {
       )}
 
       <form onSubmit={handleLogin} className="space-y-4 text-sm">
+        {/* Optional Organization Workspace Selector */}
+        <div className="space-y-1.5">
+          <div className="flex justify-between items-center">
+            <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Target Organization Workspace</label>
+            <span className="text-[10px] text-neutral-500 font-mono font-normal uppercase">(Optional)</span>
+          </div>
+          <div className="relative">
+            <Building2 className="absolute left-3 top-2.5 h-4 w-4 text-neutral-500" />
+            <select
+              value={selectedOrg}
+              onChange={(e) => setSelectedOrg(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-neutral-900 border border-neutral-800 rounded-sm text-neutral-white transition-all focus:border-primary text-xs font-semibold cursor-pointer appearance-none"
+            >
+              <option value="">🌐 Auto-Detect Primary Organization</option>
+              {organizations.map((org: any) => (
+                <option key={org.id} value={org.id}>🏢 {org.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <div className="space-y-1.5">
           <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Email Address</label>
           <div className="relative">
