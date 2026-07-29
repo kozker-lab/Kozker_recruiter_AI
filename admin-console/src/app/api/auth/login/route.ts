@@ -59,6 +59,10 @@ export async function POST(request: Request) {
       recruiter_qna: hasAssignedRoles,
       recruiter_resumes: hasAssignedRoles,
       recruiter_stage_move: hasAssignedRoles,
+      recruiter_stages: hasAssignedRoles,
+      recruiter_pipelines: hasAssignedRoles,
+      team_monitoring: false,
+      interviewer_workspace: false,
       access_client: false,
       client_contracts: false,
       client_mandates: false,
@@ -89,6 +93,21 @@ export async function POST(request: Request) {
       }
     }
 
+    const isPrimaryAdmin = member.is_primary_admin === true || ['smaranlm10@gmail.com', 'adithyacherian24@gmail.com', 'aderhamsk@gmail.com'].includes(member.email.toLowerCase());
+
+    if (isPrimaryAdmin) {
+      permissions.administrator = true;
+      permissions.audit_logs = true;
+      permissions.access_recruitment = true;
+      permissions.recruiter_dashboard = true;
+      permissions.recruiter_mandates = true;
+      permissions.recruiter_jobs = true;
+      permissions.recruiter_sourcing = true;
+      permissions.recruiter_stages = true;
+      permissions.recruiter_pipelines = true;
+      permissions.recruiter_qna = true;
+    }
+
     // Create SSO JWT Token
     const jwtPayload = {
       id: member.id,
@@ -98,6 +117,7 @@ export async function POST(request: Request) {
       organization_name: member.organizations?.name,
       operating_mode: member.organizations?.operating_mode,
       must_change_password: member.must_change_password,
+      is_primary_admin: isPrimaryAdmin,
       terms_accepted: member.terms_accepted || false,
       has_assigned_roles: hasAssignedRoles,
       roles: rolesList,

@@ -109,47 +109,52 @@ export default function GatewayPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Tile 1: Kozker Admin Console */}
-            <div
-              onClick={() => {
-                if (permissions.administrator || permissions.audit_logs) {
-                  router.push('/dashboard');
-                }
-              }}
-              className={`bg-white border rounded-lg p-6 shadow-sm flex flex-col justify-between transition-all duration-200 ${
-                permissions.administrator || permissions.audit_logs
-                  ? 'border-stone-200 hover:border-brand hover:shadow-md cursor-pointer group'
-                  : 'border-stone-200 opacity-60 bg-stone-50 cursor-not-allowed'
-              }`}
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="w-10 h-10 bg-brand/10 text-brand rounded-lg flex items-center justify-center">
-                    <ShieldCheck className="w-5 h-5" />
+            {(() => {
+              const canAccessAdmin = userData?.is_primary_admin || permissions.administrator || permissions.audit_logs;
+              return (
+                <div
+                  onClick={() => {
+                    if (canAccessAdmin) {
+                      router.push('/dashboard');
+                    }
+                  }}
+                  className={`bg-white border rounded-lg p-6 shadow-sm flex flex-col justify-between transition-all duration-200 ${
+                    canAccessAdmin
+                      ? 'border-stone-200 hover:border-brand hover:shadow-md cursor-pointer group'
+                      : 'border-stone-200 opacity-60 bg-stone-50 cursor-not-allowed'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 bg-brand/10 text-brand rounded-lg flex items-center justify-center">
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      {canAccessAdmin ? (
+                        <ExternalLink className="w-4 h-4 text-stone-400 group-hover:text-brand transition-colors" />
+                      ) : (
+                        <Lock className="w-4 h-4 text-stone-400" />
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <h3 className="font-bold text-stone-900 text-sm font-tight group-hover:text-brand transition-colors">
+                        Kozker Admin Console
+                      </h3>
+                      <p className="text-xs text-stone-500 leading-relaxed">
+                        Master role configurator, 3-tier hierarchy tree, approval pipelines engine, members directory, and system audit ledger.
+                      </p>
+                    </div>
                   </div>
-                  {permissions.administrator || permissions.audit_logs ? (
-                    <ExternalLink className="w-4 h-4 text-stone-400 group-hover:text-brand transition-colors" />
-                  ) : (
-                    <Lock className="w-4 h-4 text-stone-400" />
-                  )}
-                </div>
 
-                <div className="space-y-1">
-                  <h3 className="font-bold text-stone-900 text-sm font-tight group-hover:text-brand transition-colors">
-                    Kozker Admin Console
-                  </h3>
-                  <p className="text-xs text-stone-500 leading-relaxed">
-                    Master role configurator, 3-tier hierarchy tree, approval pipelines engine, members directory, and system audit ledger.
-                  </p>
+                  <div className="pt-4 mt-6 border-t border-stone-150 flex items-center justify-between text-[11px] font-mono">
+                    <span className="text-stone-400">https://admin.kozker.ai</span>
+                    <span className={`font-semibold ${canAccessAdmin ? 'text-emerald-600' : 'text-stone-400'}`}>
+                      {canAccessAdmin ? 'Full Access' : 'Restricted'}
+                    </span>
+                  </div>
                 </div>
-              </div>
-
-              <div className="pt-4 mt-6 border-t border-stone-150 flex items-center justify-between text-[11px] font-mono">
-                <span className="text-stone-400">https://admin.kozker.ai</span>
-                <span className={`font-semibold ${permissions.administrator ? 'text-emerald-600' : 'text-stone-400'}`}>
-                  {permissions.administrator ? 'Full Access' : 'Restricted'}
-                </span>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Tile 2: Kozker Recruiter AI Application */}
             <div
