@@ -12,7 +12,7 @@ import { isRecruiterSectionVisible } from "@/lib/permissions";
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
   Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
-  X, AlertCircle, Layers, Bell, Clock, Check, Trash2, Sun, Moon, HelpCircle, ChevronDown, ExternalLink, Terminal, GitPullRequest
+  X, AlertCircle, Layers, Bell, Clock, Check, Trash2, Sun, Moon, HelpCircle, ChevronDown, ExternalLink, Terminal, GitPullRequest, Calendar
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
@@ -1012,11 +1012,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   const navItems = [
     { id: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "team", href: "/team", label: "Team Operations", icon: Users },
     { id: "clients", href: "/clients", label: "Clients & Mandates", icon: Building2 },
     { id: "jobs", href: "/jobs", label: "Job Catalog", icon: Briefcase },
     { id: "pool", href: "/pool", label: "Sourcing Pool", icon: Users },
     { id: "rounds", href: "/rounds", label: "Stages", icon: Layers },
     { id: "pipelines", href: "/pipelines", label: "Approval Workflows", icon: GitPullRequest },
+    { id: "interviews", href: "/interviews", label: "Interview Workspace", icon: Calendar },
     { id: "qna", href: "/qna", label: "Candidate Q&A", icon: MessageSquare },
     { id: "notifications", href: "/notifications", label: "Notifications", icon: Bell },
     { id: "help", href: "/help", label: "Help", icon: HelpCircle },
