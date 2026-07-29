@@ -8,7 +8,7 @@ import ChatbotPanel from "@/components/ChatbotPanel";
 import UserAvatar from "@/components/UserAvatar";
 import { Logo } from "@/components/Logo";
 
-import { isRecruiterSectionVisible } from "@/lib/permissions";
+import { isRecruiterSectionVisible, type UserPermissions } from "@/lib/permissions";
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
   Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
@@ -258,27 +258,40 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [accessibleOrgs, setAccessibleOrgs] = useState<any[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string>("");
   const [activeOrgName, setActiveOrgName] = useState<string>("");
+  const [activeRoleName, setActiveRoleName] = useState<string>("");
+  const [userPermissions, setUserPermissions] = useState<any>(null);
+  const [isPrimaryAdmin, setIsPrimaryAdmin] = useState(false);
   const [switchingModal, setSwitchingModal] = useState<{ isOpen: boolean; targetOrgName: string }>({ isOpen: false, targetOrgName: "" });
 
   React.useEffect(() => {
-    const fetchOrgs = async () => {
+    const fetchUserData = async () => {
       try {
-        const res = await fetch("/api/organizations");
+        const savedOrgId = typeof window !== "undefined" ? localStorage.getItem("kozker_selected_org") || "" : "";
+        const res = await fetch(`/api/user/me?org_id=${savedOrgId}`);
         const data = await res.json();
-        if (data.success && Array.isArray(data.organizations)) {
-          setAccessibleOrgs(data.organizations);
-          const savedOrgId = typeof window !== "undefined" ? localStorage.getItem("kozker_selected_org") : "";
-          const target = data.organizations.find((o: any) => o.id === savedOrgId) || data.organizations[0];
-          if (target) {
-            setActiveOrgId(target.id);
-            setActiveOrgName(target.name);
+        if (data.authenticated) {
+          if (Array.isArray(data.organizations)) {
+            setAccessibleOrgs(data.organizations);
+          }
+          if (data.active_organization) {
+            setActiveOrgId(data.active_organization.id);
+            setActiveOrgName(data.active_organization.name);
+          }
+          if (data.active_role) {
+            setActiveRoleName(data.active_role.name);
+          }
+          if (data.permissions) {
+            setUserPermissions(data.permissions);
+          }
+          if (data.user) {
+            setIsPrimaryAdmin(data.user.is_primary_admin === true);
           }
         }
       } catch {
-        // Background fetch error ignored
+        // Fallback gracefully
       }
     };
-    fetchOrgs();
+    fetchUserData();
   }, [profile]);
 
   // Auto-complete onboarding since profile details come from Admin Console / DB
@@ -1073,6 +1086,26 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     { id: "settings", href: "/profile", label: "Settings", icon: Settings },
   ];
 
+  const navItemPermMap: Record<string, keyof UserPermissions> = {
+    dashboard: "recruiter_dashboard",
+    team: "team_monitoring",
+    clients: "recruiter_mandates",
+    jobs: "recruiter_jobs",
+    pool: "recruiter_sourcing",
+    rounds: "recruiter_stages",
+    pipelines: "recruiter_pipelines",
+    interviews: "interviewer_workspace",
+    qna: "recruiter_qna",
+  };
+
+  const visibleNavItems = navItems.filter((item: any) => {
+    const permKey = navItemPermMap[item.id];
+    if (!permKey) return true;
+    if (isPrimaryAdmin) return true;
+    if (!userPermissions) return true;
+    return userPermissions[permKey] !== false;
+  });
+
   if (isLoading || !profile) {
     return (
       <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-neutral-200">
@@ -1105,7 +1138,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               <div>
                 <p className="text-neutral-400 font-semibold uppercase tracking-wider">Active Organization</p>
                 <p className="font-bold text-neutral-900 mt-0.5 truncate">{activeOrgName || agencyName}</p>
-                <p className="text-primary font-bold mt-0.5 text-[9px]">@{subdomain}.kozker.ai</p>
+                {activeRoleName && <p className="text-primary font-bold mt-0.5 text-[9px] truncate">Role: {activeRoleName}</p>}
               </div>
               <button
                 onClick={() => setIsProjectSwitcherOpen(!isProjectSwitcherOpen)}
@@ -1151,7 +1184,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
           </div>
 
           <nav className="mt-6 px-3 space-y-1 text-xs">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname.startsWith(item.href);
               const showSeparator = item.id === "rounds" || item.id === "notifications";
