@@ -281,6 +281,16 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     fetchOrgs();
   }, [profile]);
 
+  // Auto-complete onboarding since profile details come from Admin Console / DB
+  React.useEffect(() => {
+    if (profile && !profile.is_onboarded) {
+      updateProfile.mutate({
+        full_name: profile.full_name || profile.email?.split('@')[0] || "Recruiter",
+        is_onboarded: true,
+      });
+    }
+  }, [profile]);
+
   const handleOrganizationSwitch = (orgId: string) => {
     const targetOrg = accessibleOrgs.find(o => o.id === orgId);
     if (!targetOrg) return;
@@ -1071,16 +1081,6 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       </div>
     );
   }
-
-  // Auto-complete onboarding since profile details come from Admin Console / DB
-  React.useEffect(() => {
-    if (profile && !profile.is_onboarded) {
-      updateProfile.mutate({
-        full_name: profile.full_name || profile.email?.split('@')[0] || "Recruiter",
-        is_onboarded: true,
-      });
-    }
-  }, [profile]);
 
   // Main App Shell
   return (

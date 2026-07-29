@@ -27407,3 +27407,49 @@
 [GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.0467s
 [GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.0471s
 [GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.8417s
+[OPTIONS] /api/v1/notifications | Auth: No | Status: 200 | Time: 0.0005s
+[OPTIONS] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.0007s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.4380s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7092s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.5578s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8163s
+[OPTIONS] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.0008s
+[OPTIONS] /api/v1/candidates | Auth: No | Status: 200 | Time: 0.0012s
+[OPTIONS] /api/v1/applications | Auth: No | Status: 200 | Time: 0.0014s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.2071s
+[GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.2038s
+[GET] /api/v1/candidates | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.2035s
+[GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.2028s
+[GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8570s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8560s
+[GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8555s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.5235s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.5246s
+[GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8651s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8642s
+[GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8654s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2670s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.5747s
+[GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7956s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7956s
+[GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7949s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2750s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2528s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8733s
+[GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8742s
+[GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.8741s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2567s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2621s
+[GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7393s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7404s
+[GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7398s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2883s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2359s
+[GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7391s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7388s
+[GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7384s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2385s
+[GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7638s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7611s
+[GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.7638s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.0309s
