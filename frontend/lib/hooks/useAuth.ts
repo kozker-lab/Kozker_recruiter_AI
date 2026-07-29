@@ -55,6 +55,21 @@ export function useProfile() {
       }
       
       const profile = data as Profile;
+      if (profile && user?.email) {
+        const { data: member } = await supabase
+          .from('members')
+          .select('name')
+          .ilike('email', user.email)
+          .maybeSingle();
+
+        if (member && member.name && member.name !== profile.full_name) {
+          profile.full_name = member.name;
+          await supabase
+            .from('profiles')
+            .update({ full_name: member.name })
+            .eq('id', user.id);
+        }
+      }
       setProfile(profile);
       return profile;
     },
