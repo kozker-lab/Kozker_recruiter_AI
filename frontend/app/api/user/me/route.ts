@@ -66,7 +66,7 @@ export async function GET(request: Request) {
       .ilike("email", userEmail)
       .maybeSingle();
 
-    // Auto-create/upsert member record if not found in public.members
+    // Auto-create/upsert member record if not found in public.members (starts role-less)
     if (!member) {
       const formattedName = userEmail.split("@")[0].split(".")[0];
       const capitalizedName = formattedName.charAt(0).toUpperCase() + formattedName.slice(1);
@@ -87,7 +87,6 @@ export async function GET(request: Request) {
       member = newMember;
     }
 
-    // Fallback object if insertion was prevented
     if (!member) {
       member = {
         id: "auto-generated-id",
@@ -97,7 +96,7 @@ export async function GET(request: Request) {
       };
     }
 
-    // 2. Fetch member assigned roles & permissions from Supabase
+    // 2. Fetch member assigned roles & permissions from Supabase member_roles
     const { data: mRoles } = await supabase
       .from("member_roles")
       .select("*, roles(*, role_permissions(*), organizations(*))")
@@ -134,7 +133,7 @@ export async function GET(request: Request) {
       activeOrg = accessibleOrgs[0];
     }
     if (!activeOrg) {
-      activeOrg = { id: "default-org-id", name: "Big Corpo" };
+      activeOrg = { id: "default-org-id", name: "Enterprise Workspace" };
     }
 
     // 5. Select active role & calculate permissions for the active organization
@@ -181,18 +180,22 @@ export async function GET(request: Request) {
         };
       }
     } else {
-      // Default non-admin role permissions if no specific role row found
+      // Role-Less Member: No assigned role rows found in member_roles table
       permissions = {
         administrator: false,
-        recruiter_dashboard: true,
-        recruiter_mandates: true,
-        recruiter_jobs: true,
+        recruiter_dashboard: false,
+        recruiter_mandates: false,
+        recruiter_jobs: false,
         recruiter_sourcing: false,
         recruiter_stages: false,
-        recruiter_pipelines: true,
-        recruiter_qna: true,
+        recruiter_pipelines: false,
+        recruiter_qna: false,
         team_monitoring: false,
-        interviewer_workspace: false
+        interviewer_workspace: false,
+        manage_jobs: false,
+        view_resumes: false,
+        edit_status: false,
+        schedule_interviews: false
       };
     }
 
@@ -206,7 +209,7 @@ export async function GET(request: Request) {
         is_primary_admin: isPrimaryAdmin
       },
       active_organization: activeOrg,
-      active_role: activeRole ? { id: activeRole.id, name: activeRole.name, level: activeRole.level } : { name: isPrimaryAdmin ? "Primary Administrator" : "Recruiter" },
+      active_role: activeRole ? { id: activeRole.id, name: activeRole.name, level: activeRole.level } : { name: isPrimaryAdmin ? "Primary Administrator" : "Unassigned Member" },
       permissions,
       organizations: accessibleOrgs
     });
