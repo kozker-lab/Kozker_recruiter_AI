@@ -194,10 +194,10 @@ export default function InterviewWorkspacePage() {
                   onChange={(e) => setRecommendation(e.target.value)}
                   className="w-full p-2.5 bg-neutral-950 border border-neutral-800 text-neutral-white font-bold rounded text-xs focus:outline-none focus:border-primary"
                 >
-                  <option value="Strong Hire">🟢 Strong Hire</option>
-                  <option value="Hire">🔵 Hire</option>
-                  <option value="No Hire">🟡 No Hire</option>
-                  <option value="Strong No Hire">🔴 Strong No Hire</option>
+                  <option value="Strong Hire">Strong Hire</option>
+                  <option value="Hire">Hire</option>
+                  <option value="No Hire">No Hire</option>
+                  <option value="Strong No Hire">Strong No Hire</option>
                 </select>
               </div>
 

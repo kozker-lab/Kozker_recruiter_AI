@@ -725,7 +725,7 @@ export default function DashboardPage() {
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-bold flex items-center gap-1.5 truncate">
-                              <span>🏢</span> {b.name}
+                              {b.name}
                             </span>
                             <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold ${
                               isSelected ? 'bg-blue-900 text-blue-200' : 'bg-blue-50 text-blue-700 border border-blue-200'

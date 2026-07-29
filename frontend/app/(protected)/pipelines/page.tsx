@@ -176,9 +176,9 @@ export default function PipelinesPage() {
             onChange={(e) => setSelectedOrgFilter(e.target.value)}
             className="p-1.5 bg-neutral-950 border border-neutral-800 text-neutral-200 rounded font-semibold text-xs focus:outline-none focus:border-primary"
           >
-            <option value="all">🌐 All Assigned Organizations ({organizations.length})</option>
+            <option value="all">All Assigned Organizations ({organizations.length})</option>
             {organizations.map(org => (
-              <option key={org.id} value={org.id}>🏢 {org.name}</option>
+              <option key={org.id} value={org.id}>{org.name}</option>
             ))}
           </select>
         </div>
@@ -248,7 +248,7 @@ export default function PipelinesPage() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 bg-primary/10 border border-primary/30 text-primary rounded">
-                            🏢 {orgName}
+                            Org: {orgName}
                           </span>
                           <span className="font-mono text-[10px] uppercase font-semibold text-neutral-400">
                             {pipe.category}
@@ -332,7 +332,7 @@ export default function PipelinesPage() {
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 bg-primary/10 border border-primary/30 text-primary rounded">
-                          🏢 {pipeOrg}
+                          Org: {pipeOrg}
                         </span>
                         <span className="font-mono text-[10px] text-neutral-400 uppercase">
                           {pipeName}
@@ -398,7 +398,7 @@ export default function PipelinesPage() {
                   required
                 >
                   {organizations.map(org => (
-                    <option key={org.id} value={org.id}>🏢 {org.name}</option>
+                    <option key={org.id} value={org.id}>{org.name}</option>
                   ))}
                 </select>
               </div>

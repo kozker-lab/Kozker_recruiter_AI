@@ -129,9 +129,10 @@ export default function LoginPage() {
               onChange={(e) => setSelectedOrg(e.target.value)}
               className="w-full pl-9 pr-3 py-2 bg-neutral-900 border border-neutral-800 rounded-sm text-neutral-white transition-all focus:border-primary text-xs font-semibold cursor-pointer appearance-none"
             >
-              <option value="" disabled>🏢 Select Target Organization...</option>
+              <option value="">Select Organization...</option>
+              <option value="none">None / Unassigned</option>
               {organizations.map((org: any) => (
-                <option key={org.id} value={org.id}>🏢 {org.name}</option>
+                <option key={org.id} value={org.id}>{org.name}</option>
               ))}
             </select>
           </div>
