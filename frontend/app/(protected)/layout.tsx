@@ -267,7 +267,14 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     const fetchUserData = async () => {
       try {
         const savedOrgId = typeof window !== "undefined" ? localStorage.getItem("kozker_selected_org") || "" : "";
-        const res = await fetch(`/api/user/me?org_id=${savedOrgId}`);
+        const storedEmail = user?.email || (typeof window !== "undefined" ? localStorage.getItem("kozker_user_email") || "" : "");
+        const storedToken = typeof window !== "undefined" ? localStorage.getItem("token") || "" : "";
+
+        const headers: Record<string, string> = {};
+        if (storedEmail) headers["X-User-Email"] = storedEmail;
+        if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+
+        const res = await fetch(`/api/user/me?org_id=${savedOrgId}`, { headers });
         const data = await res.json();
         if (data.authenticated) {
           if (Array.isArray(data.organizations)) {

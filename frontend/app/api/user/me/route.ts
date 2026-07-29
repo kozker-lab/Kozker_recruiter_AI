@@ -11,62 +11,78 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const requestedOrgId = url.searchParams.get("org_id");
 
+    const headerEmail = request.headers.get("x-user-email") || "";
     const authHeader = request.headers.get("authorization") || "";
     const cookieHeader = request.headers.get("cookie") || "";
-    let token = authHeader.replace("Bearer ", "");
+    
+    let userEmail = headerEmail.trim().toLowerCase();
 
-    if (!token && cookieHeader) {
-      const match = cookieHeader.match(/kozker_sso_token=([^;]+)/);
-      if (match) token = match[1];
+    // Parse cookie header for fallback email
+    if (!userEmail && cookieHeader) {
+      const emailMatch = cookieHeader.match(/kozker_user_email=([^;]+)/);
+      if (emailMatch) userEmail = decodeURIComponent(emailMatch[1]).trim().toLowerCase();
     }
 
-    let userEmail = "";
-    let decodedToken: any = null;
-
-    if (token) {
-      try {
-        const parts = token.split('.');
-        if (parts.length === 3) {
-          const payloadStr = Buffer.from(parts[1], 'base64').toString('utf8');
-          decodedToken = JSON.parse(payloadStr);
-          if (decodedToken && decodedToken.email) {
-            userEmail = decodedToken.email.toLowerCase().trim();
+    // Try decoding JWT tokens if email is still empty
+    if (!userEmail) {
+      let token = authHeader.replace("Bearer ", "");
+      if (!token && cookieHeader) {
+        const tokenMatch = cookieHeader.match(/kozker_sso_token=([^;]+)/);
+        if (tokenMatch) token = tokenMatch[1];
+      }
+      if (token) {
+        try {
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            const payloadStr = Buffer.from(parts[1], 'base64').toString('utf8');
+            const decodedToken = JSON.parse(payloadStr);
+            if (decodedToken && decodedToken.email) {
+              userEmail = decodedToken.email.toLowerCase().trim();
+            }
           }
+        } catch {
+          // Token parse fallback ignored
         }
-      } catch {
-        // Ignore token parse errors
       }
     }
 
-    // If no JWT token, fallback to querying Supabase Auth current user
+    // If still unauthenticated, return 401 unauthenticated
     if (!userEmail) {
-      // Default to primary admin for local testing if unauthenticated
-      userEmail = "adithyacherian24@gmail.com";
+      return NextResponse.json({ authenticated: false, error: "Unauthenticated" }, { status: 401 });
     }
 
-    // 1. Fetch member record from Supabase
+    // 1. Fetch member record from Supabase by email
     const { data: member, error: memErr } = await supabase
       .from("members")
       .select("*, organizations(*)")
-      .eq("email", userEmail)
+      .ilike("email", userEmail)
       .single();
 
     if (memErr || !member) {
-      // Fallback response for missing member
       return NextResponse.json({
         authenticated: true,
-        user: { email: userEmail, name: userEmail.split("@")[0], is_primary_admin: true },
-        active_organization: { id: "default", name: "Kozker Talent Network" },
-        active_role: { name: "Primary Administrator" },
-        permissions: { administrator: true },
-        organizations: [{ id: "default", name: "Kozker Talent Network" }]
+        user: { email: userEmail, name: userEmail.split("@")[0], is_primary_admin: false },
+        active_organization: { id: "default", name: "Enterprise Workspace" },
+        active_role: { name: "Recruiter" },
+        permissions: {
+          recruiter_dashboard: true,
+          recruiter_mandates: true,
+          recruiter_jobs: true,
+          recruiter_sourcing: false,
+          recruiter_stages: false,
+          recruiter_pipelines: true,
+          recruiter_qna: true,
+          team_monitoring: false,
+          interviewer_workspace: false
+        },
+        organizations: [{ id: "default", name: "Enterprise Workspace" }]
       });
     }
 
     const isPrimaryAdmin = member.is_primary_admin === true || 
       ["smaranlm10@gmail.com", "adithyacherian24@gmail.com", "aderhamsk@gmail.com"].includes(member.email.toLowerCase());
 
-    // 2. Fetch member assigned roles & permissions
+    // 2. Fetch member assigned roles & permissions from Supabase
     const { data: mRoles } = await supabase
       .from("member_roles")
       .select("*, roles(*, role_permissions(*), organizations(*))")
@@ -74,7 +90,7 @@ export async function GET(request: Request) {
 
     const rolesList = (mRoles || []).map((mr: any) => mr.roles).filter(Boolean);
 
-    // 3. Determine accessible organizations
+    // 3. Determine accessible organizations for this member
     let accessibleOrgs: any[] = [];
     if (isPrimaryAdmin) {
       const { data: allOrgs } = await supabase.from("organizations").select("id, name, operating_mode").order("name");
@@ -130,15 +146,15 @@ export async function GET(request: Request) {
         const rp = rpArray[0];
         permissions = {
           administrator: rp.administrator === true,
-          recruiter_dashboard: rp.recruiter_dashboard !== false,
-          recruiter_mandates: rp.recruiter_mandates !== false,
-          recruiter_jobs: rp.recruiter_jobs !== false,
-          recruiter_sourcing: rp.recruiter_sourcing !== false,
-          recruiter_stages: rp.recruiter_stages !== false,
-          recruiter_pipelines: rp.recruiter_pipelines !== false,
-          recruiter_qna: rp.recruiter_qna !== false,
-          team_monitoring: rp.team_monitoring !== false,
-          interviewer_workspace: rp.interviewer_workspace !== false
+          recruiter_dashboard: rp.recruiter_dashboard === true,
+          recruiter_mandates: rp.recruiter_mandates === true,
+          recruiter_jobs: rp.recruiter_jobs === true,
+          recruiter_sourcing: rp.recruiter_sourcing === true,
+          recruiter_stages: rp.recruiter_stages === true,
+          recruiter_pipelines: rp.recruiter_pipelines === true,
+          recruiter_qna: rp.recruiter_qna === true,
+          team_monitoring: rp.team_monitoring === true,
+          interviewer_workspace: rp.interviewer_workspace === true
         };
       }
     }

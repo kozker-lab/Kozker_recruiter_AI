@@ -44,8 +44,12 @@ export default function LoginPage() {
 
     try {
       const cleanEmail = email.trim().toLowerCase();
-      if (selectedOrg) {
-        localStorage.setItem("kozker_selected_org", selectedOrg);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("kozker_user_email", cleanEmail);
+        document.cookie = `kozker_user_email=${encodeURIComponent(cleanEmail)}; path=/; max-age=86400; SameSite=Lax`;
+        if (selectedOrg) {
+          localStorage.setItem("kozker_selected_org", selectedOrg);
+        }
       }
 
       // 1. Try Supabase Auth
