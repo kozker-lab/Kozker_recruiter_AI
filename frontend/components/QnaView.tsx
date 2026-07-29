@@ -528,8 +528,8 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
                                ) : (
                                   <Folder className="w-3.5 h-3.5 text-neutral-450" />
                                 )}
-                                <span className="font-medium text-neutral-800 text-xs">
-                                  {jobData.job_title}
+                                <span className="font-medium text-neutral-800 text-xs uppercase">
+                                  {jobData.job_title?.toUpperCase()}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
@@ -630,7 +630,7 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
                         {c.job_title && (
                           <span className="font-mono text-[9px] px-1.5 py-0.5 bg-neutral-900 text-neutral-100 rounded-sm font-bold uppercase flex items-center gap-1">
                             <Building2 className="w-3 h-3" />
-                            Role: {c.job_title}
+                            Role: {c.job_title?.toUpperCase()}
                           </span>
                         )}
                         <span className="text-[10px] text-neutral-400 font-mono flex items-center gap-1">

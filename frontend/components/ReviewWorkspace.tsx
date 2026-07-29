@@ -499,8 +499,8 @@ export default function ReviewWorkspace({ applicationId, onBack }: ReviewWorkspa
                     {otherHistory.map((h: any, i: number) => (
                       <div key={i} className="border border-neutral-200 bg-neutral-white rounded-sm p-3 space-y-2 text-xs">
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold text-neutral-800">
-                            {h.job_title} <span className="text-neutral-400 font-normal">at {h.client_name}</span>
+                          <span className="font-semibold text-neutral-800 uppercase">
+                            {h.job_title?.toUpperCase()} <span className="text-neutral-400 font-normal uppercase">at {h.client_name?.toUpperCase()}</span>
                           </span>
                           <span className={`text-[9.5px] px-2 py-0.5 border rounded-sm font-mono font-bold capitalize ${
                             h.stage === "hired" ? "bg-success/10 border-success/20 text-success" :

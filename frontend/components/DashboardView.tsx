@@ -588,9 +588,9 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
                         </span>
                         <span 
                           onClick={() => onNavigate("jobs", job?.id)}
-                          className="text-xs font-semibold text-neutral-800 hover:text-primary cursor-pointer hover:underline"
+                          className="text-xs font-semibold text-neutral-800 hover:text-primary cursor-pointer hover:underline uppercase"
                         >
-                          {job?.title || "Unknown Opening"}
+                          {job?.title?.toUpperCase() || "UNKNOWN OPENING"}
                         </span>
                       </div>
                     </div>

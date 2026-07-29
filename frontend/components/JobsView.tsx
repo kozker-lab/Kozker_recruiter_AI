@@ -1001,7 +1001,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     const newSkill: JobOpeningSkill = {
       id: `sk-custom-${Date.now()}`,
       job_opening_id: selectedJobId,
-      skill_name: name,
+      skill_name: name.trim().toUpperCase(),
       weight: 0.15,
       skill_order: localSkills.length + 1,
       approved: false,
@@ -1319,8 +1319,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                                     ) : (
                                       <Folder className="w-3.5 h-3.5 text-neutral-450" />
                                     )}
-                                    <span className="font-medium text-neutral-800 text-xs">
-                                      {reqData.requirement_title}
+                                    <span className="font-medium text-neutral-800 text-xs uppercase">
+                                      {reqData.requirement_title?.toUpperCase()}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2">
@@ -1353,9 +1353,9 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                                               setSelectedJobId(job.id);
                                               setActiveTab("jd");
                                             }}
-                                            className="font-medium text-neutral-800 hover:text-primary transition-colors truncate text-left cursor-pointer"
+                                            className="font-medium text-neutral-800 hover:text-primary transition-colors truncate text-left cursor-pointer uppercase"
                                           >
-                                            {job.title}
+                                            {job.title?.toUpperCase()}
                                           </button>
                                         </div>
 
@@ -1469,9 +1469,9 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                         <div className="p-4 divide-y divide-neutral-200 space-y-4">
                           {Object.entries(clientData.requirements).map(([reqId, reqData]) => (
                             <div key={reqId} className="pt-3 first:pt-0 space-y-2">
-                              <h4 className="font-bold text-xs text-neutral-800 flex items-center gap-1.5">
+                              <h4 className="font-bold text-xs text-neutral-800 flex items-center gap-1.5 uppercase">
                                 <span className="w-1.5 h-1.5 bg-primary rounded-xs"></span>
-                                {reqData.requirement_title}
+                                {reqData.requirement_title?.toUpperCase()}
                               </h4>
                               
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-3">
@@ -1481,8 +1481,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                                     className="p-3 border border-neutral-200 hover:border-neutral-350 bg-neutral-50/20 rounded-sm hover:shadow-xs transition-all flex flex-col justify-between h-[100px]"
                                   >
                                     <div className="flex items-start justify-between gap-2">
-                                      <span className="font-semibold text-neutral-800 text-xs truncate">
-                                        Post #{job.post_index}: {job.title}
+                                      <span className="font-semibold text-neutral-800 text-xs truncate uppercase">
+                                        Post #{job.post_index}: {job.title?.toUpperCase()}
                                       </span>
                                       <span
                                         className={`text-[8px] font-semibold font-mono uppercase px-1 border rounded-xs ${
@@ -1581,9 +1581,9 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                                 setSelectedJobId(j.id);
                                 setActiveTab("jd");
                               }}
-                              className="hover:text-primary transition-colors cursor-pointer text-left font-tight"
+                              className="hover:text-primary transition-colors cursor-pointer text-left font-tight uppercase"
                             >
-                              {j.title}
+                              {j.title?.toUpperCase()}
                             </button>
                           </td>
                           <td className="p-4 font-mono text-neutral-400">#{j.post_index}</td>
@@ -1700,7 +1700,7 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
               <span className="font-mono text-[9px] px-2 py-0.5 bg-neutral-100 border border-neutral-200 text-neutral-500 uppercase rounded-sm">
                 {activeJob?.client_name}
               </span>
-              <h2 className="text-lg font-tight font-bold text-neutral-850">{activeJob?.title}</h2>
+              <h2 className="text-lg font-tight font-bold text-neutral-850 uppercase">{activeJob?.title?.toUpperCase()}</h2>
             </div>
             <p className="text-[10px] text-neutral-400 font-mono mt-0.5">Job Opening ID: {activeJob?.id} • Requirement ID: {activeJob?.requirement_id}</p>
           </div>
@@ -2104,8 +2104,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
                 <div className="w-6 font-mono text-neutral-400 text-center font-bold">
                   {idx + 1}
                 </div>
-                <div className="flex-1 font-semibold text-neutral-800">
-                  {s.skill_name}
+                <div className="flex-1 font-semibold text-neutral-800 uppercase">
+                  {s.skill_name?.toUpperCase()}
                 </div>
                 
                 {/* Weight slider */}

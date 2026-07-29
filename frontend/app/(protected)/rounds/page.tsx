@@ -907,8 +907,8 @@ export default function RoundsPage() {
                           </td>
                           <td className="p-4">
                             <div className="font-mono text-[9px] text-neutral-400 uppercase font-semibold">{app.job_openings?.client_name || app.client_name || "Unassigned Clients"}</div>
-                            <div className="font-medium text-neutral-700 mt-0.5 truncate max-w-[150px]" title={app.job_openings?.title || "General Application"}>
-                              {app.job_openings?.title || "General Application"}
+                            <div className="font-medium text-neutral-700 mt-0.5 truncate max-w-[150px] uppercase" title={app.job_openings?.title || "General Application"}>
+                              {app.job_openings?.title?.toUpperCase() || "GENERAL APPLICATION"}
                             </div>
                           </td>
                           <td className="p-4 text-center">
