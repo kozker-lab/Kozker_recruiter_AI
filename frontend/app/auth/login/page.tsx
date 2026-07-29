@@ -28,6 +28,9 @@ export default function LoginPage() {
       const data = await res.json();
       if (data.success && Array.isArray(data.organizations)) {
         setOrganizations(data.organizations);
+        if (data.organizations.length > 0 && !selectedOrg) {
+          setSelectedOrg(data.organizations[0].id);
+        }
       }
     } catch {
       // Ignore background fetch error
@@ -126,7 +129,7 @@ export default function LoginPage() {
               onChange={(e) => setSelectedOrg(e.target.value)}
               className="w-full pl-9 pr-3 py-2 bg-neutral-900 border border-neutral-800 rounded-sm text-neutral-white transition-all focus:border-primary text-xs font-semibold cursor-pointer appearance-none"
             >
-              <option value="">🌐 Auto-Detect Primary Organization</option>
+              <option value="" disabled>🏢 Select Target Organization...</option>
               {organizations.map((org: any) => (
                 <option key={org.id} value={org.id}>🏢 {org.name}</option>
               ))}
