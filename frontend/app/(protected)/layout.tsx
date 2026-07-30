@@ -285,7 +285,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       if (storedEmail) headers["X-User-Email"] = storedEmail;
       if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
 
-      const res = await fetch(`/api/user/me?org_id=${savedOrgId}`, { headers });
+      const res = await fetch(`/api/user/me?org_id=${savedOrgId}`, { headers, cache: "no-store" });
       const data = await res.json();
       if (data.authenticated) {
         if (Array.isArray(data.organizations) && data.organizations.length > 0) {

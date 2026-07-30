@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Prevent Next.js App Router route handler caching
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://sgghssstxeypxccexfpt.supabase.co";
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
@@ -11,6 +15,12 @@ const SUPER_DEV_ADMIN_EMAILS = [
   "smaranlm10@gmail.com",
   "aderhamsk@gmail.com"
 ];
+
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+  "Pragma": "no-cache",
+  "Expires": "0"
+};
 
 export async function GET(request: Request) {
   try {
@@ -54,18 +64,18 @@ export async function GET(request: Request) {
 
     // If still no email, return 401 unauthenticated
     if (!userEmail) {
-      return NextResponse.json({ authenticated: false, error: "Unauthenticated" }, { status: 401 });
+      return NextResponse.json({ authenticated: false, error: "Unauthenticated" }, { status: 401, headers: NO_CACHE_HEADERS });
     }
 
     const isSuperDevAdmin = SUPER_DEV_ADMIN_EMAILS.includes(userEmail);
 
-    // 1. Fetch all member records from Supabase matching userEmail across all organizations
-    const { data: allMemberRecords } = await supabase
+    // 1. Fetch direct member records for this email
+    const { data: members, error: mErr } = await supabase
       .from("members")
-      .select("*, member_roles(*, roles(*, role_permissions(*), organizations(*))), organizations(*)")
+      .select("*, organizations(*)")
       .ilike("email", userEmail);
 
-    let membersList = allMemberRecords || [];
+    let membersList = members || [];
 
     // Auto-create member record if user is not in public.members
     if (membersList.length === 0) {
@@ -82,7 +92,7 @@ export async function GET(request: Request) {
           is_primary_admin: isSuperDevAdmin,
           status: "active"
         })
-        .select("*, member_roles(*, roles(*, role_permissions(*), organizations(*))), organizations(*)")
+        .select("*, organizations(*)")
         .single();
         
       if (newMember) {
@@ -97,19 +107,30 @@ export async function GET(request: Request) {
       is_primary_admin: isSuperDevAdmin
     };
 
-    // 2. Determine accessible organizations across all member records & member_roles of this user
-    let accessibleOrgs: any[] = [];
+    const memberIds = membersList.map(m => m.id).filter(Boolean);
+
+    // 2. Direct query on member_roles table to get ALL assigned roles and role_permissions across all member IDs
+    let allMemberRoles: any[] = [];
+    if (memberIds.length > 0) {
+      const { data: mrData } = await supabase
+        .from("member_roles")
+        .select("*, roles(*, role_permissions(*), organizations(*))")
+        .in("member_id", memberIds);
+      allMemberRoles = mrData || [];
+    }
+
+    // 3. Collect all organization IDs across member records and member_roles
     const userOrgIds = new Set<string>();
-    
     membersList.forEach((m: any) => {
       if (m.organization_id) userOrgIds.add(m.organization_id);
       if (m.organizations?.id) userOrgIds.add(m.organizations.id);
-      (m.member_roles || []).forEach((mr: any) => {
-        if (mr.roles?.organization_id) userOrgIds.add(mr.roles.organization_id);
-        if (mr.roles?.organizations?.id) userOrgIds.add(mr.roles.organizations.id);
-      });
+    });
+    allMemberRoles.forEach((mr: any) => {
+      if (mr.roles?.organization_id) userOrgIds.add(mr.roles.organization_id);
+      if (mr.roles?.organizations?.id) userOrgIds.add(mr.roles.organizations.id);
     });
 
+    let accessibleOrgs: any[] = [];
     if (isSuperDevAdmin) {
       const { data: allOrgs } = await supabase.from("organizations").select("id, name, operating_mode").order("name");
       accessibleOrgs = allOrgs || [];
@@ -129,7 +150,7 @@ export async function GET(request: Request) {
       accessibleOrgs = fallbackOrgs || [];
     }
 
-    // 3. Select active organization
+    // 4. Select active organization
     let activeOrg = accessibleOrgs.find((o: any) => o.id === requestedOrgId);
     if (!activeOrg && primaryMember.organization_id) {
       activeOrg = accessibleOrgs.find((o: any) => o.id === primaryMember.organization_id);
@@ -141,24 +162,19 @@ export async function GET(request: Request) {
       activeOrg = { id: "default-org-id", name: "Enterprise Workspace" };
     }
 
-    // 4. Find member record & role assignments specifically for the selected active organization
+    // 5. Find member record & role assignments specifically for the selected active organization
     const activeMember = membersList.find((m: any) => m.organization_id === activeOrg.id) || primaryMember;
 
     // Collect roles for this member in the active organization
-    let activeRolesList: any[] = [];
-    membersList.forEach((m: any) => {
-      (m.member_roles || []).forEach((mr: any) => {
-        if (mr.roles && (mr.roles.organization_id === activeOrg.id || mr.roles.organizations?.id === activeOrg.id)) {
-          activeRolesList.push(mr.roles);
-        }
-      });
-    });
+    const activeRolesList = allMemberRoles
+      .map((mr: any) => mr.roles)
+      .filter((r: any) => r && (r.organization_id === activeOrg.id || r.organizations?.id === activeOrg.id));
 
     const activeRole = activeRolesList[0] || null;
 
     const isOrgPrimaryAdmin = isSuperDevAdmin || activeMember.is_primary_admin === true || (activeRole?.role_permissions?.administrator === true);
 
-    // 5. Calculate permissions for the active organization
+    // 6. Calculate permissions for the active organization
     let permissions: any = {};
 
     if (isOrgPrimaryAdmin) {
@@ -232,8 +248,8 @@ export async function GET(request: Request) {
       active_role: activeRole ? { id: activeRole.id, name: activeRole.name, level: activeRole.level } : { name: isOrgPrimaryAdmin ? "Primary Administrator" : "Unassigned Member" },
       permissions,
       organizations: accessibleOrgs
-    });
+    }, { headers: NO_CACHE_HEADERS });
   } catch (err: any) {
-    return NextResponse.json({ authenticated: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ authenticated: false, error: err.message }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }
