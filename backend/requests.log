@@ -35697,3 +35697,188 @@
 [GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2504s
 [GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2634s
 [GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2597s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2313s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2454s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2540s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2441s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2644s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2473s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2505s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2324s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2578s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2516s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2889s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2584s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2543s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2313s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2498s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2384s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2618s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2886s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2646s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2312s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2475s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2932s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2474s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2506s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2425s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2353s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2580s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2416s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2735s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2593s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2246s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2389s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2609s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2408s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2586s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2384s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2358s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2811s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2696s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2309s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2337s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2418s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2800s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2296s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2557s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2431s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2498s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2650s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2721s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2136s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2694s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2448s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2890s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2402s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2498s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2256s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2691s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2188s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2485s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2484s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2576s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2260s
+[GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2497s
+[GET] /api/v1/notifications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.2349s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0084s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2751s
+[OPTIONS] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.0008s
+[OPTIONS] /api/v1/candidates | Auth: No | Status: 200 | Time: 0.0014s
+[OPTIONS] /api/v1/applications | Auth: No | Status: 200 | Time: 0.0013s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 1.7455s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 2.1334s
+[GET] /api/v1/candidates | Auth: No | Status: 200 | Time: 2.4085s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 2.4084s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.2839s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2261s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2343s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.5866s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.2385s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0055s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0058s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2404s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2306s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.6267s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.2474s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2443s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.2460s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 1.9338s
+[GET] /api/v1/candidates | Auth: No | Status: 200 | Time: 1.9339s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 1.9321s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 1.9334s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0092s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2418s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.5745s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4590s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4597s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0067s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0066s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2408s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.6088s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4843s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4846s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0082s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 1.0069s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4626s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4651s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.4667s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2272s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 1.8975s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4855s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4859s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.4870s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2386s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0071s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 1.0287s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4762s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4768s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2331s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0065s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0060s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 1.0016s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4798s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4804s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2370s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0066s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 1.1792s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 1.0178s
+[GET] /api/v1/candidates | Auth: No | Status: 200 | Time: 1.0158s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 1.0188s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 1.0183s
+[OPTIONS] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.0002s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.9289s
+[OPTIONS] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.0013s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2276s
+[OPTIONS] /api/v1/applications | Auth: No | Status: 200 | Time: 0.0005s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4541s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4555s
+[OPTIONS] /api/v1/notifications | Auth: No | Status: 200 | Time: 0.0002s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0065s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0063s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.6013s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.5112s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.5112s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2517s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0095s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.6010s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.5057s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.5087s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.5126s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2385s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.7311s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4732s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4739s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0061s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2511s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0089s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.5904s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4637s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4641s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0077s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2499s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.5981s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4781s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4789s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.4790s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.7263s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.5090s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.5099s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2483s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0080s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0065s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.9420s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4601s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4606s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2191s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0073s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0058s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.9004s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4418s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4421s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.2445s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0123s
+[GET] /api/v1/jobs | Auth: No | Status: 200 | Time: 0.5988s
+[GET] /api/v1/applications | Auth: No | Status: 200 | Time: 0.4813s
+[GET] /api/v1/activity_log | Auth: No | Status: 200 | Time: 0.4838s
+[GET] /api/v1/notifications | Auth: No | Status: 401 | Time: 0.0145s
