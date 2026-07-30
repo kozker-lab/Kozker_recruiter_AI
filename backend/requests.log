@@ -34399,3 +34399,4 @@
 [GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.3662s
 [GET] /api/v1/jobs | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.3679s
 [GET] /api/v1/activity_log | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 1.3645s
+[GET] /api/v1/applications | Auth: Yes (Bearer eyJhbGciOiJFUzI1Ni...) | Status: 200 | Time: 0.5284s

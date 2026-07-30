@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { verifyJwtToken, hashPassword } from '@/lib/auth';
+import nodemailer from 'nodemailer';
 
 export async function POST(request: Request) {
   try {
@@ -14,14 +15,19 @@ export async function POST(request: Request) {
 
     const { organization_id, name, email, password, role_ids } = await request.json();
 
-    if (!organization_id || !name || !email || !password) {
-      return NextResponse.json({ error: 'Missing required member fields (organization_id, name, email, password)' }, { status: 400 });
+    if (!organization_id || !name || !email) {
+      return NextResponse.json({ error: 'Missing required member fields (organization_id, name, email)' }, { status: 400 });
     }
 
     const cleanEmail = email.toLowerCase().trim();
 
-    // Hash password
-    const password_hash = await hashPassword(password);
+    // Fetch Organization Details
+    const { data: org } = await supabase.from('organizations').select('name').eq('id', organization_id).single();
+    const orgName = org?.name || 'Organization Workspace';
+
+    // Hash initial password or fallback
+    const rawPassword = password || ('AdminPassword#' + Math.random().toString(36).slice(-8));
+    const password_hash = await hashPassword(rawPassword);
 
     // Compute avatar initials
     const nameParts = name.trim().split(' ');
@@ -154,7 +160,93 @@ export async function POST(request: Request) {
       await supabase.from('member_roles').insert(roleInserts);
     }
 
-    return NextResponse.json({ success: true, member });
+    // Dispatch Executive Email to New Admin
+    const setPasswordBaseUrl = process.env.ADMIN_CONSOLE_URL ? `${process.env.ADMIN_CONSOLE_URL}/auth/set-password` : 'http://localhost:3001/auth/set-password';
+    const authActionLink = `${setPasswordBaseUrl}?email=${encodeURIComponent(cleanEmail)}`;
+
+    let emailSent = false;
+    let emailErrorMsg = '';
+
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: false,
+        auth: {
+          user: process.env.SMTP_USER || 'kozklawtailscale@gmail.com',
+          pass: process.env.SMTP_PASSWORD || 'hzntrccgfvfbfpbu'
+        }
+      });
+
+      const mailOptions = {
+        from: `"Kozker Developer Provisioning" <${process.env.SMTP_USER || 'kozklawtailscale@gmail.com'}>`,
+        to: cleanEmail,
+        subject: `🔑 Executive Admin Access Granted: ${orgName}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e7e5e4; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+            <!-- Header Banner -->
+            <div style="background-color: #ff6e30; padding: 24px; text-align: center; color: #ffffff;">
+              <h1 style="margin: 0; font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Kozker Platform Governance</h1>
+              <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">Executive Primary Administrator Access Granted</p>
+            </div>
+
+            <!-- Body Content -->
+            <div style="padding: 30px; background-color: #fafaf9; color: #292524;">
+              <p style="font-size: 16px; margin-top: 0;">Dear <strong>${name}</strong>,</p>
+
+              <p style="font-size: 14px; color: #44403c; line-height: 1.6;">
+                You have been officially provisioned as the **Primary Administrator** for <strong>${orgName}</strong> on the Kozker Governance Engine.
+              </p>
+
+              <div style="background-color: #ffffff; border: 1px solid #e7e5e4; border-left: 4px solid #ff6e30; padding: 18px; border-radius: 6px; margin: 20px 0;">
+                <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #9a3412; margin-bottom: 8px;">
+                  🛡️ Admin Console Account Authorization
+                </div>
+                <div style="font-size: 13px; color: #1c1917;">
+                  <strong>Organization:</strong> ${orgName}<br/>
+                  <strong>Email Account:</strong> <code>${cleanEmail}</code><br/>
+                  <strong>Role Scope:</strong> Primary Administrator (Single Executive Scope)
+                </div>
+              </div>
+
+              <p style="font-size: 14px; color: #44403c; line-height: 1.6;">
+                Please click the button below to set your password and access the Admin Console to manage Master Roles, RBAC permissions, and invite team members.
+              </p>
+
+              <!-- Action Button -->
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${authActionLink}" style="background-color: #ff6e30; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 4px 10px rgba(255, 110, 48, 0.3);">
+                  🔑 Set Admin Password & Access Console
+                </a>
+              </div>
+
+              <div style="background-color: #ffffff; border: 1px solid #e7e5e4; padding: 12px; border-radius: 6px; font-size: 12px; color: #78716c; line-height: 1.4;">
+                📌 <strong>Security Notice:</strong> The link above is your single-use password setup link for <code>${cleanEmail}</code>.
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div style="background-color: #f5f5f4; padding: 16px; text-align: center; font-size: 12px; color: #a8a29e; border-top: 1px solid #e7e5e4;">
+              ${orgName} • Kozker Governance Engine System
+            </div>
+          </div>
+        `
+      };
+
+      await transporter.sendMail(mailOptions);
+      emailSent = true;
+    } catch (mailErr: any) {
+      emailErrorMsg = mailErr.message || 'SMTP dispatch failed';
+      console.error('Admin provision email error:', mailErr);
+    }
+
+    return NextResponse.json({
+      success: true,
+      email_sent: emailSent,
+      email_error: emailErrorMsg || undefined,
+      member,
+      message: `Primary admin account provisioned for ${name} (${cleanEmail}). ${emailSent ? 'Executive invitation email dispatched.' : 'Email notice: ' + emailErrorMsg}`
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to provision admin account' }, { status: 500 });
   }
