@@ -253,7 +253,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [customAlert, setCustomAlert] = useState<{ message: string; isOpen: boolean } | null>(null);
 
   const [subdomain, setSubdomain] = useState("default");
-  const [agencyName, setAgencyName] = useState("Big Corpo");
+  const [agencyName, setAgencyName] = useState("");
 
   const [accessibleOrgs, setAccessibleOrgs] = useState<any[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string>("");
@@ -321,7 +321,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   React.useEffect(() => {
     fetchUserData();
-  }, [profile?.email, user?.email, fetchUserData]);
+  }, [fetchUserData]);
 
   const getDisplayName = () => {
     const emailPrefix = (user?.email || profile?.email || "").split('@')[0];

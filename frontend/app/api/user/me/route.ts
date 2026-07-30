@@ -132,10 +132,17 @@ export async function GET(request: Request) {
       accessibleOrgs = userOrgs || [];
     }
 
+    if (primaryMember.organizations && !accessibleOrgs.some((o: any) => o.id === primaryMember.organizations.id)) {
+      accessibleOrgs.push(primaryMember.organizations);
+    }
+
     // 4. Determine Active Organization for this session
     let activeOrg: any = accessibleOrgs.find((o: any) => o.id === requestedOrgId);
     if (!activeOrg && primaryMember.organization_id) {
       activeOrg = accessibleOrgs.find((o: any) => o.id === primaryMember.organization_id);
+    }
+    if (!activeOrg && primaryMember.organizations) {
+      activeOrg = primaryMember.organizations;
     }
     if (!activeOrg && accessibleOrgs.length > 0) {
       activeOrg = accessibleOrgs[0];
@@ -147,7 +154,7 @@ export async function GET(request: Request) {
       .map((mr: any) => mr.roles)
       .filter((r: any) => r && (r.organization_id === activeOrg?.id || r.organizations?.id === activeOrg?.id));
 
-    const activeRole = activeRolesList[0] || null;
+    const activeRole = activeRolesList[0] || (allMemberRoles.length > 0 ? allMemberRoles[0].roles : null);
 
     const isOrgPrimaryAdmin = isSuperDevAdmin || activeMember.is_primary_admin === true || (activeRole?.role_permissions?.administrator === true);
 
