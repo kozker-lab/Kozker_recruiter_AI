@@ -975,8 +975,8 @@ export default function DashboardPage() {
                           <td className="p-3">
                             <div className="flex flex-wrap gap-1">
                               {rolesList.length === 0 ? (
-                                <span className="px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-stone-100 text-stone-700 border border-stone-200">
-                                  Default Member (View-Only Pipeline & Admin)
+                                <span className="px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                  Unassigned Member
                                 </span>
                               ) : (
                                 rolesList.map((r: any) => (
@@ -1618,7 +1618,7 @@ export default function DashboardPage() {
 
                 {selectedRolesForMember.length === 0 && (
                   <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-800 text-[11px] rounded font-mono">
-                    💡 <strong>Default Member Mode:</strong> Unassigned members retain the Default Member role (View-Only Pipeline & Admin Panel access).
+                    💡 <strong>Unassigned Member Mode:</strong> Members with 0 checked roles remain in the Unassigned Member (Role-Less) state with 0 panel permissions until a role is assigned.
                   </div>
                 )}
               </div>
