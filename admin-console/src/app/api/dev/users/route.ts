@@ -29,3 +29,62 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message || 'Failed to list users' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const authHeader = request.headers.get('authorization') || '';
+    const token = authHeader.replace('Bearer ', '');
+    const decoded = verifyJwtToken(token);
+
+    if (!decoded || !decoded.dev_authenticated) {
+      return NextResponse.json({ error: 'Unauthorized: Method 1 Developer Access Token Required' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('id');
+
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID is required for deletion' }, { status: 400 });
+    }
+
+    // Fetch target member details before deletion
+    const { data: targetMember } = await supabase
+      .from('members')
+      .select('*, organizations(*)')
+      .eq('id', userId)
+      .single();
+
+    if (!targetMember) {
+      return NextResponse.json({ error: 'Target admin user account not found' }, { status: 404 });
+    }
+
+    // Delete member_roles associations
+    await supabase.from('member_roles').delete().eq('member_id', userId);
+
+    // Delete member record from public.members
+    const { error: delErr } = await supabase.from('members').delete().eq('id', userId);
+    if (delErr) {
+      return NextResponse.json({ error: delErr.message }, { status: 500 });
+    }
+
+    // Delete Supabase auth user if present
+    try {
+      if (supabase.auth?.admin && targetMember.email) {
+        const { data: usersData } = await supabase.auth.admin.listUsers();
+        const authUser = (usersData?.users || []).find(u => u.email?.toLowerCase() === targetMember.email.toLowerCase());
+        if (authUser) {
+          await supabase.auth.admin.deleteUser(authUser.id);
+        }
+      }
+    } catch {
+      // Ignore auth user cleanup notice
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Admin account '${targetMember.name}' (${targetMember.email}) permanently removed.`
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Failed to delete user' }, { status: 500 });
+  }
+}

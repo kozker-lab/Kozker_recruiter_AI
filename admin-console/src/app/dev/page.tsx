@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Terminal, Building2, UserPlus, Users, Key, AlertCircle, CheckCircle2, Lock, Sliders, X, RefreshCw, Send, Radio, UserCheck } from 'lucide-react';
+import { ShieldCheck, Terminal, Building2, UserPlus, Users, Key, AlertCircle, CheckCircle2, Lock, Sliders, X, RefreshCw, Send, Radio, UserCheck, Trash2, AlertTriangle } from 'lucide-react';
 
 export default function DevProvisioningPage() {
   const [devKey, setDevKey] = useState('');
@@ -44,6 +44,11 @@ export default function DevProvisioningPage() {
   const [editUserStatus, setEditUserStatus] = useState('active');
   const [saveGovMsg, setSaveGovMsg] = useState({ error: '', success: '' });
   const [isSavingGov, setIsSavingGov] = useState(false);
+
+  // Delete Warning Confirmation Modal state
+  const [userToDelete, setUserToDelete] = useState<any>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+  const [deleteErrorMsg, setDeleteErrorMsg] = useState('');
 
   const handleDevAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,6 +276,31 @@ export default function DevProvisioningPage() {
       setSaveGovMsg({ error: err.message || 'Error updating settings', success: '' });
     } finally {
       setIsSavingGov(false);
+    }
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
+    setDeleteErrorMsg('');
+
+    try {
+      const res = await fetch(`/api/dev/users?id=${userToDelete.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${devToken}` }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDeleteErrorMsg(data.error || 'Failed to delete user');
+      } else {
+        fetchDevData(devToken);
+        setUserToDelete(null);
+        setSelectedUser(null);
+      }
+    } catch (err: any) {
+      setDeleteErrorMsg(err.message || 'Network error');
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -689,13 +719,14 @@ export default function DevProvisioningPage() {
                       <th className="p-3">Organization</th>
                       <th className="p-3">Admin Portal Access</th>
                       <th className="p-3">Quotas (Members / Roles)</th>
-                      <th className="p-3 text-right">Account Status</th>
+                      <th className="p-3">Account Status</th>
+                      <th className="p-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-200">
                     {users.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-6 text-center text-stone-400 italic">
+                        <td colSpan={7} className="p-6 text-center text-stone-400 italic">
                           No users provisioned yet. Use the provisioning form above to create user credentials.
                         </td>
                       </tr>
@@ -717,16 +748,15 @@ export default function DevProvisioningPage() {
                         return (
                           <tr
                             key={u.id}
-                            onClick={() => handleOpenUserModal(u)}
-                            className="hover:bg-stone-100/80 cursor-pointer transition-colors group"
+                            className="hover:bg-stone-100/80 transition-colors group"
                           >
-                            <td className="p-3 font-semibold text-stone-900 group-hover:text-brand flex items-center gap-2">
+                            <td onClick={() => handleOpenUserModal(u)} className="p-3 font-semibold text-stone-900 group-hover:text-brand flex items-center gap-2 cursor-pointer">
                               <span>{u.name}</span>
                               <Sliders className="w-3.5 h-3.5 text-stone-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                             </td>
-                            <td className="p-3 font-mono text-stone-600">{u.email}</td>
-                            <td className="p-3 font-medium text-stone-700">{org.name || u.organization_id}</td>
-                            <td className="p-3">
+                            <td onClick={() => handleOpenUserModal(u)} className="p-3 font-mono text-stone-600 cursor-pointer">{u.email}</td>
+                            <td onClick={() => handleOpenUserModal(u)} className="p-3 font-medium text-stone-700 cursor-pointer">{org.name || u.organization_id}</td>
+                            <td onClick={() => handleOpenUserModal(u)} className="p-3 cursor-pointer">
                               {isAdmin ? (
                                 <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
                                   Granted
@@ -737,15 +767,28 @@ export default function DevProvisioningPage() {
                                 </span>
                               )}
                             </td>
-                            <td className="p-3 font-mono text-[11px] text-stone-600">
+                            <td onClick={() => handleOpenUserModal(u)} className="p-3 font-mono text-[11px] text-stone-600 cursor-pointer">
                               <span className="font-semibold">{memLimitStr}</span> Members / <span className="font-semibold">{roleLimitStr}</span> Roles
                             </td>
-                            <td className="p-3 text-right">
+                            <td onClick={() => handleOpenUserModal(u)} className="p-3 cursor-pointer">
                               <span className={`inline-flex items-center gap-1 font-mono text-[9px] uppercase px-1.5 py-0.5 rounded font-bold border ${
                                 u.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
                               }`}>
                                 {u.status || 'active'}
                               </span>
+                            </td>
+                            <td className="p-3 text-right">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setUserToDelete(u);
+                                }}
+                                className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded border border-red-200 transition-colors cursor-pointer"
+                                title={`Delete ${u.name} admin account`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </td>
                           </tr>
                         );
@@ -881,23 +924,97 @@ export default function DevProvisioningPage() {
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
+              <div className="flex items-center justify-between pt-3 border-t border-stone-200">
                 <button
                   type="button"
-                  onClick={() => setSelectedUser(null)}
-                  className="px-3.5 py-2 border border-stone-200 hover:bg-stone-100 rounded text-xs font-semibold cursor-pointer"
+                  onClick={() => {
+                    const u = selectedUser;
+                    setSelectedUser(null);
+                    setUserToDelete(u);
+                  }}
+                  className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded text-xs font-semibold cursor-pointer border border-red-200 flex items-center gap-1.5"
                 >
-                  Cancel
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Admin Account</span>
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSavingGov}
-                  className="px-4 py-2 bg-brand hover:bg-brand-hover text-white font-mono text-xs font-bold uppercase rounded shadow-sm cursor-pointer disabled:opacity-50"
-                >
-                  {isSavingGov ? 'Updating...' : 'Save Settings'}
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUser(null)}
+                    className="px-3.5 py-2 border border-stone-200 hover:bg-stone-100 rounded text-xs font-semibold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingGov}
+                    className="px-4 py-2 bg-brand hover:bg-brand-hover text-white font-mono text-xs font-bold uppercase rounded shadow-sm cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingGov ? 'Updating...' : 'Save Settings'}
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Admin Warning Confirmation Popup Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 bg-stone-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-white border-2 border-red-500 max-w-md w-full p-6 rounded-xl shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 border-b border-stone-200 pb-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-bold shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-red-700 text-base">Permanent Admin Removal Warning</h3>
+                <p className="text-[11px] text-stone-500 font-mono">Critical Account Deletion Action</p>
+              </div>
+            </div>
+
+            {deleteErrorMsg && (
+              <div className="p-3 bg-red-50 text-red-700 text-xs rounded border border-red-200 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{deleteErrorMsg}</span>
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs text-stone-700">
+              <p className="leading-relaxed">
+                Are you sure you want to permanently delete the Primary Administrator account for:
+              </p>
+
+              <div className="p-3 bg-stone-50 border border-stone-200 rounded font-mono text-[11px] space-y-1">
+                <div><strong>Admin Name:</strong> {userToDelete.name}</div>
+                <div><strong>Admin Email:</strong> {userToDelete.email}</div>
+                <div><strong>Organization:</strong> {userToDelete.organizations?.name || userToDelete.organization_id}</div>
+              </div>
+
+              <div className="p-3 bg-red-50 border border-red-200 rounded text-red-800 text-[11px] space-y-1">
+                <strong>⚠️ Warning:</strong> This will revoke all Admin Console access and permanently delete this admin member record from the system database.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-200">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="px-4 py-2 border border-stone-300 hover:bg-stone-100 rounded text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingUser}
+                onClick={handleConfirmDeleteUser}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-mono text-xs uppercase font-bold rounded transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeletingUser ? 'Deleting Admin...' : 'Yes, Delete Admin Account'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
