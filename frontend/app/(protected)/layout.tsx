@@ -279,7 +279,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         storedEmail = localStorage.getItem("kozker_user_email") || "";
       }
 
-      const storedToken = typeof window !== "undefined" ? localStorage.getItem("token") || "" : "";
+      const storedToken = typeof window !== "undefined" ? (localStorage.getItem("kozker_sso_token") || localStorage.getItem("token") || "") : "";
 
       const headers: Record<string, string> = {};
       if (storedEmail) headers["X-User-Email"] = storedEmail;
@@ -1156,8 +1156,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     const permKey = navItemPermMap[item.id];
     if (!permKey) return true;
     if (isPrimaryAdmin) return true;
-    if (!userPermissions) return true;
-    return userPermissions[permKey] !== false;
+    return userPermissions ? userPermissions[permKey] === true : false;
   });
 
   if (isLoading || !profile) {

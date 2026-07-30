@@ -100,8 +100,8 @@ export async function POST(request: Request) {
       });
     }
 
-    // 3. Set Direct Password Setup Page URL (Pointing to Admin Console Password Setup Page)
-    const setPasswordBaseUrl = process.env.ADMIN_CONSOLE_URL ? `${process.env.ADMIN_CONSOLE_URL}/auth/set-password` : 'http://localhost:3001/auth/set-password';
+    // 3. Set Direct Password Setup Page URL (Pointing to Recruiter AI Application Password Setup Page)
+    const setPasswordBaseUrl = process.env.RECRUITER_APP_URL ? `${process.env.RECRUITER_APP_URL}/auth/set-password` : 'http://localhost:3000/auth/set-password';
     const authActionLink = `${setPasswordBaseUrl}?email=${encodeURIComponent(cleanEmail)}`;
 
     // 4. Dispatch Email with Direct Password Setup Link & Replacement Notice
