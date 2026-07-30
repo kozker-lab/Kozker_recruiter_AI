@@ -31,19 +31,22 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const isApiRoute = request.nextUrl.pathname.startsWith('/api');
   const isAuthRoute = request.nextUrl.pathname.startsWith('/auth');
   const isApplyRoute = request.nextUrl.pathname.startsWith('/apply');
   
-  if (!user && !isAuthRoute && !isApplyRoute) {
-    // no user, potentially respond by redirecting the user to the login page
+  const hasKozkerCookie = !!(request.cookies.get('kozker_user_email')?.value || request.cookies.get('kozker_sso_token')?.value);
+
+  if (!user && !hasKozkerCookie && !isAuthRoute && !isApplyRoute && !isApiRoute) {
+    // no user or cookie session, redirect to login page
     const url = request.nextUrl.clone();
     url.pathname = '/auth/login';
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthRoute) {
+  if ((user || hasKozkerCookie) && isAuthRoute && request.nextUrl.pathname === '/auth/login') {
     const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
+    url.pathname = '/';
     return NextResponse.redirect(url);
   }
 
