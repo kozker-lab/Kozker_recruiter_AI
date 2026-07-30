@@ -123,6 +123,12 @@ export async function GET(request: Request) {
       }
     }
 
+    // Safety Fallback: If accessibleOrgs is empty for an authenticated user, query tenant organizations from Supabase
+    if (accessibleOrgs.length === 0) {
+      const { data: fallbackOrgs } = await supabase.from("organizations").select("id, name, operating_mode").order("name");
+      accessibleOrgs = fallbackOrgs || [];
+    }
+
     // 3. Select active organization
     let activeOrg = accessibleOrgs.find((o: any) => o.id === requestedOrgId);
     if (!activeOrg && primaryMember.organization_id) {

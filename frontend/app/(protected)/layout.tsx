@@ -270,7 +270,15 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         ? targetOrgId 
         : (typeof window !== "undefined" ? localStorage.getItem("kozker_selected_org") || "" : "");
       
-      const storedEmail = user?.email || profile?.email || (typeof window !== "undefined" ? localStorage.getItem("kozker_user_email") || "" : "");
+      let storedEmail = user?.email || profile?.email || "";
+      if (!storedEmail && typeof document !== "undefined") {
+        const match = document.cookie.match(/kozker_user_email=([^;]+)/);
+        if (match) storedEmail = decodeURIComponent(match[1]).trim().toLowerCase();
+      }
+      if (!storedEmail && typeof window !== "undefined") {
+        storedEmail = localStorage.getItem("kozker_user_email") || "";
+      }
+
       const storedToken = typeof window !== "undefined" ? localStorage.getItem("token") || "" : "";
 
       const headers: Record<string, string> = {};
@@ -280,7 +288,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       const res = await fetch(`/api/user/me?org_id=${savedOrgId}`, { headers });
       const data = await res.json();
       if (data.authenticated) {
-        if (Array.isArray(data.organizations)) {
+        if (Array.isArray(data.organizations) && data.organizations.length > 0) {
           setAccessibleOrgs(data.organizations);
         }
         if (data.active_organization) {
@@ -307,7 +315,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   React.useEffect(() => {
     fetchUserData();
-  }, [fetchUserData]);
+  }, [profile?.email, user?.email, fetchUserData]);
 
   const getDisplayName = () => {
     const emailPrefix = (user?.email || profile?.email || "").split('@')[0];
