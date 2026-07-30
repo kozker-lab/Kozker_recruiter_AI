@@ -87,13 +87,40 @@ export function useLogout() {
 
   return useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.warn("Supabase signOut error ignored:", e);
+      }
+      if (typeof window !== "undefined") {
+        document.cookie = "kozker_sso_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+        document.cookie = "kozker_user_email=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+        document.cookie = "kozker_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+        localStorage.removeItem("kozker_sso_token");
+        localStorage.removeItem("kozker_user_email");
+        localStorage.removeItem("kozker_user_role");
+        localStorage.removeItem("token");
+      }
     },
     onSuccess: () => {
       resetAuth();
       queryClient.clear();
       window.location.href = '/auth/login';
     },
+    onError: () => {
+      // Even on mutation error, enforce cleanup and redirect
+      if (typeof window !== "undefined") {
+        document.cookie = "kozker_sso_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+        document.cookie = "kozker_user_email=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+        document.cookie = "kozker_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+        localStorage.removeItem("kozker_sso_token");
+        localStorage.removeItem("kozker_user_email");
+        localStorage.removeItem("kozker_user_role");
+        localStorage.removeItem("token");
+      }
+      resetAuth();
+      queryClient.clear();
+      window.location.href = '/auth/login';
+    }
   });
 }

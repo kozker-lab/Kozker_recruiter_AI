@@ -1577,7 +1577,17 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                 type="button"
                 onClick={() => {
                   setIsExitConfirmOpen(false);
-                  logout();
+                  document.cookie = "kozker_sso_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+                  document.cookie = "kozker_user_email=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+                  document.cookie = "kozker_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+                  localStorage.removeItem("kozker_sso_token");
+                  localStorage.removeItem("kozker_user_email");
+                  localStorage.removeItem("kozker_user_role");
+                  localStorage.removeItem("token");
+                  try { logout(); } catch (e) {}
+                  setTimeout(() => {
+                    window.location.href = "/auth/login";
+                  }, 100);
                 }}
                 className="px-4 py-1.5 bg-error text-neutral-white font-medium hover:bg-error/95 rounded-sm cursor-pointer flex items-center gap-1.5 text-[10px] tracking-wider uppercase"
               >
