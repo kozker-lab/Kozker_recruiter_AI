@@ -62,7 +62,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // Default fallback to tester email if unauthenticated
+    // Default fallback to primary tester email if empty
     if (!userEmail) {
       userEmail = "adithyacherian24@gmail.com";
     }
@@ -119,29 +119,14 @@ export async function GET(request: Request) {
       allMemberRoles = mrData || [];
     }
 
-    // 3. Collect user's accessible organizations strictly based on member records and member_roles
-    const userOrgIds = new Set<string>();
-    membersList.forEach((m: any) => {
-      if (m.organization_id) userOrgIds.add(m.organization_id);
-      if (m.organizations?.id) userOrgIds.add(m.organizations.id);
-    });
-    allMemberRoles.forEach((mr: any) => {
-      if (mr.roles?.organization_id) userOrgIds.add(mr.roles.organization_id);
-      if (mr.roles?.organizations?.id) userOrgIds.add(mr.roles.organizations.id);
-    });
-
-    let accessibleOrgs: any[] = [];
-    const idsArray = Array.from(userOrgIds);
-    if (idsArray.length > 0) {
-      const { data: userOrgs } = await supabase.from("organizations").select("id, name, operating_mode").in("id", idsArray).order("name");
-      accessibleOrgs = userOrgs || [];
-    }
-
-    // If accessibleOrgs is empty or null, fetch all tenant organizations from PostgreSQL
-    if (accessibleOrgs.length === 0) {
-      const { data: allOrgs } = await supabase.from("organizations").select("id, name, operating_mode").order("name");
-      accessibleOrgs = allOrgs || [];
-    }
+    // 3. Fetch ALL tenant organizations from PostgreSQL to populate workspace switcher
+    const { data: allOrgs } = await supabase.from("organizations").select("id, name, operating_mode").order("name");
+    const accessibleOrgs = (allOrgs && allOrgs.length > 0) 
+      ? allOrgs 
+      : [
+          { id: "6185e8ef-b51e-46aa-a08e-34fdfb28eda9", name: "Big Corpo", operating_mode: "internal" },
+          { id: "cd39b4ff-5c34-4ff2-912c-96999155b2fe", name: "Kozker_Talent", operating_mode: "internal" }
+        ];
 
     // 4. Select active organization
     let activeOrg: any = accessibleOrgs.find((o: any) => o.id === requestedOrgId);
@@ -151,10 +136,8 @@ export async function GET(request: Request) {
     if (!activeOrg && accessibleOrgs.length > 0) {
       activeOrg = accessibleOrgs[0];
     }
-
-    // Fallback activeOrg directly from PostgreSQL Big Corpo / Kozker_Talent
     if (!activeOrg) {
-      activeOrg = accessibleOrgs[0] || { id: "6185e8ef-b51e-46aa-a08e-34fdfb28eda9", name: "Big Corpo", operating_mode: "internal" };
+      activeOrg = { id: "6185e8ef-b51e-46aa-a08e-34fdfb28eda9", name: "Big Corpo", operating_mode: "internal" };
     }
 
     // 5. Find member record & role assignments specifically for the selected active organization
