@@ -81,46 +81,44 @@ export function useUpdateProfile() {
   });
 }
 
+export function handleGlobalLogout() {
+  if (typeof window !== "undefined") {
+    // Clear cookies with expired dates across all path variations
+    document.cookie = "kozker_sso_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+    document.cookie = "kozker_user_email=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+    document.cookie = "kozker_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+    
+    // Clear localStorage items
+    localStorage.removeItem("kozker_sso_token");
+    localStorage.removeItem("kozker_user_email");
+    localStorage.removeItem("kozker_user_role");
+    localStorage.removeItem("token");
+    
+    // Attempt best-effort Supabase signout
+    try {
+      supabase.auth.signOut().catch(() => {});
+    } catch (e) {}
+
+    // Force instant page redirect to login
+    window.location.replace('/auth/login');
+  }
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   const resetAuth = useAuthStore((state) => state.reset);
 
   return useMutation({
     mutationFn: async () => {
-      try {
-        await supabase.auth.signOut();
-      } catch (e) {
-        console.warn("Supabase signOut error ignored:", e);
-      }
-      if (typeof window !== "undefined") {
-        document.cookie = "kozker_sso_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-        document.cookie = "kozker_user_email=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-        document.cookie = "kozker_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-        localStorage.removeItem("kozker_sso_token");
-        localStorage.removeItem("kozker_user_email");
-        localStorage.removeItem("kozker_user_role");
-        localStorage.removeItem("token");
-      }
+      handleGlobalLogout();
     },
     onSuccess: () => {
       resetAuth();
       queryClient.clear();
-      window.location.href = '/auth/login';
+      window.location.replace('/auth/login');
     },
     onError: () => {
-      // Even on mutation error, enforce cleanup and redirect
-      if (typeof window !== "undefined") {
-        document.cookie = "kozker_sso_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-        document.cookie = "kozker_user_email=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-        document.cookie = "kozker_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-        localStorage.removeItem("kozker_sso_token");
-        localStorage.removeItem("kozker_user_email");
-        localStorage.removeItem("kozker_user_role");
-        localStorage.removeItem("token");
-      }
-      resetAuth();
-      queryClient.clear();
-      window.location.href = '/auth/login';
+      handleGlobalLogout();
     }
   });
 }
