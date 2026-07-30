@@ -19,6 +19,17 @@ export default function LoginPage() {
   const supabase = createClient();
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("logout") === "true") {
+        document.cookie.split(";").forEach((c) => {
+          const cookieName = c.split("=")[0].trim();
+          document.cookie = `${cookieName}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+        });
+        localStorage.clear();
+        sessionStorage.clear();
+      }
+    }
     fetchOrganizations();
   }, []);
 

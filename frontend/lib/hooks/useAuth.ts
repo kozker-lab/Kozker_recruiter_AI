@@ -83,24 +83,26 @@ export function useUpdateProfile() {
 
 export function handleGlobalLogout() {
   if (typeof window !== "undefined") {
-    // Clear cookies with expired dates across all path variations
-    document.cookie = "kozker_sso_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-    document.cookie = "kozker_user_email=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-    document.cookie = "kozker_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-    
-    // Clear localStorage items
-    localStorage.removeItem("kozker_sso_token");
-    localStorage.removeItem("kozker_user_email");
-    localStorage.removeItem("kozker_user_role");
-    localStorage.removeItem("token");
+    try {
+      // Purge all cookies on domain
+      document.cookie.split(";").forEach((c) => {
+        const cookieName = c.split("=")[0].trim();
+        document.cookie = `${cookieName}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+      });
+    } catch (e) {}
+
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {}
     
     // Attempt best-effort Supabase signout
     try {
       supabase.auth.signOut().catch(() => {});
     } catch (e) {}
 
-    // Force instant page redirect to login
-    window.location.replace('/auth/login');
+    // Force instant page redirect to login with logout flag
+    window.location.replace('/auth/login?logout=true');
   }
 }
 

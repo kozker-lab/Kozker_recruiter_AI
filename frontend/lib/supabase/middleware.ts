@@ -44,10 +44,15 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if ((user || hasKozkerCookie) && isAuthRoute && request.nextUrl.pathname === '/auth/login') {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    return NextResponse.redirect(url);
+  if (isAuthRoute && request.nextUrl.pathname === '/auth/login') {
+    if (request.nextUrl.searchParams.has('logout') || !hasKozkerCookie) {
+      return supabaseResponse;
+    }
+    if (user || hasKozkerCookie) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

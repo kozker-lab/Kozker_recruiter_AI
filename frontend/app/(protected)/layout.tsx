@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCurrentUser, useProfile, useLogout, useUpdateProfile, handleGlobalLogout } from "@/lib/hooks/useAuth";
+import { useAuthStore } from "@/lib/store/auth";
 import ChatbotPanel from "@/components/ChatbotPanel";
 import UserAvatar from "@/components/UserAvatar";
 import { Logo } from "@/components/Logo";
@@ -164,7 +165,8 @@ const formatActivityLog = (act: ActivityLog): DisplayItem => {
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const user = useCurrentUser();
-  const { data: profile, isLoading } = useProfile();
+  const isAuthLoading = useAuthStore((state) => state.loading);
+  const { data: profile, isLoading: isProfileLoading } = useProfile();
   const updateProfile = useUpdateProfile();
   const { mutate: logout } = useLogout();
 
@@ -1159,10 +1161,13 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     return userPermissions ? userPermissions[permKey] === true : false;
   });
 
-  if (isLoading || !profile) {
-    if (typeof window !== "undefined" && !isLoading && !profile) {
-      handleGlobalLogout();
+  React.useEffect(() => {
+    if (!isAuthLoading && !isProfileLoading && !user && !profile) {
+      router.replace("/auth/login");
     }
+  }, [isAuthLoading, isProfileLoading, user, profile, router]);
+
+  if (isAuthLoading || isProfileLoading || (user && !profile)) {
     return (
       <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-neutral-200">
         <Logo className="w-14 h-14 text-primary animate-pulse mb-6" />
