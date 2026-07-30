@@ -186,3 +186,49 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: error.message || 'Failed to update member roles' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  try {
+    const user = getUserFromReq(request);
+    if (!user || !user.organization_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user.permissions?.administrator !== true && user.is_primary_admin !== true) {
+      return NextResponse.json({ error: 'Forbidden: Only Organization Administrators can delete assigned roles.' }, { status: 403 });
+    }
+
+    const memberId = params.id;
+    const { searchParams } = new URL(request.url);
+    const roleId = searchParams.get('role_id');
+
+    if (roleId) {
+      // Delete specific assigned role for this member
+      await supabase
+        .from('member_roles')
+        .delete()
+        .eq('member_id', memberId)
+        .eq('role_id', roleId);
+    } else {
+      // Delete all assigned roles for this member
+      await supabase
+        .from('member_roles')
+        .delete()
+        .eq('member_id', memberId);
+    }
+
+    // Audit Log
+    await supabase.from('audit_logs').insert({
+      organization_id: user.organization_id,
+      actor_id: user.id,
+      actor_name: user.name,
+      action_description: `Deleted assigned role assignment for member ID '${memberId}'`,
+      target_name: `Member ID: ${memberId}`,
+      action_type: 'danger'
+    });
+
+    return NextResponse.json({ success: true, message: 'Assigned role deleted successfully' });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || 'Failed to delete assigned role' }, { status: 500 });
+  }
+}

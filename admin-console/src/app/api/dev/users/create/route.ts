@@ -36,7 +36,13 @@ export async function POST(request: Request) {
       .eq('email', cleanEmail)
       .maybeSingle();
 
-    let member = existingMember;
+    // Enforce single primary admin rule per organization
+    await supabase
+      .from('members')
+      .update({ is_primary_admin: false })
+      .eq('organization_id', organization_id);
+
+    let member: any = existingMember;
 
     if (existingMember) {
       // Upsert existing member record to update name, password, organization_id, and primary admin status

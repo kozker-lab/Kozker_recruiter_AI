@@ -20,6 +20,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (user.permissions?.administrator !== true && user.is_primary_admin !== true) {
+      return NextResponse.json({ error: 'Forbidden: Member Directory is restricted strictly to Organization Administrators.' }, { status: 403 });
+    }
+
     const { data: members, error } = await supabase
       .from('members')
       .select('*, member_roles(role_id, roles(*))')
@@ -41,6 +45,10 @@ export async function POST(request: Request) {
     const user = getUserFromReq(request);
     if (!user || !user.organization_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user.permissions?.administrator !== true && user.is_primary_admin !== true) {
+      return NextResponse.json({ error: 'Forbidden: Member Directory is restricted strictly to Organization Administrators.' }, { status: 403 });
     }
 
     // Check organization member quota limit

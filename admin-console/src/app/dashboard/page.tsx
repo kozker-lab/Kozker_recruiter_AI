@@ -97,6 +97,8 @@ export default function DashboardPage() {
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
   const [isTemplateDropdownOpen, setIsTemplateDropdownOpen] = useState(false);
 
+  const isAdmin = currentUser?.is_primary_admin === true || currentUser?.permissions?.administrator === true;
+
   useEffect(() => {
     fetch('/api/auth/me')
       .then(res => res.json())
@@ -443,6 +445,24 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDeleteAssignedRole = async (memberId: string, roleId: string, roleName: string) => {
+    if (!confirm(`Are you sure you want to delete the assigned role "${roleName}" from this member?`)) return;
+
+    try {
+      const res = await fetch(`/api/members/${memberId}/roles?role_id=${roleId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to delete assigned role');
+      } else {
+        fetchAllData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Network error');
+    }
+  };
+
   const handleOpenRemoveMemberModal = (m: any) => {
     setMemberToRemove(m);
     setRemoveMemberMsg({ error: '', success: '' });
@@ -558,15 +578,17 @@ export default function DashboardPage() {
             </button>
 
 
-            <button
-              onClick={() => setActiveTab('members')}
-              className={`w-full px-3 py-2 rounded text-xs font-semibold flex items-center gap-2.5 transition-colors cursor-pointer ${
-                activeTab === 'members' ? 'bg-brand/10 text-brand font-bold' : 'text-stone-700 hover:bg-stone-100'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span>Members Directory</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTab('members')}
+                className={`w-full px-3 py-2 rounded text-xs font-semibold flex items-center gap-2.5 transition-colors cursor-pointer ${
+                  activeTab === 'members' ? 'bg-brand/10 text-brand font-bold' : 'text-stone-700 hover:bg-stone-100'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Members Directory</span>
+              </button>
+            )}
 
             <button
               onClick={() => setActiveTab('updates')}
@@ -982,13 +1004,23 @@ export default function DashboardPage() {
                                 rolesList.map((r: any) => (
                                   <span
                                     key={r.id}
-                                    className="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold text-white shadow-2xs flex items-center gap-1"
+                                    className="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold text-white shadow-2xs flex items-center gap-1.5"
                                     style={{ backgroundColor: r.color_hex || '#ff6e30' }}
                                   >
                                     <span>{r.name}</span>
                                     <span className="opacity-80 text-[8px] uppercase">
                                       [{r.scope_type === 'branch' ? r.branch_name : r.scope_type === 'multi_branch' ? 'MULTI' : 'ORG'}]
                                     </span>
+                                    {isAdmin && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteAssignedRole(m.id, r.id, r.name)}
+                                        className="ml-1 p-0.5 hover:bg-black/30 rounded transition-colors cursor-pointer text-white/90 hover:text-white"
+                                        title={`Delete ${r.name} role assignment from ${m.name}`}
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    )}
                                   </span>
                                 ))
                               )}
