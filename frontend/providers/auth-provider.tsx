@@ -20,10 +20,30 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const loadSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        setSession(session, session?.user ?? null);
+        if (session && session.user) {
+          setSession(session, session.user);
+        } else {
+          let storedEmail = "";
+          if (typeof document !== "undefined") {
+            const match = document.cookie.match(/kozker_user_email=([^;]+)/);
+            if (match) storedEmail = decodeURIComponent(match[1]).trim().toLowerCase();
+          }
+          if (!storedEmail && typeof window !== "undefined") {
+            storedEmail = (localStorage.getItem("kozker_user_email") || "").trim().toLowerCase();
+          }
+
+          if (storedEmail) {
+            const virtualUser: any = {
+              id: storedEmail,
+              email: storedEmail,
+              user_metadata: { full_name: storedEmail }
+            };
+            setSession(null, virtualUser);
+          } else {
+            setSession(null, null);
+          }
+        }
       } catch (e) {
-        console.error("Failed to load session:", e);
         setSession(null, null);
       } finally {
         setLoading(false);
@@ -34,7 +54,29 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session, session?.user ?? null);
+      if (session && session.user) {
+        setSession(session, session.user);
+      } else {
+        let storedEmail = "";
+        if (typeof document !== "undefined") {
+          const match = document.cookie.match(/kozker_user_email=([^;]+)/);
+          if (match) storedEmail = decodeURIComponent(match[1]).trim().toLowerCase();
+        }
+        if (!storedEmail && typeof window !== "undefined") {
+          storedEmail = (localStorage.getItem("kozker_user_email") || "").trim().toLowerCase();
+        }
+
+        if (storedEmail) {
+          const virtualUser: any = {
+            id: storedEmail,
+            email: storedEmail,
+            user_metadata: { full_name: storedEmail }
+          };
+          setSession(null, virtualUser);
+        } else {
+          setSession(null, null);
+        }
+      }
       setLoading(false);
     });
 
