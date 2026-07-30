@@ -173,7 +173,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   // Keep track of last visited sub-paths for sidebar navigation
   const [lastVisitedUrls, setLastVisitedUrls] = useState<Record<string, string>>({});
-  const [isProjectSwitcherOpen, setIsProjectSwitcherOpen] = useState(false);
+  const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1173,48 +1173,46 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             </span>
           </div>
 
-          <div className="active-workspace-panel mx-4 mt-4 p-3 bg-neutral-50 border border-neutral-150 rounded-sm font-mono text-[10px] relative space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="w-full pr-1">
-                <p className="text-neutral-400 font-semibold uppercase tracking-wider">Active Organization</p>
-                {accessibleOrgs.length > 1 ? (
-                  <select
-                    value={activeOrgId}
-                    onChange={(e) => handleOrganizationSwitch(e.target.value)}
-                    className="w-full mt-1 px-2 py-1 bg-white border border-neutral-300 rounded text-neutral-900 font-bold text-xs cursor-pointer focus:outline-none focus:border-primary shadow-2xs"
-                  >
-                    {accessibleOrgs.map((org: any) => (
-                      <option key={org.id} value={org.id}>{org.name}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="font-bold text-neutral-900 mt-0.5 truncate">{activeOrgName || agencyName}</p>
-                )}
-                {activeRoleName && <p className="text-primary font-bold mt-1 text-[9px] truncate">Role: {activeRoleName}</p>}
+          {/* Active Organization Switcher Card & Dropdown */}
+          <div className="relative mx-4 mt-4">
+            <button
+              type="button"
+              onClick={() => setIsOrgDropdownOpen(!isOrgDropdownOpen)}
+              className="w-full p-3 bg-neutral-50 hover:bg-neutral-100/90 border border-neutral-200 rounded-sm font-mono text-[10px] text-left flex items-center justify-between transition-colors cursor-pointer group shadow-2xs"
+            >
+              <div className="overflow-hidden pr-2">
+                <p className="text-neutral-400 font-semibold uppercase tracking-wider text-[8px]">Active Organization</p>
+                <p className="font-bold text-neutral-900 mt-0.5 truncate text-xs">{activeOrgName || agencyName || "Select Organization"}</p>
+                <p className="text-primary font-bold mt-0.5 text-[9px] truncate">Role: {activeRoleName || "Unassigned Member"}</p>
               </div>
-              <button
-                onClick={() => setIsProjectSwitcherOpen(!isProjectSwitcherOpen)}
-                className="p-1.5 hover:bg-neutral-200/60 rounded text-neutral-500 cursor-pointer self-start"
-                title="Switch Application Portal"
-              >
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-            </div>
+              <ChevronDown className={`w-4 h-4 text-neutral-400 group-hover:text-neutral-700 transition-transform shrink-0 ${isOrgDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
 
-            {isProjectSwitcherOpen && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-neutral-white border border-neutral-200 rounded-sm shadow-lg z-50 py-1 text-xs font-sans divide-y divide-neutral-150">
-                <a href="https://admin.kozker.ai/dashboard" className="p-2 hover:bg-neutral-50 cursor-pointer flex items-center justify-between text-neutral-800 font-medium">
-                  <span>Kozker Admin Console</span>
-                  <ExternalLink className="w-3 h-3 text-neutral-400" />
-                </a>
-                <div className="p-2 bg-neutral-100 cursor-default flex items-center justify-between text-primary font-bold">
-                  <span>Kozker Recruiter AI App</span>
-                  <Check className="w-3 h-3 text-primary" />
+            {/* Organization Switcher Dropdown List */}
+            {isOrgDropdownOpen && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-sm shadow-xl z-50 py-1 text-xs font-sans divide-y divide-neutral-100 max-h-60 overflow-y-auto">
+                <div className="px-3 py-1.5 bg-neutral-50 text-[9px] font-mono font-bold text-neutral-400 uppercase tracking-wider">
+                  Select Organization Workspace ({accessibleOrgs.length})
                 </div>
-                <a href="https://client.kozker.ai/portal" className="p-2 hover:bg-neutral-50 cursor-pointer flex items-center justify-between text-neutral-800 font-medium">
-                  <span>Client Portal Space</span>
-                  <ExternalLink className="w-3 h-3 text-neutral-400" />
-                </a>
+                {accessibleOrgs.map((org: any) => {
+                  const isSelected = org.id === activeOrgId;
+                  return (
+                    <button
+                      key={org.id}
+                      type="button"
+                      onClick={() => {
+                        setIsOrgDropdownOpen(false);
+                        handleOrganizationSwitch(org.id);
+                      }}
+                      className={`w-full px-3 py-2.5 text-left hover:bg-neutral-50 flex items-center justify-between transition-colors cursor-pointer ${
+                        isSelected ? "bg-primary/5 text-primary font-bold" : "text-neutral-800 font-medium"
+                      }`}
+                    >
+                      <span className="truncate">{org.name}</span>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-2" />}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
