@@ -18,6 +18,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required member fields (organization_id, name, email, password)' }, { status: 400 });
     }
 
+    const cleanEmail = email.toLowerCase().trim();
+
     // Hash password
     const password_hash = await hashPassword(password);
 
@@ -27,24 +29,56 @@ export async function POST(request: Request) {
       ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
       : name.slice(0, 2).toUpperCase();
 
-    // Create member (Primary Organization Admin)
-    const { data: member, error } = await supabase
+    // Check if member with this email already exists in Supabase
+    const { data: existingMember } = await supabase
       .from('members')
-      .insert({
-        organization_id,
-        name,
-        email: email.toLowerCase().trim(),
-        password_hash,
-        avatar_initials: initials,
-        must_change_password: true,
-        is_primary_admin: true,
-        status: 'active'
-      })
-      .select('*')
-      .single();
+      .select('id, organization_id')
+      .eq('email', cleanEmail)
+      .maybeSingle();
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    let member = existingMember;
+
+    if (existingMember) {
+      // Upsert existing member record to update name, password, organization_id, and primary admin status
+      const { data: updated, error: updateErr } = await supabase
+        .from('members')
+        .update({
+          organization_id,
+          name,
+          password_hash,
+          avatar_initials: initials,
+          is_primary_admin: true,
+          status: 'active'
+        })
+        .eq('id', existingMember.id)
+        .select('*')
+        .single();
+
+      if (updateErr) {
+        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      }
+      member = updated || existingMember;
+    } else {
+      // Insert new primary admin member record
+      const { data: newMem, error: insertErr } = await supabase
+        .from('members')
+        .insert({
+          organization_id,
+          name,
+          email: cleanEmail,
+          password_hash,
+          avatar_initials: initials,
+          must_change_password: true,
+          is_primary_admin: true,
+          status: 'active'
+        })
+        .select('*')
+        .single();
+
+      if (insertErr) {
+        return NextResponse.json({ error: insertErr.message }, { status: 500 });
+      }
+      member = newMem;
     }
 
     // Determine roles to assign: if provided, use role_ids; otherwise find/assign default org role
@@ -79,31 +113,43 @@ export async function POST(request: Request) {
             administrator: true,
             audit_logs: true,
             manage_server: true,
-            access_recruitment: true
+            access_recruitment: true,
+            recruiter_dashboard: true,
+            recruiter_mandates: true,
+            recruiter_jobs: true,
+            recruiter_sourcing: true,
+            recruiter_reports: true,
+            recruiter_qna: true,
+            recruiter_resumes: true,
+            recruiter_stage_move: true,
+            access_client: true,
+            client_contracts: true,
+            client_mandates: true,
+            client_shortlists: true,
+            access_employee: true,
+            employee_directory: true,
+            employee_org_chart: true,
+            manage_jobs: true,
+            view_resumes: true,
+            edit_status: true,
+            schedule_interviews: true
           });
         }
       }
     }
 
-    if (assignedRoleIds.length > 0) {
-      const roleInserts = assignedRoleIds.map((rid: string) => ({
+    // Clear old member roles and assign new primary admin role
+    if (member && assignedRoleIds.length > 0) {
+      await supabase.from('member_roles').delete().eq('member_id', member.id);
+      const roleInserts = assignedRoleIds.map(rid => ({
         member_id: member.id,
         role_id: rid
       }));
       await supabase.from('member_roles').insert(roleInserts);
     }
 
-    // Write to audit ledger
-    await supabase.from('audit_logs').insert({
-      organization_id,
-      actor_name: 'Developer Master Key',
-      action_description: `Provisioned account credentials for user ${name} (${email})`,
-      target_name: name,
-      action_type: 'create'
-    });
-
     return NextResponse.json({ success: true, member });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Failed to provision member' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to provision admin account' }, { status: 500 });
   }
 }

@@ -12,9 +12,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized: Method 1 Developer Access Token Required' }, { status: 403 });
     }
 
+    // Fetch primary admin members only for the Developer Portal Accounts Directory
     const { data: users, error } = await supabase
       .from('members')
-      .select('*, organizations(id, name, operating_mode, max_members_limit, max_roles_limit, can_manage_pipelines, can_view_audit_logs), member_roles(role_id, roles(id, name, color_hex, role_permissions(*)))');
+      .select('*, organizations(id, name, operating_mode, max_members_limit, max_roles_limit, can_manage_pipelines, can_view_audit_logs), member_roles(role_id, roles(id, name, color_hex, role_permissions(*)))')
+      .eq('is_primary_admin', true);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

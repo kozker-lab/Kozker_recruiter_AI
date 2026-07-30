@@ -673,7 +673,7 @@ export default function DevProvisioningPage() {
               <div className="flex items-center justify-between border-b border-stone-200 pb-3">
                 <div className="flex items-center gap-2 text-stone-900 font-bold text-sm">
                   <Users className="w-4 h-4 text-brand" />
-                  <span>Provisioned Accounts Directory ({users.length})</span>
+                  <span>Provisioned Organization Admin Accounts Directory ({users.length})</span>
                 </div>
                 <span className="text-[10px] font-mono bg-amber-50 text-amber-800 px-2.5 py-1 rounded border border-amber-200 font-bold">
                   Click any account row to configure Admin Access & Quotas
