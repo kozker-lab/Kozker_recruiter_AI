@@ -160,9 +160,8 @@ export async function POST(request: Request) {
       await supabase.from('member_roles').insert(roleInserts);
     }
 
-    // Dispatch Executive Email to New Admin
-    const setPasswordBaseUrl = process.env.ADMIN_CONSOLE_URL ? `${process.env.ADMIN_CONSOLE_URL}/auth/set-password` : 'http://localhost:3001/auth/set-password';
-    const authActionLink = `${setPasswordBaseUrl}?email=${encodeURIComponent(cleanEmail)}`;
+    // Dispatch Executive Credentials Email to New Admin
+    const adminLoginUrl = process.env.ADMIN_CONSOLE_URL ? `${process.env.ADMIN_CONSOLE_URL}/login` : 'http://localhost:3001/login';
 
     let emailSent = false;
     let emailErrorMsg = '';
@@ -181,13 +180,13 @@ export async function POST(request: Request) {
       const mailOptions = {
         from: `"Kozker Developer Provisioning" <${process.env.SMTP_USER || 'kozklawtailscale@gmail.com'}>`,
         to: cleanEmail,
-        subject: `🔑 Executive Admin Access Granted: ${orgName}`,
+        subject: `🔑 Executive Admin Credentials: ${orgName}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e7e5e4; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
             <!-- Header Banner -->
             <div style="background-color: #ff6e30; padding: 24px; text-align: center; color: #ffffff;">
               <h1 style="margin: 0; font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Kozker Platform Governance</h1>
-              <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">Executive Primary Administrator Access Granted</p>
+              <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">Executive Primary Administrator Account Created</p>
             </div>
 
             <!-- Body Content -->
@@ -195,33 +194,34 @@ export async function POST(request: Request) {
               <p style="font-size: 16px; margin-top: 0;">Dear <strong>${name}</strong>,</p>
 
               <p style="font-size: 14px; color: #44403c; line-height: 1.6;">
-                You have been officially provisioned as the **Primary Administrator** for <strong>${orgName}</strong> on the Kozker Governance Engine.
+                You have been officially provisioned as the <strong>Primary Administrator</strong> for <strong>${orgName}</strong> on the Kozker Governance Engine.
               </p>
 
               <div style="background-color: #ffffff; border: 1px solid #e7e5e4; border-left: 4px solid #ff6e30; padding: 18px; border-radius: 6px; margin: 20px 0;">
-                <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #9a3412; margin-bottom: 8px;">
-                  🛡️ Admin Console Account Authorization
+                <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #9a3412; margin-bottom: 10px;">
+                  🛡️ Admin Console Account Credentials
                 </div>
-                <div style="font-size: 13px; color: #1c1917;">
-                  <strong>Organization:</strong> ${orgName}<br/>
-                  <strong>Email Account:</strong> <code>${cleanEmail}</code><br/>
-                  <strong>Role Scope:</strong> Primary Administrator (Single Executive Scope)
+                <div style="font-size: 13px; color: #1c1917; line-height: 1.8;">
+                  <strong>Organization Workspace:</strong> ${orgName}<br/>
+                  <strong>Login Email:</strong> <code>${cleanEmail}</code><br/>
+                  <strong>Account Password:</strong> <code>${rawPassword}</code><br/>
+                  <strong>Access Level:</strong> Primary Administrator (Executive Scope)
                 </div>
               </div>
 
               <p style="font-size: 14px; color: #44403c; line-height: 1.6;">
-                Please click the button below to set your password and access the Admin Console to manage Master Roles, RBAC permissions, and invite team members.
+                Use the credentials above to log into the Admin Console to manage Master Roles, RBAC permissions, and invite team members.
               </p>
 
               <!-- Action Button -->
               <div style="text-align: center; margin: 28px 0;">
-                <a href="${authActionLink}" style="background-color: #ff6e30; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 4px 10px rgba(255, 110, 48, 0.3);">
-                  🔑 Set Admin Password & Access Console
+                <a href="${adminLoginUrl}" style="background-color: #ff6e30; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 4px 10px rgba(255, 110, 48, 0.3);">
+                  🚀 Log In to Admin Console
                 </a>
               </div>
 
               <div style="background-color: #ffffff; border: 1px solid #e7e5e4; padding: 12px; border-radius: 6px; font-size: 12px; color: #78716c; line-height: 1.4;">
-                📌 <strong>Security Notice:</strong> The link above is your single-use password setup link for <code>${cleanEmail}</code>.
+                📌 <strong>Security Notice:</strong> Keep these credentials confidential. You can update your password at any time inside the Admin Console.
               </div>
             </div>
 
