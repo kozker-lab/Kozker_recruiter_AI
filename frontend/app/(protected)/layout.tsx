@@ -288,9 +288,15 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       const res = await fetch(`/api/user/me?org_id=${savedOrgId}`, { headers, cache: "no-store" });
       const data = await res.json();
       if (data.authenticated) {
-        if (Array.isArray(data.organizations) && data.organizations.length > 0) {
-          setAccessibleOrgs(data.organizations);
+        let orgsList: any[] = Array.isArray(data.organizations) ? [...data.organizations] : [];
+        if (data.active_organization && !orgsList.some((o: any) => o.id === data.active_organization.id)) {
+          orgsList = [data.active_organization, ...orgsList];
         }
+        if (orgsList.length === 0 && data.active_organization) {
+          orgsList = [data.active_organization];
+        }
+        setAccessibleOrgs(orgsList);
+
         if (data.active_organization) {
           setActiveOrgId(data.active_organization.id);
           setActiveOrgName(data.active_organization.name);
