@@ -6,9 +6,9 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const PRIMARY_ADMIN_EMAILS = [
+// Super admin system developer emails with global dev panel access
+const SUPER_DEV_ADMIN_EMAILS = [
   "smaranlm10@gmail.com",
-  "adithyacherian24@gmail.com",
   "aderhamsk@gmail.com"
 ];
 
@@ -57,7 +57,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ authenticated: false, error: "Unauthenticated" }, { status: 401 });
     }
 
-    const isGlobalPrimaryAdmin = PRIMARY_ADMIN_EMAILS.includes(userEmail);
+    const isSuperDevAdmin = SUPER_DEV_ADMIN_EMAILS.includes(userEmail);
 
     // 1. Fetch all member records from Supabase matching userEmail across all organizations
     const { data: allMemberRecords } = await supabase
@@ -75,11 +75,11 @@ export async function GET(request: Request) {
       const { data: newMember } = await supabase
         .from("members")
         .insert({
-          name: isGlobalPrimaryAdmin ? (userEmail.includes("smaran") ? "Smaran Devaki" : capitalizedName) : capitalizedName,
+          name: isSuperDevAdmin ? (userEmail.includes("smaran") ? "Smaran Devaki" : capitalizedName) : capitalizedName,
           email: userEmail,
           password_hash: "autocreated_sso_hash",
           avatar_initials: capitalizedName.slice(0, 2).toUpperCase(),
-          is_primary_admin: isGlobalPrimaryAdmin,
+          is_primary_admin: isSuperDevAdmin,
           status: "active"
         })
         .select("*, member_roles(*, roles(*, role_permissions(*), organizations(*))), organizations(*)")
@@ -92,12 +92,12 @@ export async function GET(request: Request) {
 
     const primaryMember = membersList[0] || {
       id: "auto-generated-id",
-      name: isGlobalPrimaryAdmin ? (userEmail.includes("smaran") ? "Smaran Devaki" : userEmail.split("@")[0]) : userEmail.split("@")[0],
+      name: isSuperDevAdmin ? (userEmail.includes("smaran") ? "Smaran Devaki" : userEmail.split("@")[0]) : userEmail.split("@")[0],
       email: userEmail,
-      is_primary_admin: isGlobalPrimaryAdmin
+      is_primary_admin: isSuperDevAdmin
     };
 
-    // 2. Determine accessible organizations across all member records of this user
+    // 2. Determine accessible organizations across all member records & member_roles of this user
     let accessibleOrgs: any[] = [];
     const userOrgIds = new Set<string>();
     
@@ -106,10 +106,11 @@ export async function GET(request: Request) {
       if (m.organizations?.id) userOrgIds.add(m.organizations.id);
       (m.member_roles || []).forEach((mr: any) => {
         if (mr.roles?.organization_id) userOrgIds.add(mr.roles.organization_id);
+        if (mr.roles?.organizations?.id) userOrgIds.add(mr.roles.organizations.id);
       });
     });
 
-    if (isGlobalPrimaryAdmin) {
+    if (isSuperDevAdmin) {
       const { data: allOrgs } = await supabase.from("organizations").select("id, name, operating_mode").order("name");
       accessibleOrgs = allOrgs || [];
     } else {
@@ -136,15 +137,20 @@ export async function GET(request: Request) {
 
     // 4. Find member record & role assignments specifically for the selected active organization
     const activeMember = membersList.find((m: any) => m.organization_id === activeOrg.id) || primaryMember;
-    const isOrgPrimaryAdmin = isGlobalPrimaryAdmin || activeMember.is_primary_admin === true;
 
     // Collect roles for this member in the active organization
-    const activeMRoles = activeMember.member_roles || [];
-    const activeRolesList = (activeMRoles || [])
-      .map((mr: any) => mr.roles)
-      .filter((r: any) => r && (!r.organization_id || r.organization_id === activeOrg.id));
+    let activeRolesList: any[] = [];
+    membersList.forEach((m: any) => {
+      (m.member_roles || []).forEach((mr: any) => {
+        if (mr.roles && (mr.roles.organization_id === activeOrg.id || mr.roles.organizations?.id === activeOrg.id)) {
+          activeRolesList.push(mr.roles);
+        }
+      });
+    });
 
     const activeRole = activeRolesList[0] || null;
+
+    const isOrgPrimaryAdmin = isSuperDevAdmin || activeMember.is_primary_admin === true || (activeRole?.role_permissions?.administrator === true);
 
     // 5. Calculate permissions for the active organization
     let permissions: any = {};

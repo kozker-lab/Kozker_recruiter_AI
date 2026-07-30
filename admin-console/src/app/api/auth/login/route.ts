@@ -93,7 +93,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const isPrimaryAdmin = member.is_primary_admin === true || ['smaranlm10@gmail.com', 'adithyacherian24@gmail.com', 'aderhamsk@gmail.com'].includes(member.email.toLowerCase());
+    const isPrimaryAdmin = member.is_primary_admin === true || permissions.administrator === true;
 
     if (isPrimaryAdmin) {
       permissions.administrator = true;
