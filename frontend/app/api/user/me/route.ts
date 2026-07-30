@@ -57,77 +57,75 @@ export async function GET(request: Request) {
       return NextResponse.json({ authenticated: false, error: "Unauthenticated" }, { status: 401 });
     }
 
-    const isPrimaryAdmin = PRIMARY_ADMIN_EMAILS.includes(userEmail);
+    const isGlobalPrimaryAdmin = PRIMARY_ADMIN_EMAILS.includes(userEmail);
 
-    // 1. Fetch member record from Supabase by email
-    let { data: member } = await supabase
+    // 1. Fetch all member records from Supabase matching userEmail across all organizations
+    const { data: allMemberRecords } = await supabase
       .from("members")
-      .select("*, organizations(*)")
-      .ilike("email", userEmail)
-      .maybeSingle();
+      .select("*, member_roles(*, roles(*, role_permissions(*), organizations(*))), organizations(*)")
+      .ilike("email", userEmail);
 
-    // Auto-create/upsert member record if not found in public.members (starts role-less)
-    if (!member) {
+    let membersList = allMemberRecords || [];
+
+    // Auto-create member record if user is not in public.members
+    if (membersList.length === 0) {
       const formattedName = userEmail.split("@")[0].split(".")[0];
       const capitalizedName = formattedName.charAt(0).toUpperCase() + formattedName.slice(1);
       
       const { data: newMember } = await supabase
         .from("members")
         .insert({
-          name: isPrimaryAdmin ? (userEmail.includes("smaran") ? "Smaran Devaki" : capitalizedName) : capitalizedName,
+          name: isGlobalPrimaryAdmin ? (userEmail.includes("smaran") ? "Smaran Devaki" : capitalizedName) : capitalizedName,
           email: userEmail,
           password_hash: "autocreated_sso_hash",
           avatar_initials: capitalizedName.slice(0, 2).toUpperCase(),
-          is_primary_admin: isPrimaryAdmin,
+          is_primary_admin: isGlobalPrimaryAdmin,
           status: "active"
         })
-        .select("*, organizations(*)")
+        .select("*, member_roles(*, roles(*, role_permissions(*), organizations(*))), organizations(*)")
         .single();
         
-      member = newMember;
+      if (newMember) {
+        membersList = [newMember];
+      }
     }
 
-    if (!member) {
-      member = {
-        id: "auto-generated-id",
-        name: isPrimaryAdmin ? (userEmail.includes("smaran") ? "Smaran Devaki" : userEmail.split("@")[0]) : userEmail.split("@")[0],
-        email: userEmail,
-        is_primary_admin: isPrimaryAdmin
-      };
-    }
+    const primaryMember = membersList[0] || {
+      id: "auto-generated-id",
+      name: isGlobalPrimaryAdmin ? (userEmail.includes("smaran") ? "Smaran Devaki" : userEmail.split("@")[0]) : userEmail.split("@")[0],
+      email: userEmail,
+      is_primary_admin: isGlobalPrimaryAdmin
+    };
 
-    // 2. Fetch member assigned roles & permissions from Supabase member_roles
-    const { data: mRoles } = await supabase
-      .from("member_roles")
-      .select("*, roles(*, role_permissions(*), organizations(*))")
-      .eq("member_id", member.id || "");
-
-    const rolesList = (mRoles || []).map((mr: any) => mr.roles).filter(Boolean);
-
-    // 3. Determine accessible organizations for this member
+    // 2. Determine accessible organizations across all member records of this user
     let accessibleOrgs: any[] = [];
-    if (isPrimaryAdmin) {
+    const userOrgIds = new Set<string>();
+    
+    membersList.forEach((m: any) => {
+      if (m.organization_id) userOrgIds.add(m.organization_id);
+      if (m.organizations?.id) userOrgIds.add(m.organizations.id);
+      (m.member_roles || []).forEach((mr: any) => {
+        if (mr.roles?.organization_id) userOrgIds.add(mr.roles.organization_id);
+      });
+    });
+
+    if (isGlobalPrimaryAdmin) {
       const { data: allOrgs } = await supabase.from("organizations").select("id, name, operating_mode").order("name");
       accessibleOrgs = allOrgs || [];
     } else {
-      const userOrgIds = new Set<string>();
-      if (member.organization_id) userOrgIds.add(member.organization_id);
-      rolesList.forEach((r: any) => {
-        if (r.organization_id) userOrgIds.add(r.organization_id);
-      });
       const idsArray = Array.from(userOrgIds);
       if (idsArray.length > 0) {
         const { data: userOrgs } = await supabase.from("organizations").select("id, name, operating_mode").in("id", idsArray).order("name");
         accessibleOrgs = userOrgs || [];
-      } else if (member.organizations) {
-        accessibleOrgs = [member.organizations];
+      } else {
+        accessibleOrgs = membersList.map((m: any) => m.organizations).filter(Boolean);
       }
     }
 
-    // 4. Select active organization
+    // 3. Select active organization
     let activeOrg = accessibleOrgs.find((o: any) => o.id === requestedOrgId);
-    if (!activeOrg && member.organization_id) {
-      activeOrg = accessibleOrgs.find((o: any) => o.id === member.organization_id);
+    if (!activeOrg && primaryMember.organization_id) {
+      activeOrg = accessibleOrgs.find((o: any) => o.id === primaryMember.organization_id);
     }
     if (!activeOrg && accessibleOrgs.length > 0) {
       activeOrg = accessibleOrgs[0];
@@ -136,12 +134,22 @@ export async function GET(request: Request) {
       activeOrg = { id: "default-org-id", name: "Enterprise Workspace" };
     }
 
-    // 5. Select active role & calculate permissions for the active organization
-    const activeRole = rolesList.find((r: any) => r.organization_id === activeOrg.id) || rolesList[0] || null;
+    // 4. Find member record & role assignments specifically for the selected active organization
+    const activeMember = membersList.find((m: any) => m.organization_id === activeOrg.id) || primaryMember;
+    const isOrgPrimaryAdmin = isGlobalPrimaryAdmin || activeMember.is_primary_admin === true;
 
+    // Collect roles for this member in the active organization
+    const activeMRoles = activeMember.member_roles || [];
+    const activeRolesList = (activeMRoles || [])
+      .map((mr: any) => mr.roles)
+      .filter((r: any) => r && (!r.organization_id || r.organization_id === activeOrg.id));
+
+    const activeRole = activeRolesList[0] || null;
+
+    // 5. Calculate permissions for the active organization
     let permissions: any = {};
 
-    if (isPrimaryAdmin) {
+    if (isOrgPrimaryAdmin) {
       permissions = {
         administrator: true,
         recruiter_dashboard: true,
@@ -180,7 +188,7 @@ export async function GET(request: Request) {
         };
       }
     } else {
-      // Role-Less Member: No assigned role rows found in member_roles table
+      // Role-Less Member in this active organization: 0 permissions
       permissions = {
         administrator: false,
         recruiter_dashboard: false,
@@ -202,14 +210,14 @@ export async function GET(request: Request) {
     return NextResponse.json({
       authenticated: true,
       user: {
-        id: member.id,
-        name: member.name,
-        email: member.email,
-        avatar_initials: member.avatar_initials || member.name?.slice(0, 2).toUpperCase(),
-        is_primary_admin: isPrimaryAdmin
+        id: activeMember.id,
+        name: activeMember.name,
+        email: activeMember.email,
+        avatar_initials: activeMember.avatar_initials || activeMember.name?.slice(0, 2).toUpperCase(),
+        is_primary_admin: isOrgPrimaryAdmin
       },
       active_organization: activeOrg,
-      active_role: activeRole ? { id: activeRole.id, name: activeRole.name, level: activeRole.level } : { name: isPrimaryAdmin ? "Primary Administrator" : "Unassigned Member" },
+      active_role: activeRole ? { id: activeRole.id, name: activeRole.name, level: activeRole.level } : { name: isOrgPrimaryAdmin ? "Primary Administrator" : "Unassigned Member" },
       permissions,
       organizations: accessibleOrgs
     });

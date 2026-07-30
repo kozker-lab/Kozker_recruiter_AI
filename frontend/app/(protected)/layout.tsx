@@ -264,46 +264,50 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [isPrimaryAdmin, setIsPrimaryAdmin] = useState(false);
   const [switchingModal, setSwitchingModal] = useState<{ isOpen: boolean; targetOrgName: string }>({ isOpen: false, targetOrgName: "" });
 
-  React.useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        const savedOrgId = typeof window !== "undefined" ? localStorage.getItem("kozker_selected_org") || "" : "";
-        const storedEmail = user?.email || profile?.email || (typeof window !== "undefined" ? localStorage.getItem("kozker_user_email") || "" : "");
-        const storedToken = typeof window !== "undefined" ? localStorage.getItem("token") || "" : "";
+  const fetchUserData = React.useCallback(async (targetOrgId?: string) => {
+    try {
+      const savedOrgId = targetOrgId !== undefined 
+        ? targetOrgId 
+        : (typeof window !== "undefined" ? localStorage.getItem("kozker_selected_org") || "" : "");
+      
+      const storedEmail = user?.email || profile?.email || (typeof window !== "undefined" ? localStorage.getItem("kozker_user_email") || "" : "");
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("token") || "" : "";
 
-        const headers: Record<string, string> = {};
-        if (storedEmail) headers["X-User-Email"] = storedEmail;
-        if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+      const headers: Record<string, string> = {};
+      if (storedEmail) headers["X-User-Email"] = storedEmail;
+      if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
 
-        const res = await fetch(`/api/user/me?org_id=${savedOrgId}`, { headers });
-        const data = await res.json();
-        if (data.authenticated) {
-          if (Array.isArray(data.organizations)) {
-            setAccessibleOrgs(data.organizations);
-          }
-          if (data.active_organization) {
-            setActiveOrgId(data.active_organization.id);
-            setActiveOrgName(data.active_organization.name);
-          }
-          if (data.active_role) {
-            setActiveRoleName(data.active_role.name);
-          }
-          if (data.permissions) {
-            setUserPermissions(data.permissions);
-          }
-          if (data.user) {
-            setIsPrimaryAdmin(data.user.is_primary_admin === true);
-            if (data.user.name) {
-              setRecruiterName(data.user.name);
-            }
+      const res = await fetch(`/api/user/me?org_id=${savedOrgId}`, { headers });
+      const data = await res.json();
+      if (data.authenticated) {
+        if (Array.isArray(data.organizations)) {
+          setAccessibleOrgs(data.organizations);
+        }
+        if (data.active_organization) {
+          setActiveOrgId(data.active_organization.id);
+          setActiveOrgName(data.active_organization.name);
+        }
+        if (data.active_role) {
+          setActiveRoleName(data.active_role.name);
+        }
+        if (data.permissions) {
+          setUserPermissions(data.permissions);
+        }
+        if (data.user) {
+          setIsPrimaryAdmin(data.user.is_primary_admin === true);
+          if (data.user.name) {
+            setRecruiterName(data.user.name);
           }
         }
-      } catch {
-        // Fallback gracefully
       }
-    };
+    } catch {
+      // Fallback gracefully
+    }
+  }, [user, profile]);
+
+  React.useEffect(() => {
     fetchUserData();
-  }, [profile]);
+  }, [fetchUserData]);
 
   const getDisplayName = () => {
     const emailPrefix = (user?.email || profile?.email || "").split('@')[0];
@@ -334,16 +338,22 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     }
   }, [profile]);
 
-  const handleOrganizationSwitch = (orgId: string) => {
-    const targetOrg = accessibleOrgs.find(o => o.id === orgId);
+  const handleOrganizationSwitch = async (orgId: string) => {
+    const targetOrg = accessibleOrgs.find((o: any) => o.id === orgId);
     if (!targetOrg) return;
-    setSwitchingModal({ isOpen: true, targetOrgName: targetOrg.name });
+
     if (typeof window !== "undefined") {
       localStorage.setItem("kozker_selected_org", orgId);
+      document.cookie = `kozker_selected_org=${encodeURIComponent(orgId)}; path=/; max-age=86400; SameSite=Lax`;
     }
+    setActiveOrgId(orgId);
+    setSwitchingModal({ isOpen: true, targetOrgName: targetOrg.name });
+
+    await fetchUserData(orgId);
+
     setTimeout(() => {
-      window.location.reload();
-    }, 1200);
+      setSwitchingModal({ isOpen: false, targetOrgName: "" });
+    }, 600);
   };
 
   React.useEffect(() => {
@@ -1165,35 +1175,31 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
           <div className="active-workspace-panel mx-4 mt-4 p-3 bg-neutral-50 border border-neutral-150 rounded-sm font-mono text-[10px] relative space-y-2">
             <div className="flex items-center justify-between">
-              <div>
+              <div className="w-full pr-1">
                 <p className="text-neutral-400 font-semibold uppercase tracking-wider">Active Organization</p>
-                <p className="font-bold text-neutral-900 mt-0.5 truncate">{activeOrgName || agencyName}</p>
-                {activeRoleName && <p className="text-primary font-bold mt-0.5 text-[9px] truncate">Role: {activeRoleName}</p>}
+                {accessibleOrgs.length > 1 ? (
+                  <select
+                    value={activeOrgId}
+                    onChange={(e) => handleOrganizationSwitch(e.target.value)}
+                    className="w-full mt-1 px-2 py-1 bg-white border border-neutral-300 rounded text-neutral-900 font-bold text-xs cursor-pointer focus:outline-none focus:border-primary shadow-2xs"
+                  >
+                    {accessibleOrgs.map((org: any) => (
+                      <option key={org.id} value={org.id}>{org.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="font-bold text-neutral-900 mt-0.5 truncate">{activeOrgName || agencyName}</p>
+                )}
+                {activeRoleName && <p className="text-primary font-bold mt-1 text-[9px] truncate">Role: {activeRoleName}</p>}
               </div>
               <button
                 onClick={() => setIsProjectSwitcherOpen(!isProjectSwitcherOpen)}
-                className="p-1.5 hover:bg-neutral-200/60 rounded text-neutral-500 cursor-pointer"
+                className="p-1.5 hover:bg-neutral-200/60 rounded text-neutral-500 cursor-pointer self-start"
                 title="Switch Application Portal"
               >
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
             </div>
-
-            {/* Organization Workspace Switcher Select */}
-            {accessibleOrgs.length > 0 && (
-              <div className="pt-2 border-t border-neutral-200">
-                <label className="text-[9px] text-neutral-400 font-semibold uppercase tracking-wider block mb-1">Switch Organization Workspace</label>
-                <select
-                  value={activeOrgId}
-                  onChange={(e) => handleOrganizationSwitch(e.target.value)}
-                  className="w-full px-2 py-1 bg-white border border-neutral-300 rounded text-neutral-900 font-semibold text-[11px] cursor-pointer focus:outline-none focus:border-primary"
-                >
-                  {accessibleOrgs.map((org: any) => (
-                    <option key={org.id} value={org.id}>{org.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             {isProjectSwitcherOpen && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-neutral-white border border-neutral-200 rounded-sm shadow-lg z-50 py-1 text-xs font-sans divide-y divide-neutral-150">
