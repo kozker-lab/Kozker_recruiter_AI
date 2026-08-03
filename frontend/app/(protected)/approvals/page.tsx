@@ -102,7 +102,7 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const email = localStorage.getItem("x-user-email") || localStorage.getItem("user_email") || localStorage.getItem("kozker_sso_email") || "";
+      const email = localStorage.getItem("kozker_user_email") || localStorage.getItem("x-user-email") || localStorage.getItem("user_email") || localStorage.getItem("kozker_sso_email") || "";
       setCurrentUserEmail(email ? email.trim().toLowerCase() : "");
     }
   }, []);
