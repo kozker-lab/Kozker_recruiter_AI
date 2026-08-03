@@ -104,18 +104,12 @@ export default function ApprovalsPage() {
 
   const fetchRolesAndMembers = async () => {
     try {
-      const rolesRes = await fetch("/api/v1/roles");
-      const membersRes = await fetch("/api/v1/members");
-      if (rolesRes.ok) {
-        const rData = await rolesRes.json();
-        setAvailableRoles(Array.isArray(rData) ? rData : rData.roles || []);
-      }
-      if (membersRes.ok) {
-        const mData = await membersRes.json();
-        setAvailableMembers(Array.isArray(mData) ? mData : mData.members || []);
-      }
-    } catch {
-      // Ignore background metadata fetch error
+      const rData = await apiRequest<any[]>("GET", "/roles");
+      const mData = await apiRequest<any[]>("GET", "/members");
+      setAvailableRoles(Array.isArray(rData) ? rData : []);
+      setAvailableMembers(Array.isArray(mData) ? mData : []);
+    } catch (err) {
+      console.warn("Failed to fetch roles and members for approval builder", err);
     }
   };
 
@@ -707,21 +701,25 @@ export default function ApprovalsPage() {
                       <div className="flex gap-2">
                         <select
                           id={`role-select-${idx}`}
-                          className="bg-white border border-neutral-300 rounded p-1 text-[11px] flex-1"
+                          className="bg-white text-neutral-900 border border-neutral-300 rounded p-1 text-[11px] flex-1 font-medium focus:outline-none focus:ring-1 focus:ring-primary"
                         >
-                          <option value="">Choose Role...</option>
+                          <option value="" className="text-neutral-900 bg-white">Choose Role...</option>
                           {availableRoles.map((r: any) => (
-                            <option key={r.id} value={r.id}>{r.name}</option>
+                            <option key={r.id} value={r.id} className="text-neutral-900 bg-white font-medium">
+                              {r.name}
+                            </option>
                           ))}
                         </select>
 
                         <select
                           id={`member-select-${idx}`}
-                          className="bg-white border border-neutral-300 rounded p-1 text-[11px] flex-1"
+                          className="bg-white text-neutral-900 border border-neutral-300 rounded p-1 text-[11px] flex-1 font-medium focus:outline-none focus:ring-1 focus:ring-primary"
                         >
-                          <option value="">Choose Member...</option>
+                          <option value="" className="text-neutral-900 bg-white">Choose Member...</option>
                           {availableMembers.map((m: any) => (
-                            <option key={m.id} value={m.id}>{m.name || m.email}</option>
+                            <option key={m.id} value={m.id} className="text-neutral-900 bg-white font-medium">
+                              {m.name || m.email} ({m.role_name || "Member"})
+                            </option>
                           ))}
                         </select>
 
@@ -746,7 +744,7 @@ export default function ApprovalsPage() {
                               setBuilderStages(updated);
                             }
                           }}
-                          className="px-2.5 py-1 bg-emerald-600 text-white rounded text-[10px] font-bold uppercase cursor-pointer"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold uppercase cursor-pointer"
                         >
                           Add
                         </button>

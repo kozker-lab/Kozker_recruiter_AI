@@ -236,6 +236,18 @@ def get_user_org_id(
             res = db.table("members").select("organization_id").ilike("email", clean_email).execute()
             if res.data and res.data[0].get("organization_id"):
                 return res.data[0]["organization_id"]
+            
+            # Check member_roles for organization_id
+            mr_res = db.table("member_roles").select("roles(organization_id), members!inner(email)").ilike("members.email", clean_email).execute()
+            if mr_res.data and mr_res.data[0].get("roles"):
+                role_obj = mr_res.data[0]["roles"]
+                if isinstance(role_obj, dict) and role_obj.get("organization_id"):
+                    return role_obj["organization_id"]
+
+        # Fallback to first organization in database
+        org_res = db.table("organizations").select("id").limit(1).execute()
+        if org_res.data and org_res.data[0].get("id"):
+            return org_res.data[0]["id"]
     except Exception as e:
         logger.error(f"Failed to resolve organization_id: {e}")
     return None
@@ -5670,6 +5682,41 @@ class PipelineAccessInput(BaseModel):
     role_id: Optional[str] = None
     member_id: Optional[str] = None
     access_level: str = "view"
+
+@app.get("/api/v1/roles")
+async def get_organization_roles(
+    org_id: Optional[str] = Depends(get_user_org_id)
+):
+    if not org_id:
+        return []
+    db = get_admin_supabase_client()
+    res = db.table("roles").select("*, role_permissions(*)").eq("organization_id", org_id).execute()
+    return res.data or []
+
+@app.get("/api/v1/members")
+async def get_organization_members(
+    org_id: Optional[str] = Depends(get_user_org_id)
+):
+    if not org_id:
+        return []
+    db = get_admin_supabase_client()
+    res = db.table("members").select("*, member_roles(*, roles(id, name)), roles(id, name)").eq("organization_id", org_id).execute()
+    data = res.data or []
+    formatted = []
+    for m in data:
+        assigned_role = None
+        mr_list = m.get("member_roles") or []
+        if mr_list and isinstance(mr_list, list) and len(mr_list) > 0 and isinstance(mr_list[0], dict) and mr_list[0].get("roles"):
+            assigned_role = mr_list[0].get("roles")
+        elif m.get("roles"):
+            assigned_role = m.get("roles")
+            
+        formatted.append({
+            **m,
+            "role_name": assigned_role.get("name") if isinstance(assigned_role, dict) and assigned_role.get("name") else ("Primary Admin" if m.get("is_primary_admin") else "Member"),
+            "role": assigned_role
+        })
+    return formatted
 
 @app.get("/api/v1/approvals/pipelines")
 async def get_approval_pipelines(
