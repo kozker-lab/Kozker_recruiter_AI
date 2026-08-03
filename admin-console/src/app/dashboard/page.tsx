@@ -577,6 +577,16 @@ export default function DashboardPage() {
               <span>Master Roles & RBAC</span>
             </button>
 
+            <button
+              onClick={() => setActiveTab('pipelines')}
+              className={`w-full px-3 py-2 rounded text-xs font-semibold flex items-center gap-2.5 transition-colors cursor-pointer ${
+                activeTab === 'pipelines' ? 'bg-brand/10 text-brand font-bold' : 'text-stone-700 hover:bg-stone-100'
+              }`}
+            >
+              <GitPullRequest className="w-4 h-4 text-emerald-600" />
+              <span>Approval Workflows Oversight</span>
+            </button>
+
 
             {isAdmin && (
               <button
@@ -905,9 +915,20 @@ export default function DashboardPage() {
             <div className="space-y-6">
               <div className="flex items-center justify-between bg-white p-4 border border-stone-200 rounded-lg shadow-sm">
                 <div>
-                  <h2 className="text-base font-bold text-stone-900">Multi-Stage Approval Workflows</h2>
-                  <p className="text-xs text-stone-500 font-mono">Configure SLA hours and sequential approval steps across categories</p>
+                  <h2 className="text-base font-bold text-stone-900 flex items-center gap-2">
+                    <GitPullRequest className="w-5 h-5 text-emerald-600" />
+                    <span>Multi-Stage Agency Approval Workflows</span>
+                  </h2>
+                  <p className="text-xs text-stone-500 font-mono">Monitor, audit, and manage pending approval pipelines across all roles within your organization</p>
                 </div>
+
+                <a
+                  href="/approvals"
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs font-bold rounded flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                >
+                  <span>Open Approvals Oversight Center</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

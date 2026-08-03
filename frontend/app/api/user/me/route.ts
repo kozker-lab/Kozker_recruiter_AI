@@ -170,6 +170,8 @@ export async function GET(request: Request) {
         recruiter_sourcing: true,
         recruiter_stages: true,
         recruiter_pipelines: true,
+        approval_workflow_view: true,
+        approval_workflow_edit: true,
         recruiter_qna: true,
         team_monitoring: true,
         interviewer_workspace: true,
@@ -178,27 +180,35 @@ export async function GET(request: Request) {
         edit_status: true,
         schedule_interviews: true
       };
-    } else if (activeRole && activeRole.role_permissions) {
-      const rpArray = Array.isArray(activeRole.role_permissions) ? activeRole.role_permissions : [activeRole.role_permissions];
-      if (rpArray.length > 0) {
-        const rp = rpArray[0];
-        permissions = {
-          administrator: rp.administrator === true,
-          recruiter_dashboard: rp.recruiter_dashboard === true,
-          recruiter_mandates: rp.recruiter_mandates === true,
-          recruiter_jobs: rp.recruiter_jobs === true,
-          recruiter_sourcing: rp.recruiter_sourcing === true,
-          recruiter_stages: rp.recruiter_stages === true,
-          recruiter_pipelines: rp.recruiter_pipelines === true,
-          recruiter_qna: rp.recruiter_qna === true,
-          team_monitoring: rp.team_monitoring === true,
-          interviewer_workspace: rp.interviewer_workspace === true,
-          manage_jobs: rp.manage_jobs === true,
-          view_resumes: rp.view_resumes === true,
-          edit_status: rp.edit_status === true,
-          schedule_interviews: rp.schedule_interviews === true
-        };
-      }
+    } else if (activeRole) {
+      const rpArray = activeRole.role_permissions 
+        ? (Array.isArray(activeRole.role_permissions) ? activeRole.role_permissions : [activeRole.role_permissions])
+        : [];
+      const rp = rpArray[0] || (typeof activeRole.permissions === 'object' ? activeRole.permissions : {});
+
+      const hasPipelineAccess = 
+        rp.approval_workflow_view === true || 
+        rp.approval_workflow_edit === true || 
+        rp.recruiter_pipelines === true;
+
+      permissions = {
+        administrator: rp.administrator === true,
+        recruiter_dashboard: rp.recruiter_dashboard !== false,
+        recruiter_mandates: rp.recruiter_mandates === true,
+        recruiter_jobs: rp.recruiter_jobs === true,
+        recruiter_sourcing: rp.recruiter_sourcing === true,
+        recruiter_stages: rp.recruiter_stages === true,
+        recruiter_pipelines: hasPipelineAccess,
+        approval_workflow_view: hasPipelineAccess,
+        approval_workflow_edit: rp.approval_workflow_edit === true,
+        recruiter_qna: rp.recruiter_qna === true,
+        team_monitoring: rp.team_monitoring === true,
+        interviewer_workspace: rp.interviewer_workspace === true,
+        manage_jobs: rp.manage_jobs === true,
+        view_resumes: rp.view_resumes === true,
+        edit_status: rp.edit_status === true,
+        schedule_interviews: rp.schedule_interviews === true
+      };
     } else {
       // Standard member with no custom role assigned - restrict panel access
       permissions = {

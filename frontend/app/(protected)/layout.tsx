@@ -1155,6 +1155,15 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   };
 
   const visibleNavItems = navItems.filter((item: any) => {
+    if (item.id === "pipelines") {
+      if (isPrimaryAdmin) return true;
+      if (!userPermissions) return false;
+      return (
+        userPermissions.approval_workflow_view === true ||
+        userPermissions.approval_workflow_edit === true ||
+        userPermissions.recruiter_pipelines === true
+      );
+    }
     const permKey = navItemPermMap[item.id];
     if (!permKey) return true;
     if (isPrimaryAdmin) return true;
