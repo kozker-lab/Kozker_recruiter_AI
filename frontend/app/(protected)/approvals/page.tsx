@@ -96,6 +96,60 @@ export default function ApprovalsPage() {
     return false;
   };
 
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>("");
+  const [currentMember, setCurrentMember] = useState<any>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const email = localStorage.getItem("x-user-email") || localStorage.getItem("user_email") || localStorage.getItem("kozker_sso_email") || "";
+      setCurrentUserEmail(email ? email.trim().toLowerCase() : "");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentUserEmail && availableMembers.length > 0) {
+      const found = availableMembers.find((m: any) => m.email?.toLowerCase() === currentUserEmail.toLowerCase());
+      setCurrentMember(found || null);
+    }
+  }, [currentUserEmail, availableMembers]);
+
+  const canApproveActiveStage = (pipeline: Pipeline) => {
+    if (!pipeline || pipeline.status !== "pending") return false;
+    
+    const activeStage = pipeline.stages?.[pipeline.current_stage_index];
+    if (!activeStage) return false;
+    
+    // Primary Admin override
+    if (currentMember?.is_primary_admin) return true;
+    
+    const approvers = activeStage.approvers || [];
+    if (approvers.length === 0) return true;
+    
+    if (currentMember?.id) {
+      if (approvers.some((a: any) => a.member_id === currentMember.id || a.members?.id === currentMember.id)) {
+        return true;
+      }
+    }
+    
+    if (currentUserEmail) {
+      if (approvers.some((a: any) => 
+        a.member_name?.toLowerCase() === currentUserEmail.toLowerCase() || 
+        a.members?.email?.toLowerCase() === currentUserEmail.toLowerCase()
+      )) {
+        return true;
+      }
+    }
+    
+    if (currentMember) {
+      const userRoleId = currentMember.role?.id || currentMember.member_roles?.[0]?.role_id || currentMember.member_roles?.[0]?.roles?.id;
+      if (userRoleId && approvers.some((a: any) => a.role_id === userRoleId || a.roles?.id === userRoleId)) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
   useEffect(() => {
     fetchPipelines();
     fetchRolesAndMembers();
@@ -591,41 +645,60 @@ export default function ApprovalsPage() {
               </div>
             )}
 
-            {/* Approval Action Form */}
+            {/* Approval Action Form or Read-Only Notice */}
             {selectedPipeline.status === "pending" && (
-              <div className="space-y-3 pt-2 border-t border-neutral-200">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-neutral-800">Stage Action</h4>
-                <textarea
-                  placeholder="Optional approval or feedback notes..."
-                  value={approvalNotes}
-                  onChange={(e) => setApprovalNotes(e.target.value)}
-                  className="w-full p-2 border border-neutral-300 rounded text-xs focus:outline-none focus:border-primary"
-                  rows={2}
-                />
+              canApproveActiveStage(selectedPipeline) ? (
+                <div className="space-y-3 pt-2 border-t border-neutral-200">
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-neutral-800">Stage Action</h4>
+                  <textarea
+                    placeholder="Optional approval or feedback notes..."
+                    value={approvalNotes}
+                    onChange={(e) => setApprovalNotes(e.target.value)}
+                    className="w-full p-2 border border-neutral-300 rounded text-xs focus:outline-none focus:border-primary text-neutral-900 bg-white"
+                    rows={2}
+                  />
 
-                <div className="flex justify-between items-center text-xs pt-2">
-                  <button
-                    onClick={() => handleDeletePipeline(selectedPipeline.id)}
-                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer flex items-center gap-1 border border-rose-200"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete Pipeline
-                  </button>
-                  <div className="flex gap-2">
+                  <div className="flex justify-between items-center text-xs pt-2">
                     <button
-                      onClick={() => setIsRejectModalOpen(true)}
-                      className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer"
+                      onClick={() => handleDeletePipeline(selectedPipeline.id)}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer flex items-center gap-1 border border-rose-200"
                     >
-                      Reject & Request Changes
+                      <Trash2 className="w-3.5 h-3.5" /> Delete Pipeline
                     </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setIsRejectModalOpen(true)}
+                        className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer"
+                      >
+                        Reject & Request Changes
+                      </button>
+                      <button
+                        onClick={() => handleApproveStage(selectedPipeline.id)}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer"
+                      >
+                        Approve Active Stage
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 pt-2 border-t border-neutral-200">
+                  <div className="p-3 bg-amber-50/90 border border-amber-250 rounded text-xs text-amber-950 flex items-center justify-between shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>
+                        <strong>Read-Only View:</strong> You are currently viewing this workflow. Only assigned approvers for Stage {selectedPipeline.current_stage_index + 1} can approve or reject this stage.
+                      </span>
+                    </div>
                     <button
-                      onClick={() => handleApproveStage(selectedPipeline.id)}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer"
+                      onClick={() => handleDeletePipeline(selectedPipeline.id)}
+                      className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold uppercase rounded text-[10px] border border-rose-200 cursor-pointer shrink-0 ml-2"
                     >
-                      Approve Active Stage
+                      Delete
                     </button>
                   </div>
                 </div>
-              </div>
+              )
             )}
           </div>
         </div>
