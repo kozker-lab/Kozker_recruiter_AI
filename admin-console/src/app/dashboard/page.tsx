@@ -1423,6 +1423,8 @@ export default function DashboardPage() {
                       { key: 'recruiter_sourcing', label: 'Sourcing Pool' },
                       { key: 'recruiter_stages', label: 'Stages' },
                       { key: 'recruiter_pipelines', label: 'Approval Workflows' },
+                      { key: 'approval_workflow_view', label: 'Approval Workflow (View)' },
+                      { key: 'approval_workflow_edit', label: 'Approval Workflow (Create & Edit)' },
                       { key: 'recruiter_qna', label: 'Candidate Q&A' },
                       { key: 'team_monitoring', label: 'Team Operations' },
                       { key: 'interviewer_workspace', label: 'Interview Workspace' },

@@ -5634,6 +5634,314 @@ async def confirm_password_otp(payload: PasswordOtpConfirmModel, request: Reques
     return {"status": "success", "message": "Password updated successfully."}
 
 
+# --- Approval Workflows System ---
+class StageApproverInput(BaseModel):
+    role_id: Optional[str] = None
+    member_id: Optional[str] = None
+
+class StageInput(BaseModel):
+    stage_name: str
+    require_all_approvers: bool = False
+    approvers: List[StageApproverInput] = []
+
+class PipelineCreateInput(BaseModel):
+    name: str
+    description: Optional[str] = None
+    is_template: bool = False
+    entity_type: str = "custom"
+    entity_id: Optional[str] = None
+    custom_content: Optional[Dict[str, Any]] = None
+    stages: List[StageInput] = []
+
+class PipelineApproveInput(BaseModel):
+    notes: Optional[str] = None
+
+class HighlightedFieldInput(BaseModel):
+    field_name: str
+    field_value: Optional[str] = None
+    note: Optional[str] = None
+
+class PipelineRejectInput(BaseModel):
+    reasons: List[str] = []
+    highlighted_fields: List[Dict[str, Any]] = []
+    feedback_notes: Optional[str] = None
+
+class PipelineAccessInput(BaseModel):
+    role_id: Optional[str] = None
+    member_id: Optional[str] = None
+    access_level: str = "view"
+
+@app.get("/api/v1/approvals/pipelines")
+async def get_approval_pipelines(
+    db: Client = Depends(get_supabase),
+    org_id: Optional[str] = Depends(get_user_org_id),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    if not org_id:
+        return []
+    
+    # Query pipelines for this organization
+    res = db.table("approval_pipelines").select(
+        "*, approval_stages(*, approval_stage_approvers(*, members(id, name, email), roles(id, name))), approval_rejection_checklists(*), members!approval_pipelines_created_by_fkey(id, name, email, roles(name))"
+    ).eq("organization_id", org_id).order("created_at", desc=True).execute()
+    
+    data = res.data or []
+    formatted = []
+    for p in data:
+        creator = p.get("members") or {}
+        stages_raw = p.get("approval_stages") or []
+        stages_sorted = sorted(stages_raw, key=lambda s: s.get("stage_index", 0))
+        
+        stages_formatted = []
+        for stg in stages_sorted:
+            apprs_raw = stg.get("approval_stage_approvers") or []
+            apprs_formatted = []
+            for a in apprs_raw:
+                mem = a.get("members") or {}
+                rol = a.get("roles") or {}
+                apprs_formatted.append({
+                    **a,
+                    "member_name": mem.get("name") or mem.get("email"),
+                    "role_name": rol.get("name")
+                })
+            stages_formatted.append({
+                **stg,
+                "approvers": apprs_formatted
+            })
+            
+        checklists = p.get("approval_rejection_checklists") or []
+        rej_checklist = checklists[0] if checklists else None
+        
+        formatted.append({
+            **{k: v for k, v in p.items() if k not in ["approval_stages", "approval_rejection_checklists"]},
+            "created_by_name": creator.get("name") or creator.get("email") or "Member",
+            "created_by_role": (creator.get("roles") or {}).get("name") or "Recruiter",
+            "stages": stages_formatted,
+            "rejection_checklist": rej_checklist
+        })
+    return formatted
+
+@app.get("/api/v1/approvals/admin/all")
+async def get_admin_approval_pipelines(
+    db: Client = Depends(get_supabase),
+    org_id: Optional[str] = Depends(get_user_org_id)
+):
+    if not org_id:
+        return {"pipelines": []}
+        
+    res = db.table("approval_pipelines").select(
+        "*, approval_stages(*, approval_stage_approvers(*, members(id, name, email), roles(id, name))), approval_rejection_checklists(*), members!approval_pipelines_created_by_fkey(id, name, email, roles(name))"
+    ).eq("organization_id", org_id).order("created_at", desc=True).execute()
+    
+    data = res.data or []
+    formatted = []
+    for p in data:
+        creator = p.get("members") or {}
+        stages_raw = p.get("approval_stages") or []
+        stages_sorted = sorted(stages_raw, key=lambda s: s.get("stage_index", 0))
+        
+        stages_formatted = []
+        for stg in stages_sorted:
+            apprs_raw = stg.get("approval_stage_approvers") or []
+            apprs_formatted = []
+            for a in apprs_raw:
+                mem = a.get("members") or {}
+                rol = a.get("roles") or {}
+                apprs_formatted.append({
+                    **a,
+                    "member_name": mem.get("name") or mem.get("email"),
+                    "role_name": rol.get("name")
+                })
+            stages_formatted.append({
+                **stg,
+                "approvers": apprs_formatted
+            })
+            
+        checklists = p.get("approval_rejection_checklists") or []
+        rej_checklist = checklists[0] if checklists else None
+        
+        formatted.append({
+            **{k: v for k, v in p.items() if k not in ["approval_stages", "approval_rejection_checklists"]},
+            "created_by_name": creator.get("name") or creator.get("email") or "Member",
+            "created_by_role": (creator.get("roles") or {}).get("name") or "Recruiter",
+            "stages": stages_formatted,
+            "rejection_checklist": rej_checklist
+        })
+    return {"pipelines": formatted}
+
+@app.post("/api/v1/approvals/pipelines")
+async def create_approval_pipeline(
+    payload: PipelineCreateInput,
+    db: Client = Depends(get_supabase),
+    org_id: Optional[str] = Depends(get_user_org_id),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Organization ID required")
+        
+    pipeline_res = db.table("approval_pipelines").insert({
+        "organization_id": org_id,
+        "name": payload.name,
+        "description": payload.description,
+        "is_template": payload.is_template,
+        "entity_type": payload.entity_type,
+        "entity_id": payload.entity_id,
+        "custom_content": payload.custom_content or {},
+        "created_by": user_id,
+        "current_stage_index": 0,
+        "status": "pending" if payload.stages and not payload.is_template else "draft"
+    }).execute()
+    
+    if not pipeline_res.data:
+        raise HTTPException(status_code=500, detail="Failed to create approval pipeline")
+        
+    pipeline = pipeline_res.data[0]
+    pipeline_id = pipeline["id"]
+    
+    # Insert stages & approvers
+    for s_idx, stg in enumerate(payload.stages):
+        stg_res = db.table("approval_stages").insert({
+            "pipeline_id": pipeline_id,
+            "stage_index": s_idx,
+            "stage_name": stg.stage_name,
+            "require_all_approvers": stg.require_all_approvers,
+            "status": "pending" if s_idx == 0 and not payload.is_template else "pending"
+        }).execute()
+        
+        if stg_res.data:
+            stage_id = stg_res.data[0]["id"]
+            for appr in stg.approvers:
+                db.table("approval_stage_approvers").insert({
+                    "stage_id": stage_id,
+                    "role_id": appr.role_id,
+                    "member_id": appr.member_id,
+                    "has_approved": False
+                }).execute()
+                
+    # Insert Audit Log
+    db.table("approval_logs").insert({
+        "pipeline_id": pipeline_id,
+        "actor_id": user_id,
+        "action": "created",
+        "notes": f"Created pipeline '{payload.name}'"
+    }).execute()
+    
+    return pipeline
+
+@app.post("/api/v1/approvals/pipelines/{id}/approve")
+async def approve_pipeline_stage(
+    id: str,
+    payload: PipelineApproveInput,
+    db: Client = Depends(get_supabase),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    pipe_res = db.table("approval_pipelines").select("*, approval_stages(*)").eq("id", id).execute()
+    if not pipe_res.data:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+        
+    pipeline = pipe_res.data[0]
+    stages = sorted(pipeline.get("approval_stages") or [], key=lambda s: s["stage_index"])
+    curr_idx = pipeline["current_stage_index"]
+    
+    if curr_idx >= len(stages):
+        raise HTTPException(status_code=400, detail="Pipeline has no remaining pending stages")
+        
+    current_stage = stages[curr_idx]
+    stage_id = current_stage["id"]
+    
+    # Update stage approver status
+    if user_id:
+        db.table("approval_stage_approvers").update({
+            "has_approved": True,
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+            "notes": payload.notes
+        }).eq("stage_id", stage_id).eq("member_id", user_id).execute()
+        
+    # Check consensus or 1-of-N logic
+    apprs_res = db.table("approval_stage_approvers").select("*").eq("stage_id", stage_id).execute()
+    apprs = apprs_res.data or []
+    
+    should_advance = False
+    if current_stage.get("require_all_approvers"):
+        should_advance = all(a.get("has_approved") for a in apprs)
+    else:
+        should_advance = any(a.get("has_approved") for a in apprs) or len(apprs) == 0
+        
+    if should_advance:
+        db.table("approval_stages").update({"status": "approved"}).eq("id", stage_id).execute()
+        
+        if curr_idx + 1 < len(stages):
+            # Advance to next stage
+            next_idx = curr_idx + 1
+            db.table("approval_pipelines").update({
+                "current_stage_index": next_idx,
+                "status": "pending"
+            }).eq("id", id).execute()
+        else:
+            # Final Approval!
+            db.table("approval_pipelines").update({
+                "status": "approved"
+            }).eq("id", id).execute()
+            
+    # Audit log
+    db.table("approval_logs").insert({
+        "pipeline_id": id,
+        "stage_id": stage_id,
+        "actor_id": user_id,
+        "action": "stage_approved",
+        "notes": payload.notes or "Stage approved"
+    }).execute()
+    
+    return {"status": "success", "should_advance": should_advance}
+
+@app.post("/api/v1/approvals/pipelines/{id}/reject")
+async def reject_pipeline_stage(
+    id: str,
+    payload: PipelineRejectInput,
+    db: Client = Depends(get_supabase),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    pipe_res = db.table("approval_pipelines").select("*, approval_stages(*)").eq("id", id).execute()
+    if not pipe_res.data:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+        
+    pipeline = pipe_res.data[0]
+    stages = sorted(pipeline.get("approval_stages") or [], key=lambda s: s["stage_index"])
+    curr_idx = pipeline["current_stage_index"]
+    current_stage = stages[curr_idx] if curr_idx < len(stages) else None
+    stage_id = current_stage["id"] if current_stage else None
+    
+    # Store Rejection Checklist
+    db.table("approval_rejection_checklists").insert({
+        "pipeline_id": id,
+        "stage_id": stage_id,
+        "rejected_by": user_id,
+        "reasons": payload.reasons,
+        "highlighted_fields": payload.highlighted_fields,
+        "feedback_notes": payload.feedback_notes
+    }).execute()
+    
+    # Revert pipeline status to Stage 1 Draft for revision
+    db.table("approval_pipelines").update({
+        "status": "rejected",
+        "current_stage_index": 0
+    }).eq("id", id).execute()
+    
+    if stage_id:
+        db.table("approval_stages").update({"status": "rejected"}).eq("id", stage_id).execute()
+        
+    # Audit Log
+    db.table("approval_logs").insert({
+        "pipeline_id": id,
+        "stage_id": stage_id,
+        "actor_id": user_id,
+        "action": "stage_rejected",
+        "notes": payload.feedback_notes or "Pipeline rejected"
+    }).execute()
+    
+    return {"status": "success", "message": "Pipeline rejected and reverted to Stage 1 Draft with checklist feedback."}
+
+
 # Simple index status check
 @app.get("/")
 def index():

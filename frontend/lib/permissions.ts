@@ -26,6 +26,8 @@ export interface UserPermissions {
   view_resumes?: boolean;
   edit_status?: boolean;
   schedule_interviews?: boolean;
+  approval_workflow_view?: boolean;
+  approval_workflow_edit?: boolean;
 }
 
 export function isRecruiterSectionVisible(

@@ -1134,7 +1134,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     { id: "jobs", href: "/jobs", label: "Job Catalog", icon: Briefcase },
     { id: "pool", href: "/pool", label: "Sourcing Pool", icon: Users },
     { id: "rounds", href: "/rounds", label: "Stages", icon: Layers },
-    { id: "pipelines", href: "/pipelines", label: "Approval Workflows", icon: GitPullRequest },
+    { id: "pipelines", href: "/approvals", label: "Approval Workflows", icon: GitPullRequest },
     { id: "interviews", href: "/interviews", label: "Interview Workspace", icon: Calendar },
     { id: "qna", href: "/qna", label: "Candidate Q&A", icon: MessageSquare },
     { id: "notifications", href: "/notifications", label: "Notifications", icon: Bell },
@@ -1149,7 +1149,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     jobs: "recruiter_jobs",
     pool: "recruiter_sourcing",
     rounds: "recruiter_stages",
-    pipelines: "recruiter_pipelines",
+    pipelines: "approval_workflow_view",
     interviews: "interviewer_workspace",
     qna: "recruiter_qna",
   };
