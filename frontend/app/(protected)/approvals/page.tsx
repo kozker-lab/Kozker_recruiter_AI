@@ -83,6 +83,18 @@ export default function ApprovalsPage() {
   const [builderStages, setBuilderStages] = useState<Stage[]>([
     { stage_name: "Initial Hiring Manager Review", require_all_approvers: false, approvers: [] }
   ]);
+  const [stageSelectedRole, setStageSelectedRole] = useState<Record<number, string>>({});
+  const [stageSelectedMember, setStageSelectedMember] = useState<Record<number, string>>({});
+
+  const isMemberInRole = (m: any, roleId: string) => {
+    if (!roleId) return true;
+    if (m.role?.id === roleId) return true;
+    if (m.role_id === roleId) return true;
+    if (m.member_roles && Array.isArray(m.member_roles)) {
+      return m.member_roles.some((mr: any) => mr.role_id === roleId || mr.roles?.id === roleId);
+    }
+    return false;
+  };
 
   useEffect(() => {
     fetchPipelines();
@@ -700,7 +712,12 @@ export default function ApprovalsPage() {
                       <label className="font-bold text-[10px] uppercase text-neutral-500">Select Approver (Role ➔ Member):</label>
                       <div className="flex gap-2">
                         <select
-                          id={`role-select-${idx}`}
+                          value={stageSelectedRole[idx] || ""}
+                          onChange={(e) => {
+                            const selectedR = e.target.value;
+                            setStageSelectedRole({ ...stageSelectedRole, [idx]: selectedR });
+                            setStageSelectedMember({ ...stageSelectedMember, [idx]: "" });
+                          }}
                           className="bg-white text-neutral-900 border border-neutral-300 rounded p-1 text-[11px] flex-1 font-medium focus:outline-none focus:ring-1 focus:ring-primary"
                         >
                           <option value="" className="text-neutral-900 bg-white">Choose Role...</option>
@@ -712,36 +729,41 @@ export default function ApprovalsPage() {
                         </select>
 
                         <select
-                          id={`member-select-${idx}`}
+                          value={stageSelectedMember[idx] || ""}
+                          onChange={(e) => setStageSelectedMember({ ...stageSelectedMember, [idx]: e.target.value })}
                           className="bg-white text-neutral-900 border border-neutral-300 rounded p-1 text-[11px] flex-1 font-medium focus:outline-none focus:ring-1 focus:ring-primary"
                         >
-                          <option value="" className="text-neutral-900 bg-white">Choose Member...</option>
-                          {availableMembers.map((m: any) => (
-                            <option key={m.id} value={m.id} className="text-neutral-900 bg-white font-medium">
-                              {m.name || m.email} ({m.role_name || "Member"})
-                            </option>
-                          ))}
+                          <option value="" className="text-neutral-900 bg-white">
+                            {stageSelectedRole[idx] ? "All Members in Role" : "Choose Member..."}
+                          </option>
+                          {availableMembers
+                            .filter((m: any) => isMemberInRole(m, stageSelectedRole[idx] || ""))
+                            .map((m: any) => (
+                              <option key={m.id} value={m.id} className="text-neutral-900 bg-white font-medium">
+                                {m.name || m.email} ({m.role_name || "Member"})
+                              </option>
+                            ))}
                         </select>
 
                         <button
                           type="button"
                           onClick={() => {
-                            const rEl = document.getElementById(`role-select-${idx}`) as HTMLSelectElement;
-                            const mEl = document.getElementById(`member-select-${idx}`) as HTMLSelectElement;
-                            const rVal = rEl?.value;
-                            const mVal = mEl?.value;
+                            const rVal = stageSelectedRole[idx] || "";
+                            const mVal = stageSelectedMember[idx] || "";
                             const rObj = availableRoles.find((r: any) => r.id === rVal);
                             const mObj = availableMembers.find((m: any) => m.id === mVal);
 
                             if (rVal || mVal) {
                               const updated = [...builderStages];
                               updated[idx].approvers.push({
-                                role_id: rVal,
-                                member_id: mVal,
+                                role_id: rVal || undefined,
+                                member_id: mVal || undefined,
                                 role_name: rObj?.name,
                                 member_name: mObj?.name || mObj?.email
                               });
                               setBuilderStages(updated);
+                              setStageSelectedRole({ ...stageSelectedRole, [idx]: "" });
+                              setStageSelectedMember({ ...stageSelectedMember, [idx]: "" });
                             }
                           }}
                           className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold uppercase cursor-pointer"
