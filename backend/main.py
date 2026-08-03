@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 import io
 import json
 import logging
@@ -5720,13 +5721,13 @@ async def get_organization_members(
 
 @app.get("/api/v1/approvals/pipelines")
 async def get_approval_pipelines(
-    db: Client = Depends(get_supabase),
     org_id: Optional[str] = Depends(get_user_org_id),
     user_id: Optional[str] = Depends(get_current_user_id)
 ):
     if not org_id:
         return []
     
+    db = get_admin_supabase_client()
     # Query pipelines for this organization
     res = db.table("approval_pipelines").select(
         "*, approval_stages(*, approval_stage_approvers(*, members(id, name, email), roles(id, name))), approval_rejection_checklists(*), members!approval_pipelines_created_by_fkey(id, name, email, roles(name))"
@@ -5735,7 +5736,11 @@ async def get_approval_pipelines(
     data = res.data or []
     formatted = []
     for p in data:
-        creator = p.get("members") or {}
+        creator_raw = p.get("members")
+        creator = creator_raw[0] if isinstance(creator_raw, list) and len(creator_raw) > 0 and isinstance(creator_raw[0], dict) else (creator_raw if isinstance(creator_raw, dict) else {})
+        creator_role = creator.get("roles")
+        creator_role_dict = creator_role[0] if isinstance(creator_role, list) and len(creator_role) > 0 and isinstance(creator_role[0], dict) else (creator_role if isinstance(creator_role, dict) else {})
+        
         stages_raw = p.get("approval_stages") or []
         stages_sorted = sorted(stages_raw, key=lambda s: s.get("stage_index", 0))
         
@@ -5744,8 +5749,10 @@ async def get_approval_pipelines(
             apprs_raw = stg.get("approval_stage_approvers") or []
             apprs_formatted = []
             for a in apprs_raw:
-                mem = a.get("members") or {}
-                rol = a.get("roles") or {}
+                mem_raw = a.get("members")
+                mem = mem_raw[0] if isinstance(mem_raw, list) and len(mem_raw) > 0 and isinstance(mem_raw[0], dict) else (mem_raw if isinstance(mem_raw, dict) else {})
+                rol_raw = a.get("roles")
+                rol = rol_raw[0] if isinstance(rol_raw, list) and len(rol_raw) > 0 and isinstance(rol_raw[0], dict) else (rol_raw if isinstance(rol_raw, dict) else {})
                 apprs_formatted.append({
                     **a,
                     "member_name": mem.get("name") or mem.get("email"),
@@ -5762,7 +5769,7 @@ async def get_approval_pipelines(
         formatted.append({
             **{k: v for k, v in p.items() if k not in ["approval_stages", "approval_rejection_checklists"]},
             "created_by_name": creator.get("name") or creator.get("email") or "Member",
-            "created_by_role": (creator.get("roles") or {}).get("name") or "Recruiter",
+            "created_by_role": creator_role_dict.get("name") or "Recruiter",
             "stages": stages_formatted,
             "rejection_checklist": rej_checklist
         })
@@ -5770,12 +5777,12 @@ async def get_approval_pipelines(
 
 @app.get("/api/v1/approvals/admin/all")
 async def get_admin_approval_pipelines(
-    db: Client = Depends(get_supabase),
     org_id: Optional[str] = Depends(get_user_org_id)
 ):
     if not org_id:
         return {"pipelines": []}
         
+    db = get_admin_supabase_client()
     res = db.table("approval_pipelines").select(
         "*, approval_stages(*, approval_stage_approvers(*, members(id, name, email), roles(id, name))), approval_rejection_checklists(*), members!approval_pipelines_created_by_fkey(id, name, email, roles(name))"
     ).eq("organization_id", org_id).order("created_at", desc=True).execute()
@@ -5783,7 +5790,11 @@ async def get_admin_approval_pipelines(
     data = res.data or []
     formatted = []
     for p in data:
-        creator = p.get("members") or {}
+        creator_raw = p.get("members")
+        creator = creator_raw[0] if isinstance(creator_raw, list) and len(creator_raw) > 0 and isinstance(creator_raw[0], dict) else (creator_raw if isinstance(creator_raw, dict) else {})
+        creator_role = creator.get("roles")
+        creator_role_dict = creator_role[0] if isinstance(creator_role, list) and len(creator_role) > 0 and isinstance(creator_role[0], dict) else (creator_role if isinstance(creator_role, dict) else {})
+        
         stages_raw = p.get("approval_stages") or []
         stages_sorted = sorted(stages_raw, key=lambda s: s.get("stage_index", 0))
         
@@ -5792,8 +5803,10 @@ async def get_admin_approval_pipelines(
             apprs_raw = stg.get("approval_stage_approvers") or []
             apprs_formatted = []
             for a in apprs_raw:
-                mem = a.get("members") or {}
-                rol = a.get("roles") or {}
+                mem_raw = a.get("members")
+                mem = mem_raw[0] if isinstance(mem_raw, list) and len(mem_raw) > 0 and isinstance(mem_raw[0], dict) else (mem_raw if isinstance(mem_raw, dict) else {})
+                rol_raw = a.get("roles")
+                rol = rol_raw[0] if isinstance(rol_raw, list) and len(rol_raw) > 0 and isinstance(rol_raw[0], dict) else (rol_raw if isinstance(rol_raw, dict) else {})
                 apprs_formatted.append({
                     **a,
                     "member_name": mem.get("name") or mem.get("email"),
@@ -5810,22 +5823,68 @@ async def get_admin_approval_pipelines(
         formatted.append({
             **{k: v for k, v in p.items() if k not in ["approval_stages", "approval_rejection_checklists"]},
             "created_by_name": creator.get("name") or creator.get("email") or "Member",
-            "created_by_role": (creator.get("roles") or {}).get("name") or "Recruiter",
+            "created_by_role": creator_role_dict.get("name") or "Recruiter",
             "stages": stages_formatted,
             "rejection_checklist": rej_checklist
         })
     return {"pipelines": formatted}
 
+def get_stage_approver_emails(db: Client, stage_id: str) -> List[str]:
+    apprs_res = db.table("approval_stage_approvers").select("member_id, role_id").eq("stage_id", stage_id).execute()
+    apprs = apprs_res.data or []
+    emails = set()
+    
+    for a in apprs:
+        m_id = a.get("member_id")
+        r_id = a.get("role_id")
+        
+        if m_id:
+            m_res = db.table("members").select("email").eq("id", m_id).execute()
+            if m_res.data and m_res.data[0].get("email"):
+                emails.add(m_res.data[0]["email"].strip().lower())
+                
+        if r_id:
+            mr_res = db.table("member_roles").select("members(email)").eq("role_id", r_id).execute()
+            for mr in (mr_res.data or []):
+                mem = mr.get("members") or {}
+                if isinstance(mem, dict) and mem.get("email"):
+                    emails.add(mem["email"].strip().lower())
+                elif isinstance(mem, list) and len(mem) > 0 and mem[0].get("email"):
+                    emails.add(mem[0]["email"].strip().lower())
+                    
+    return list(emails)
+
+def user_can_approve_stage(db: Client, stage_id: str, user_id: Optional[str], user_email: Optional[str]) -> bool:
+    clean_email = user_email.strip().lower() if user_email else None
+    
+    if user_id and not user_id.startswith("user_"):
+        m_res = db.table("members").select("is_primary_admin").eq("id", user_id).execute()
+        if m_res.data and m_res.data[0].get("is_primary_admin"):
+            return True
+    if clean_email:
+        m_res = db.table("members").select("is_primary_admin").ilike("email", clean_email).execute()
+        if m_res.data and m_res.data[0].get("is_primary_admin"):
+            return True
+            
+    approver_emails = get_stage_approver_emails(db, stage_id)
+    if not approver_emails:
+        return True
+        
+    if clean_email and clean_email in approver_emails:
+        return True
+        
+    return False
+
 @app.post("/api/v1/approvals/pipelines")
 async def create_approval_pipeline(
     payload: PipelineCreateInput,
-    db: Client = Depends(get_supabase),
     org_id: Optional[str] = Depends(get_user_org_id),
     user_id: Optional[str] = Depends(get_current_user_id)
 ):
     if not org_id:
         raise HTTPException(status_code=400, detail="Organization ID required")
         
+    db = get_admin_supabase_client()
     pipeline_res = db.table("approval_pipelines").insert({
         "organization_id": org_id,
         "name": payload.name,
@@ -5834,7 +5893,7 @@ async def create_approval_pipeline(
         "entity_type": payload.entity_type,
         "entity_id": payload.entity_id,
         "custom_content": payload.custom_content or {},
-        "created_by": user_id,
+        "created_by": user_id if user_id and not user_id.startswith("user_") else None,
         "current_stage_index": 0,
         "status": "pending" if payload.stages and not payload.is_template else "draft"
     }).execute()
@@ -5845,6 +5904,7 @@ async def create_approval_pipeline(
     pipeline = pipeline_res.data[0]
     pipeline_id = pipeline["id"]
     
+    stage_1_id = None
     # Insert stages & approvers
     for s_idx, stg in enumerate(payload.stages):
         stg_res = db.table("approval_stages").insert({
@@ -5857,6 +5917,8 @@ async def create_approval_pipeline(
         
         if stg_res.data:
             stage_id = stg_res.data[0]["id"]
+            if s_idx == 0:
+                stage_1_id = stage_id
             for appr in stg.approvers:
                 db.table("approval_stage_approvers").insert({
                     "stage_id": stage_id,
@@ -5865,23 +5927,30 @@ async def create_approval_pipeline(
                     "has_approved": False
                 }).execute()
                 
+    stage_1_emails = get_stage_approver_emails(db, stage_1_id) if stage_1_id else []
+
     # Insert Audit Log
     db.table("approval_logs").insert({
         "pipeline_id": pipeline_id,
-        "actor_id": user_id,
+        "actor_id": user_id if user_id and not user_id.startswith("user_") else None,
         "action": "created",
         "notes": f"Created pipeline '{payload.name}'"
     }).execute()
     
-    return pipeline
+    return {
+        **pipeline,
+        "next_stage_approver_emails": stage_1_emails,
+        "next_stage_name": payload.stages[0].stage_name if payload.stages else "Stage 1"
+    }
 
 @app.post("/api/v1/approvals/pipelines/{id}/approve")
 async def approve_pipeline_stage(
     id: str,
     payload: PipelineApproveInput,
-    db: Client = Depends(get_supabase),
-    user_id: Optional[str] = Depends(get_current_user_id)
+    user_id: Optional[str] = Depends(get_current_user_id),
+    x_user_email: Optional[str] = Header(None, alias="x-user-email")
 ):
+    db = get_admin_supabase_client()
     pipe_res = db.table("approval_pipelines").select("*, approval_stages(*)").eq("id", id).execute()
     if not pipe_res.data:
         raise HTTPException(status_code=404, detail="Pipeline not found")
@@ -5896,13 +5965,43 @@ async def approve_pipeline_stage(
     current_stage = stages[curr_idx]
     stage_id = current_stage["id"]
     
+    # STAGE AUTHORIZATION CHECK
+    if not user_can_approve_stage(db, stage_id, user_id, x_user_email):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: You are not authorized to approve Stage {curr_idx + 1} ('{current_stage.get('stage_name')}') of this workflow."
+        )
+        
     # Update stage approver status
-    if user_id:
-        db.table("approval_stage_approvers").update({
-            "has_approved": True,
-            "approved_at": datetime.now(timezone.utc).isoformat(),
-            "notes": payload.notes
-        }).eq("stage_id", stage_id).eq("member_id", user_id).execute()
+    clean_email = x_user_email.strip().lower() if x_user_email else None
+    resolved_member_id = user_id if (user_id and not user_id.startswith("user_")) else None
+    
+    if not resolved_member_id and clean_email:
+        m_res = db.table("members").select("id").ilike("email", clean_email).execute()
+        if m_res.data and m_res.data[0].get("id"):
+            resolved_member_id = m_res.data[0]["id"]
+            
+    apprs_res = db.table("approval_stage_approvers").select("*").eq("stage_id", stage_id).execute()
+    apprs = apprs_res.data or []
+    
+    for a in apprs:
+        is_match = False
+        if resolved_member_id and a.get("member_id") == resolved_member_id:
+            is_match = True
+        elif clean_email and a.get("role_id"):
+            mr_res = db.table("member_roles").select("role_id, members!inner(email)").ilike("members.email", clean_email).execute()
+            user_roles = [mr["role_id"] for mr in (mr_res.data or []) if mr.get("role_id")]
+            if a["role_id"] in user_roles:
+                is_match = True
+        elif not a.get("member_id") and not a.get("role_id"):
+            is_match = True
+            
+        if is_match:
+            db.table("approval_stage_approvers").update({
+                "has_approved": True,
+                "approved_at": datetime.now(timezone.utc).isoformat(),
+                "notes": payload.notes
+            }).eq("id", a["id"]).execute()
         
     # Check consensus or 1-of-N logic
     apprs_res = db.table("approval_stage_approvers").select("*").eq("stage_id", stage_id).execute()
@@ -5914,6 +6013,9 @@ async def approve_pipeline_stage(
     else:
         should_advance = any(a.get("has_approved") for a in apprs) or len(apprs) == 0
         
+    next_stage_approver_emails = []
+    next_stage_name = None
+
     if should_advance:
         db.table("approval_stages").update({"status": "approved"}).eq("id", stage_id).execute()
         
@@ -5924,6 +6026,10 @@ async def approve_pipeline_stage(
                 "current_stage_index": next_idx,
                 "status": "pending"
             }).eq("id", id).execute()
+            
+            next_stage = stages[next_idx]
+            next_stage_name = next_stage.get("stage_name")
+            next_stage_approver_emails = get_stage_approver_emails(db, next_stage["id"])
         else:
             # Final Approval!
             db.table("approval_pipelines").update({
@@ -5934,20 +6040,26 @@ async def approve_pipeline_stage(
     db.table("approval_logs").insert({
         "pipeline_id": id,
         "stage_id": stage_id,
-        "actor_id": user_id,
+        "actor_id": user_id if user_id and not user_id.startswith("user_") else None,
         "action": "stage_approved",
         "notes": payload.notes or "Stage approved"
     }).execute()
     
-    return {"status": "success", "should_advance": should_advance}
+    return {
+        "status": "success",
+        "should_advance": should_advance,
+        "next_stage_name": next_stage_name,
+        "next_stage_approver_emails": next_stage_approver_emails
+    }
 
 @app.post("/api/v1/approvals/pipelines/{id}/reject")
 async def reject_pipeline_stage(
     id: str,
     payload: PipelineRejectInput,
-    db: Client = Depends(get_supabase),
-    user_id: Optional[str] = Depends(get_current_user_id)
+    user_id: Optional[str] = Depends(get_current_user_id),
+    x_user_email: Optional[str] = Header(None, alias="x-user-email")
 ):
+    db = get_admin_supabase_client()
     pipe_res = db.table("approval_pipelines").select("*, approval_stages(*)").eq("id", id).execute()
     if not pipe_res.data:
         raise HTTPException(status_code=404, detail="Pipeline not found")
@@ -5958,11 +6070,17 @@ async def reject_pipeline_stage(
     current_stage = stages[curr_idx] if curr_idx < len(stages) else None
     stage_id = current_stage["id"] if current_stage else None
     
+    if stage_id and not user_can_approve_stage(db, stage_id, user_id, x_user_email):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: You are not authorized to reject Stage {curr_idx + 1} of this workflow."
+        )
+        
     # Store Rejection Checklist
     db.table("approval_rejection_checklists").insert({
         "pipeline_id": id,
         "stage_id": stage_id,
-        "rejected_by": user_id,
+        "rejected_by": user_id if user_id and not user_id.startswith("user_") else None,
         "reasons": payload.reasons,
         "highlighted_fields": payload.highlighted_fields,
         "feedback_notes": payload.feedback_notes
@@ -5977,16 +6095,57 @@ async def reject_pipeline_stage(
     if stage_id:
         db.table("approval_stages").update({"status": "rejected"}).eq("id", stage_id).execute()
         
+    creator_email = None
+    if pipeline.get("created_by"):
+        c_res = db.table("members").select("email").eq("id", pipeline["created_by"]).execute()
+        if c_res.data and c_res.data[0].get("email"):
+            creator_email = c_res.data[0]["email"]
+            
     # Audit Log
     db.table("approval_logs").insert({
         "pipeline_id": id,
         "stage_id": stage_id,
-        "actor_id": user_id,
+        "actor_id": user_id if user_id and not user_id.startswith("user_") else None,
         "action": "stage_rejected",
         "notes": payload.feedback_notes or "Pipeline rejected"
     }).execute()
     
-    return {"status": "success", "message": "Pipeline rejected and reverted to Stage 1 Draft with checklist feedback."}
+    return {
+        "status": "success",
+        "message": "Pipeline rejected and reverted to Stage 1 Draft with checklist feedback.",
+        "creator_email": creator_email
+    }
+
+@app.delete("/api/v1/approvals/pipelines/{id}")
+async def delete_approval_pipeline(
+    id: str,
+    org_id: Optional[str] = Depends(get_user_org_id),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    db = get_admin_supabase_client()
+    pipe_res = db.table("approval_pipelines").select("id, organization_id").eq("id", id).execute()
+    if not pipe_res.data:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+        
+    pipeline = pipe_res.data[0]
+    if org_id and pipeline.get("organization_id") and pipeline["organization_id"] != org_id:
+        raise HTTPException(status_code=403, detail="Forbidden from deleting pipelines of another organization")
+        
+    # Get associated stage IDs
+    stg_res = db.table("approval_stages").select("id").eq("pipeline_id", id).execute()
+    stage_ids = [s["id"] for s in (stg_res.data or []) if "id" in s]
+    
+    # Delete child relational records
+    if stage_ids:
+        for sid in stage_ids:
+            db.table("approval_stage_approvers").delete().eq("stage_id", sid).execute()
+    
+    db.table("approval_rejection_checklists").delete().eq("pipeline_id", id).execute()
+    db.table("approval_logs").delete().eq("pipeline_id", id).execute()
+    db.table("approval_stages").delete().eq("pipeline_id", id).execute()
+    db.table("approval_pipelines").delete().eq("id", id).execute()
+    
+    return {"status": "success", "message": "Approval pipeline deleted successfully"}
 
 
 # Simple index status check

@@ -125,12 +125,27 @@ export default function ApprovalsPage() {
     }
   };
 
+  const handleDeletePipeline = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this approval pipeline? This action cannot be undone.")) {
+      return;
+    }
+    try {
+      await apiRequest("DELETE", `/approvals/pipelines/${id}`);
+      if (selectedPipeline?.id === id) {
+        setSelectedPipeline(null);
+      }
+      await fetchPipelines();
+    } catch (err: any) {
+      alert("Failed to delete pipeline: " + (err.message || err));
+    }
+  };
+
   const handleCreatePipeline = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!builderName.trim()) return;
 
     try {
-      await apiRequest("POST", "/approvals/pipelines", {
+      const res = await apiRequest<any>("POST", "/approvals/pipelines", {
         name: builderName,
         description: builderDesc,
         is_template: builderIsTemplate,
@@ -138,6 +153,27 @@ export default function ApprovalsPage() {
         custom_content: { raw_text: builderContentText },
         stages: builderStages
       });
+
+      // Dispatch Nodemailer email alerts to Stage 1 approvers
+      if (res?.next_stage_approver_emails && Array.isArray(res.next_stage_approver_emails)) {
+        for (const recipientEmail of res.next_stage_approver_emails) {
+          try {
+            await fetch("/api/approvals/email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: recipientEmail,
+                pipelineName: builderName,
+                stageName: res.next_stage_name || "Stage 1",
+                submitterName: "Team Member",
+                contentPreview: builderContentText?.substring(0, 150)
+              })
+            });
+          } catch (mailErr) {
+            console.warn("Failed to dispatch email to", recipientEmail, mailErr);
+          }
+        }
+      }
 
       setIsBuilderOpen(false);
       resetBuilderForm();
@@ -149,22 +185,30 @@ export default function ApprovalsPage() {
 
   const handleApproveStage = async (pipelineId: string) => {
     try {
-      await apiRequest("POST", `/approvals/pipelines/${pipelineId}/approve`, {
+      const res = await apiRequest<any>("POST", `/approvals/pipelines/${pipelineId}/approve`, {
         notes: approvalNotes
       });
 
-      // Dispatch Nodemailer Notification
-      await fetch("/api/approvals/email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: "approver@kozker.com",
-          pipelineName: selectedPipeline?.name || "Approval Workflow",
-          stageName: "Next Stage",
-          submitterName: "Recruiter Member",
-          contentPreview: selectedPipeline?.custom_content?.raw_text?.substring(0, 150)
-        })
-      });
+      // Dispatch Nodemailer notifications to next stage approvers
+      if (res?.next_stage_approver_emails && Array.isArray(res.next_stage_approver_emails)) {
+        for (const recipientEmail of res.next_stage_approver_emails) {
+          try {
+            await fetch("/api/approvals/email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: recipientEmail,
+                pipelineName: selectedPipeline?.name || "Approval Workflow",
+                stageName: res.next_stage_name || "Next Stage",
+                submitterName: "Recruiter Member",
+                contentPreview: selectedPipeline?.custom_content?.raw_text?.substring(0, 150)
+              })
+            });
+          } catch (mailErr) {
+            console.warn("Failed to dispatch email to", recipientEmail, mailErr);
+          }
+        }
+      }
 
       setSelectedPipeline(null);
       setApprovalNotes("");
@@ -181,24 +225,31 @@ export default function ApprovalsPage() {
     if (customReason.trim()) allReasons.push(customReason.trim());
 
     try {
-      await apiRequest("POST", `/approvals/pipelines/${selectedPipeline.id}/reject`, {
+      const res = await apiRequest<any>("POST", `/approvals/pipelines/${selectedPipeline.id}/reject`, {
         reasons: allReasons,
         highlighted_fields: highlightedFieldsList,
         feedback_notes: rejectionFeedback
       });
 
-      // Dispatch Nodemailer Notification
-      await fetch("/api/approvals/email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: "creator@kozker.com",
-          pipelineName: selectedPipeline.name,
-          stageName: "Rejection Stage",
-          rejectionChecklist: { reasons: allReasons },
-          feedbackNotes: rejectionFeedback
-        })
-      });
+      // Dispatch Nodemailer notification to creator
+      const recipientEmail = res?.creator_email || selectedPipeline.created_by_name;
+      if (recipientEmail && recipientEmail.includes("@")) {
+        try {
+          await fetch("/api/approvals/email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: recipientEmail,
+              pipelineName: selectedPipeline.name,
+              stageName: "Stage 1 Draft",
+              rejectionChecklist: { reasons: allReasons },
+              feedbackNotes: rejectionFeedback
+            })
+          });
+        } catch (mailErr) {
+          console.warn("Failed to dispatch rejection email to", recipientEmail, mailErr);
+        }
+      }
 
       setIsRejectModalOpen(false);
       setSelectedPipeline(null);
@@ -357,6 +408,13 @@ export default function ApprovalsPage() {
                     >
                       <Eye className="w-3.5 h-3.5" /> View / Process
                     </button>
+                    <button
+                      onClick={() => handleDeletePipeline(p.id)}
+                      className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold rounded uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1"
+                      title="Delete approval pipeline"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </button>
                   </div>
                 </div>
 
@@ -410,6 +468,99 @@ export default function ApprovalsPage() {
               </button>
             </div>
 
+            {/* Full Pipeline Stages & Assigned Approvers Breakdown */}
+            <div className="space-y-2 border-b border-neutral-200 pb-3">
+              <div className="flex items-center justify-between">
+                <span className="font-bold uppercase tracking-wider text-[10px] text-neutral-500 flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5 text-primary" /> Full Pipeline Stages & Assigned Approvers
+                </span>
+                <span className="text-[10px] text-neutral-500 font-mono">
+                  Created by: <strong>{selectedPipeline.created_by_name}</strong> ({selectedPipeline.created_by_role})
+                </span>
+              </div>
+
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {selectedPipeline.stages?.map((stg, sIdx) => {
+                  const isCurrent = sIdx === selectedPipeline.current_stage_index && selectedPipeline.status === "pending";
+                  const isPassed = sIdx < selectedPipeline.current_stage_index || selectedPipeline.status === "approved";
+                  return (
+                    <div
+                      key={sIdx}
+                      className={`p-2.5 rounded border text-xs space-y-2 transition-colors ${
+                        isCurrent
+                          ? "bg-amber-50/90 border-amber-300 ring-1 ring-amber-400 text-neutral-900"
+                          : isPassed
+                          ? "bg-emerald-50/70 border-emerald-200 text-neutral-900"
+                          : "bg-neutral-50 border-neutral-200 text-neutral-600"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-semibold">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                            isPassed ? "bg-emerald-600 text-white" : isCurrent ? "bg-amber-600 text-white" : "bg-neutral-300 text-neutral-700"
+                          }`}>
+                            {sIdx + 1}
+                          </span>
+                          <span className="font-bold text-neutral-900">{stg.stage_name}</span>
+                          {stg.require_all_approvers && (
+                            <span className="text-[9px] uppercase px-1.5 py-0.5 bg-neutral-200 text-neutral-700 rounded font-mono font-semibold">
+                              Consensus (N-of-N)
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold">
+                          {isCurrent && (
+                            <span className="px-2 py-0.5 bg-amber-200 text-amber-950 rounded flex items-center gap-1 border border-amber-300">
+                              <Clock className="w-3 h-3 animate-pulse text-amber-800" /> Active Approval Stage
+                            </span>
+                          )}
+                          {isPassed && (
+                            <span className="px-2 py-0.5 bg-emerald-200 text-emerald-950 rounded flex items-center gap-1 border border-emerald-300">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-700" /> Approved
+                            </span>
+                          )}
+                          {!isCurrent && !isPassed && (
+                            <span className="px-2 py-0.5 bg-neutral-200 text-neutral-600 rounded">
+                              Upcoming
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Approvers managing this stage */}
+                      <div className="pl-7 space-y-1">
+                        <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider block">Assigned Approvers:</span>
+                        {stg.approvers && stg.approvers.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            {stg.approvers.map((appr, aIdx) => (
+                              <div key={aIdx} className="p-1.5 bg-white border border-neutral-250 rounded text-[11px] flex justify-between items-center shadow-2xs">
+                                <div>
+                                  <span className="font-bold text-neutral-900 block">{appr.member_name || "All Members"}</span>
+                                  <span className="text-neutral-500 text-[10px]">Role: <strong>{appr.role_name || "Any Role"}</strong></span>
+                                </div>
+                                {appr.has_approved ? (
+                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-300 flex items-center gap-0.5">
+                                    <Check className="w-3 h-3" /> Approved
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-300">
+                                    Pending
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-neutral-400 italic">No specific approvers assigned (Open Access)</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Content Preview */}
             <div className="bg-neutral-50 p-3 border border-neutral-200 rounded text-xs space-y-1">
               <span className="font-bold uppercase tracking-wider text-[10px] text-neutral-500">Content / Mandate Preview</span>
@@ -452,19 +603,27 @@ export default function ApprovalsPage() {
                   rows={2}
                 />
 
-                <div className="flex justify-end gap-2 text-xs">
+                <div className="flex justify-between items-center text-xs pt-2">
                   <button
-                    onClick={() => setIsRejectModalOpen(true)}
-                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer"
+                    onClick={() => handleDeletePipeline(selectedPipeline.id)}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer flex items-center gap-1 border border-rose-200"
                   >
-                    Reject & Request Changes
+                    <Trash2 className="w-3.5 h-3.5" /> Delete Pipeline
                   </button>
-                  <button
-                    onClick={() => handleApproveStage(selectedPipeline.id)}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer"
-                  >
-                    Approve Active Stage
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setIsRejectModalOpen(true)}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer"
+                    >
+                      Reject & Request Changes
+                    </button>
+                    <button
+                      onClick={() => handleApproveStage(selectedPipeline.id)}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer"
+                    >
+                      Approve Active Stage
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
