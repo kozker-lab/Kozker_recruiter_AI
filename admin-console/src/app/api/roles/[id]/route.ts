@@ -52,12 +52,34 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
     // Update Role Permissions if provided
     if (permissions) {
-      const { role_id, ...permUpdates } = permissions;
+      const allowedKeys = [
+        'administrator', 'audit_logs', 'manage_server', 'access_recruitment',
+        'recruiter_dashboard', 'recruiter_mandates', 'recruiter_jobs', 'recruiter_sourcing',
+        'recruiter_reports', 'recruiter_qna', 'recruiter_resumes', 'recruiter_stage_move',
+        'access_client', 'client_contracts', 'client_mandates', 'client_shortlists',
+        'access_employee', 'employee_directory', 'employee_org_chart', 'manage_jobs',
+        'view_resumes', 'edit_status', 'schedule_interviews', 'recruiter_stages',
+        'recruiter_pipelines', 'recruiter_notifications', 'team_monitoring', 'interviewer_workspace'
+      ];
+      
+      const cleanPerms: Record<string, boolean> = {};
+      for (const k of allowedKeys) {
+        if (permissions[k] !== undefined) {
+          cleanPerms[k] = Boolean(permissions[k]);
+        }
+      }
+      if (permissions.approval_workflow_edit !== undefined) {
+        cleanPerms['recruiter_pipelines'] = Boolean(permissions.approval_workflow_edit);
+      }
+      if (permissions.approval_workflow_view !== undefined) {
+        cleanPerms['recruiter_stages'] = Boolean(permissions.approval_workflow_view);
+      }
+
       await supabase
         .from('role_permissions')
         .upsert({
           role_id: roleId,
-          ...permUpdates
+          ...cleanPerms
         });
     }
 

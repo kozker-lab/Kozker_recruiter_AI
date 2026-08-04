@@ -5879,12 +5879,18 @@ def user_can_approve_stage(db: Client, stage_id: str, user_id: Optional[str], us
 async def create_approval_pipeline(
     payload: PipelineCreateInput,
     org_id: Optional[str] = Depends(get_user_org_id),
-    user_id: Optional[str] = Depends(get_current_user_id)
+    user_id: Optional[str] = Depends(get_current_user_id),
+    x_user_email: Optional[str] = Header(None, alias="x-user-email")
 ):
     if not org_id:
         raise HTTPException(status_code=400, detail="Organization ID required")
         
     db = get_admin_supabase_client()
+    if not user_can_manage_pipelines(db, user_id, x_user_email):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Your role does not have permission to create approval workflows."
+        )
     pipeline_res = db.table("approval_pipelines").insert({
         "organization_id": org_id,
         "name": payload.name,
@@ -6121,33 +6127,35 @@ def user_can_manage_pipelines(db: Client, user_id: Optional[str], user_email: Op
     
     if user_id and not user_id.startswith("user_"):
         m_res = db.table("members").select("is_primary_admin, id").eq("id", user_id).execute()
-        if m_res.data:
-            if m_res.data[0].get("is_primary_admin"):
-                return True
-            if pipeline_creator_id and m_res.data[0].get("id") == pipeline_creator_id:
-                return True
+        if m_res.data and m_res.data[0].get("is_primary_admin"):
+            return True
                 
     if clean_email:
         m_res = db.table("members").select("is_primary_admin, id").ilike("email", clean_email).execute()
-        if m_res.data:
-            if m_res.data[0].get("is_primary_admin"):
-                return True
-            if pipeline_creator_id and m_res.data[0].get("id") == pipeline_creator_id:
-                return True
+        if m_res.data and m_res.data[0].get("is_primary_admin"):
+            return True
 
-    user_role_ids = []
+    user_role_ids = set()
     if clean_email:
-        mr_res = db.table("member_roles").select("role_id, members!inner(email)").ilike("members.email", clean_email).execute()
-        user_role_ids = [mr["role_id"] for mr in (mr_res.data or []) if mr.get("role_id")]
+        m_res = db.table("members").select("id").ilike("email", clean_email).execute()
+        if m_res.data:
+            mem = m_res.data[0]
+            mr_res = db.table("member_roles").select("role_id").eq("member_id", mem["id"]).execute()
+            for mr in (mr_res.data or []):
+                if mr.get("role_id"):
+                    user_role_ids.add(mr["role_id"])
+
     if user_id and not user_id.startswith("user_"):
-        mr_res2 = db.table("member_roles").select("role_id").eq("member_id", user_id).execute()
-        user_role_ids.extend([mr["role_id"] for mr in (mr_res2.data or []) if mr.get("role_id")])
+        mr_res = db.table("member_roles").select("role_id").eq("member_id", user_id).execute()
+        for mr in (mr_res.data or []):
+            if mr.get("role_id"):
+                user_role_ids.add(mr["role_id"])
         
     for r_id in user_role_ids:
         rp_res = db.table("role_permissions").select("*").eq("role_id", r_id).execute()
         if rp_res.data:
             rp = rp_res.data[0]
-            if rp.get("recruiter_pipelines") or rp.get("recruiter_stages") or rp.get("administrator"):
+            if rp.get("recruiter_pipelines") or rp.get("administrator"):
                 return True
                 
     return False
