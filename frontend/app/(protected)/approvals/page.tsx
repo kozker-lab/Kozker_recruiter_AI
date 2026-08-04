@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { 
   Shield, Plus, CheckCircle2, XCircle, Clock, Filter, Search, Layers, 
   UserCheck, AlertTriangle, ArrowRight, RefreshCw, FileText, Check, Edit3, 
-  Trash2, Eye, HelpCircle, ChevronRight, MessageSquare 
+  Trash2, Eye, HelpCircle, ChevronRight, MessageSquare, Zap
 } from "lucide-react";
 import { apiRequest } from "@/lib/api";
 
@@ -169,6 +169,61 @@ export default function ApprovalsPage() {
       }
     }
     return false;
+  };
+
+  const handleInstantiateTemplate = async (templateId: string, customName?: string) => {
+    try {
+      setLoading(true);
+      const res = await apiRequest<any>("POST", `/approvals/pipelines/${templateId}/instantiate`, {
+        name: customName || undefined
+      });
+      
+      if (res?.next_stage_approver_emails?.length > 0) {
+        for (const email of res.next_stage_approver_emails) {
+          await apiRequest("POST", "/approvals/email", {
+            to: email,
+            subject: `[APPROVAL REQUIRED] New Workflow Launched: ${res.name}`,
+            html: `
+              <div style="font-family: sans-serif; padding: 20px;">
+                <h2 style="color: #ff6e30;">Approval Required: ${res.name}</h2>
+                <p>A new workflow has been launched from a template for <strong>Stage 1 (${res.next_stage_name || 'Stage 1'})</strong>.</p>
+                <p><a href="${typeof window !== 'undefined' ? window.location.origin : ''}/approvals" style="padding: 10px 20px; background: #ff6e30; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">Review & Approve Stage 1</a></p>
+              </div>
+            `
+          });
+        }
+      }
+      
+      await fetchPipelines();
+      setSelectedPipeline(null);
+      setActiveTab("active");
+    } catch (e: any) {
+      alert(e.message || "Failed to launch workflow from template");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadTemplate = (templateId: string) => {
+    if (!templateId) return;
+    const t = pipelines.find((p) => p.id === templateId);
+    if (!t) return;
+    setBuilderName(`${t.name} (Active)`);
+    setBuilderDesc(t.description || "");
+    setBuilderEntityType((t.entity_type as any) || "mandate");
+    setBuilderIsTemplate(false);
+    setBuilderContentText(t.custom_content?.raw_text || "");
+    
+    if (t.stages && t.stages.length > 0) {
+      setBuilderStages(t.stages.map((stg) => ({
+        stage_name: stg.stage_name,
+        require_all_approvers: stg.require_all_approvers || false,
+        approvers: stg.approvers?.map((a: any) => ({
+          role_id: a.role_id || a.roles?.id || null,
+          member_id: a.member_id || a.members?.id || null
+        })) || []
+      })));
+    }
   };
 
   useEffect(() => {
@@ -479,6 +534,14 @@ export default function ApprovalsPage() {
                       </span>
                     )}
 
+                    {p.is_template && canManagePipelines(p) && (
+                      <button
+                        onClick={() => handleInstantiateTemplate(p.id)}
+                        className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                      >
+                        <Zap className="w-3.5 h-3.5 fill-current" /> Use Template
+                      </button>
+                    )}
                     <button
                       onClick={() => setSelectedPipeline(p)}
                       className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-neutral-700 text-xs font-semibold rounded uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1"
@@ -546,6 +609,26 @@ export default function ApprovalsPage() {
                 ✕
               </button>
             </div>
+
+            {/* Template Banner if viewing a template */}
+            {selectedPipeline.is_template && (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded flex items-center justify-between shadow-2xs">
+                <div className="text-xs text-amber-950 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-600 shrink-0 fill-current" />
+                  <span>
+                    <strong>Workflow Template:</strong> Click launch to instantiate this template into a live, active approval workflow.
+                  </span>
+                </div>
+                {canManagePipelines(selectedPipeline) && (
+                  <button
+                    onClick={() => handleInstantiateTemplate(selectedPipeline.id)}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold uppercase tracking-wider rounded text-[10px] cursor-pointer flex items-center gap-1.5 shrink-0 ml-3 shadow-xs"
+                  >
+                    <Zap className="w-3.5 h-3.5 fill-current" /> Launch Workflow From Template
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Full Pipeline Stages & Assigned Approvers Breakdown */}
             <div className="space-y-2 border-b border-neutral-200 pb-3">
@@ -858,6 +941,27 @@ export default function ApprovalsPage() {
             </h3>
 
             <form onSubmit={handleCreatePipeline} className="space-y-4 text-xs">
+              {/* Load Template Preset Selector */}
+              {pipelines.some((p) => p.is_template) && (
+                <div className="p-2.5 bg-amber-50 border border-amber-250 rounded space-y-1">
+                  <label className="font-bold text-amber-900 text-[11px] flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5 text-amber-600 fill-current" /> Load From Pre-configured Template:
+                  </label>
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (e.target.value) handleLoadTemplate(e.target.value);
+                    }}
+                    className="w-full p-1.5 bg-white border border-amber-300 rounded text-xs text-neutral-800 font-medium focus:outline-none cursor-pointer"
+                  >
+                    <option value="">-- Select a template to pre-fill stages & approvers --</option>
+                    {pipelines.filter((p) => p.is_template).map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label className="font-bold text-neutral-700">Pipeline Name:</label>
                 <input

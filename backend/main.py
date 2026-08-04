@@ -5679,6 +5679,10 @@ class PipelineRejectInput(BaseModel):
     highlighted_fields: List[Dict[str, Any]] = []
     feedback_notes: Optional[str] = None
 
+class PipelineInstantiateInput(BaseModel):
+    name: Optional[str] = None
+    custom_content: Optional[Dict[str, Any]] = None
+
 class PipelineAccessInput(BaseModel):
     role_id: Optional[str] = None
     member_id: Optional[str] = None
@@ -5947,6 +5951,89 @@ async def create_approval_pipeline(
         **pipeline,
         "next_stage_approver_emails": stage_1_emails,
         "next_stage_name": payload.stages[0].stage_name if payload.stages else "Stage 1"
+    }
+
+@app.post("/api/v1/approvals/pipelines/{id}/instantiate")
+async def instantiate_approval_pipeline(
+    id: str,
+    payload: Optional[PipelineInstantiateInput] = Body(None),
+    org_id: Optional[str] = Depends(get_user_org_id),
+    user_id: Optional[str] = Depends(get_current_user_id),
+    x_user_email: Optional[str] = Header(None, alias="x-user-email")
+):
+    db = get_admin_supabase_client()
+    if not user_can_manage_pipelines(db, user_id, x_user_email):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Your role does not have permission to launch approval workflows."
+        )
+        
+    pipe_res = db.table("approval_pipelines").select("*, approval_stages(*, approval_stage_approvers(*))").eq("id", id).execute()
+    if not pipe_res.data:
+        raise HTTPException(status_code=404, detail="Template pipeline not found")
+        
+    template = pipe_res.data[0]
+    stages = sorted(template.get("approval_stages") or [], key=lambda s: s.get("stage_index", 0))
+    
+    new_pipe_name = payload.name.strip() if (payload and payload.name and payload.name.strip()) else f"{template['name']} (Live)"
+    new_content = payload.custom_content if (payload and payload.custom_content) else (template.get("custom_content") or {})
+    
+    new_pipe_res = db.table("approval_pipelines").insert({
+        "organization_id": org_id or template.get("organization_id"),
+        "name": new_pipe_name,
+        "description": template.get("description"),
+        "is_template": False,
+        "entity_type": template.get("entity_type", "mandate"),
+        "entity_id": template.get("entity_id"),
+        "custom_content": new_content,
+        "created_by": user_id if user_id and not user_id.startswith("user_") else None,
+        "current_stage_index": 0,
+        "status": "pending"
+    }).execute()
+    
+    if not new_pipe_res.data:
+        raise HTTPException(status_code=500, detail="Failed to instantiate pipeline from template")
+        
+    new_pipeline = new_pipe_res.data[0]
+    new_pipe_id = new_pipeline["id"]
+    new_stage_1_id = None
+    
+    for s_idx, stg in enumerate(stages):
+        stg_res = db.table("approval_stages").insert({
+            "pipeline_id": new_pipe_id,
+            "stage_index": s_idx,
+            "stage_name": stg.get("stage_name", f"Stage {s_idx + 1}"),
+            "require_all_approvers": stg.get("require_all_approvers", False),
+            "status": "pending"
+        }).execute()
+        
+        if stg_res.data:
+            new_stage_id = stg_res.data[0]["id"]
+            if s_idx == 0:
+                new_stage_1_id = new_stage_id
+                
+            approvers = stg.get("approval_stage_approvers") or []
+            for appr in approvers:
+                db.table("approval_stage_approvers").insert({
+                    "stage_id": new_stage_id,
+                    "role_id": appr.get("role_id"),
+                    "member_id": appr.get("member_id"),
+                    "has_approved": False
+                }).execute()
+                
+    stage_1_emails = get_stage_approver_emails(db, new_stage_1_id) if new_stage_1_id else []
+    
+    db.table("approval_logs").insert({
+        "pipeline_id": new_pipe_id,
+        "actor_id": user_id if user_id and not user_id.startswith("user_") else None,
+        "action": "instantiated",
+        "notes": f"Launched live workflow from template '{template['name']}'"
+    }).execute()
+    
+    return {
+        **new_pipeline,
+        "next_stage_approver_emails": stage_1_emails,
+        "next_stage_name": stages[0]["stage_name"] if stages else "Stage 1"
     }
 
 @app.post("/api/v1/approvals/pipelines/{id}/approve")
