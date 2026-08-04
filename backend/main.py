@@ -5879,6 +5879,101 @@ def user_can_approve_stage(db: Client, stage_id: str, user_id: Optional[str], us
         
     return False
 
+class ApprovalEmailInput(BaseModel):
+    to: str
+    pipelineName: Optional[str] = "Approval Workflow"
+    stageName: Optional[str] = "Approval Stage"
+    submitterName: Optional[str] = "Team Member"
+    contentPreview: Optional[str] = ""
+    rejectionChecklist: Optional[Dict[str, Any]] = None
+    feedbackNotes: Optional[str] = None
+    subject: Optional[str] = None
+    html: Optional[str] = None
+
+def dispatch_approval_notifications(
+    db: Client,
+    recipient_emails: List[str],
+    title: str,
+    message: str,
+    html_body: str,
+    pipeline_id: Optional[str] = None
+):
+    if not recipient_emails:
+        return
+
+    for email in recipient_emails:
+        clean_email = email.strip().lower()
+        if not clean_email or "@" not in clean_email:
+            continue
+
+        try:
+            send_email(
+                to_email=clean_email,
+                subject=f"[Kozker Approvals] {title}",
+                html_body=html_body,
+                sender_name="Kozker Approval Operations"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send approval email to {clean_email}: {e}")
+
+        try:
+            p_res = db.table("profiles").select("id").ilike("email", clean_email).execute()
+            if p_res.data and p_res.data[0].get("id"):
+                profile_id = p_res.data[0]["id"]
+                db.table("notifications").insert({
+                    "recruiter_id": profile_id,
+                    "title": title,
+                    "message": message,
+                    "type": "job_generation",
+                    "is_read": False,
+                    "metadata": {"pipeline_id": pipeline_id, "recipient_email": clean_email} if pipeline_id else {}
+                }).execute()
+        except Exception as ne:
+            logger.error(f"Failed to create in-app notification for {clean_email}: {ne}")
+
+@app.post("/api/v1/approvals/email")
+async def send_approval_notification_email(
+    payload: ApprovalEmailInput,
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    db = get_admin_supabase_client()
+    clean_email = payload.to.strip().lower()
+    
+    subject = payload.subject or f"Action Required: Approval for '{payload.pipelineName}'"
+    
+    if payload.html:
+        html_body = payload.html
+    elif payload.rejectionChecklist or payload.feedbackNotes:
+        reasons_list = payload.rejectionChecklist.get("reasons", []) if payload.rejectionChecklist else []
+        reasons_html = "".join([f"<li>{r}</li>" for r in reasons_list])
+        html_body = f"""
+          <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; rounded: 8px;">
+            <h2 style="color: #e11d48; margin-top: 0;">Revision Requested: {payload.pipelineName}</h2>
+            <p>Your approval workflow <strong>{payload.pipelineName}</strong> has been returned for revisions at <strong>{payload.stageName}</strong>.</p>
+            {f'<div style="background: #fff1f2; padding: 12px; border-left: 4px solid #f43f5e; margin: 15px 0;"><strong>Rejection Reasons:</strong><ul>{reasons_html}</ul></div>' if reasons_list else ''}
+            {f'<p><strong>Feedback Notes:</strong> {payload.feedbackNotes}</p>' if payload.feedbackNotes else ''}
+            <p style="margin-top: 20px;"><a href="http://localhost:3000/approvals" style="background: #e11d48; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">View & Update Workflow</a></p>
+          </div>
+        """
+    else:
+        html_body = f"""
+          <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #e5e7eb; rounded: 8px;">
+            <h2 style="color: #ff6e30; margin-top: 0;">Approval Needed: {payload.pipelineName}</h2>
+            <p>You have been assigned to review and approve <strong>{payload.stageName}</strong> for <strong>{payload.pipelineName}</strong> (Submitted by {payload.submitterName}).</p>
+            {f'<blockquote style="background: #f9fafb; padding: 10px; border-left: 3px solid #ff6e30; color: #4b5563;">"{payload.contentPreview}"</blockquote>' if payload.contentPreview else ''}
+            <p style="margin-top: 20px;"><a href="http://localhost:3000/approvals" style="background: #ff6e30; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">Review & Approve Stage</a></p>
+          </div>
+        """
+        
+    dispatch_approval_notifications(
+        db=db,
+        recipient_emails=[clean_email],
+        title=f"Approval Notification: {payload.pipelineName}",
+        message=f"Action required for stage '{payload.stageName}' of workflow '{payload.pipelineName}'",
+        html_body=html_body
+    )
+    return {"status": "success", "message": f"Notification dispatched to {clean_email}"}
+
 @app.post("/api/v1/approvals/pipelines")
 async def create_approval_pipeline(
     payload: PipelineCreateInput,
@@ -5938,6 +6033,22 @@ async def create_approval_pipeline(
                 }).execute()
                 
     stage_1_emails = get_stage_approver_emails(db, stage_1_id) if stage_1_id else []
+
+    if stage_1_emails and not payload.is_template:
+        dispatch_approval_notifications(
+            db=db,
+            recipient_emails=stage_1_emails,
+            title=f"New Approval Required: {payload.name}",
+            message=f"You have been assigned as an approver for Stage 1 of '{payload.name}'.",
+            html_body=f"""
+              <div style="font-family: sans-serif; padding: 20px;">
+                <h2 style="color: #ff6e30;">New Approval Required: {payload.name}</h2>
+                <p>A new approval workflow has been submitted for Stage 1 (<strong>{payload.stages[0].stage_name if payload.stages else 'Stage 1'}</strong>).</p>
+                <p><a href="http://localhost:3000/approvals" style="background: #ff6e30; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Review & Approve Stage</a></p>
+              </div>
+            """,
+            pipeline_id=pipeline_id
+        )
 
     # Insert Audit Log
     db.table("approval_logs").insert({
@@ -6023,6 +6134,22 @@ async def instantiate_approval_pipeline(
                 }).execute()
                 
     stage_1_emails = get_stage_approver_emails(db, new_stage_1_id) if new_stage_1_id else []
+    
+    if stage_1_emails:
+        dispatch_approval_notifications(
+            db=db,
+            recipient_emails=stage_1_emails,
+            title=f"Approval Workflow Launched: {new_pipe_name}",
+            message=f"Workflow launched from template for Stage 1 of '{new_pipe_name}'.",
+            html_body=f"""
+              <div style="font-family: sans-serif; padding: 20px;">
+                <h2 style="color: #ff6e30;">Workflow Launched: {new_pipe_name}</h2>
+                <p>A new active workflow has been launched from a template for Stage 1 (<strong>{stages[0]['stage_name'] if stages else 'Stage 1'}</strong>).</p>
+                <p><a href="http://localhost:3000/approvals" style="background: #ff6e30; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Review & Approve Stage</a></p>
+              </div>
+            """,
+            pipeline_id=new_pipe_id
+        )
     
     db.table("approval_logs").insert({
         "pipeline_id": new_pipe_id,
@@ -6125,6 +6252,22 @@ async def approve_pipeline_stage(
             next_stage = stages[next_idx]
             next_stage_name = next_stage.get("stage_name")
             next_stage_approver_emails = get_stage_approver_emails(db, next_stage["id"])
+            
+            if next_stage_approver_emails:
+                dispatch_approval_notifications(
+                    db=db,
+                    recipient_emails=next_stage_approver_emails,
+                    title=f"Stage Advanced: {pipeline.get('name')}",
+                    message=f"Workflow '{pipeline.get('name')}' has advanced to '{next_stage_name}' awaiting your approval.",
+                    html_body=f"""
+                      <div style="font-family: sans-serif; padding: 20px;">
+                        <h2 style="color: #ff6e30;">Approval Needed: {pipeline.get('name')}</h2>
+                        <p>The previous stage was approved. The workflow is now awaiting your sign-off for <strong>{next_stage_name}</strong>.</p>
+                        <p><a href="http://localhost:3000/approvals" style="background: #ff6e30; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Review & Approve Stage</a></p>
+                      </div>
+                    """,
+                    pipeline_id=clean_id
+                )
         else:
             # Final Approval!
             db.table("approval_pipelines").update({

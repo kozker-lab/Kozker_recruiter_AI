@@ -288,16 +288,12 @@ export default function ApprovalsPage() {
       if (res?.next_stage_approver_emails && Array.isArray(res.next_stage_approver_emails)) {
         for (const recipientEmail of res.next_stage_approver_emails) {
           try {
-            await fetch("/api/approvals/email", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                to: recipientEmail,
-                pipelineName: builderName,
-                stageName: res.next_stage_name || "Stage 1",
-                submitterName: "Team Member",
-                contentPreview: builderContentText?.substring(0, 150)
-              })
+            await apiRequest("POST", "/approvals/email", {
+              to: recipientEmail,
+              pipelineName: builderName,
+              stageName: res.next_stage_name || "Stage 1",
+              submitterName: "Team Member",
+              contentPreview: builderContentText?.substring(0, 150)
             });
           } catch (mailErr) {
             console.warn("Failed to dispatch email to", recipientEmail, mailErr);
@@ -323,16 +319,12 @@ export default function ApprovalsPage() {
       if (res?.next_stage_approver_emails && Array.isArray(res.next_stage_approver_emails)) {
         for (const recipientEmail of res.next_stage_approver_emails) {
           try {
-            await fetch("/api/approvals/email", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                to: recipientEmail,
-                pipelineName: selectedPipeline?.name || "Approval Workflow",
-                stageName: res.next_stage_name || "Next Stage",
-                submitterName: "Recruiter Member",
-                contentPreview: selectedPipeline?.custom_content?.raw_text?.substring(0, 150)
-              })
+            await apiRequest("POST", "/approvals/email", {
+              to: recipientEmail,
+              pipelineName: selectedPipeline?.name || "Approval Workflow",
+              stageName: res.next_stage_name || "Next Stage",
+              submitterName: "Recruiter Member",
+              contentPreview: selectedPipeline?.custom_content?.raw_text?.substring(0, 150)
             });
           } catch (mailErr) {
             console.warn("Failed to dispatch email to", recipientEmail, mailErr);
@@ -365,16 +357,12 @@ export default function ApprovalsPage() {
       const recipientEmail = res?.creator_email || selectedPipeline.created_by_name;
       if (recipientEmail && recipientEmail.includes("@")) {
         try {
-          await fetch("/api/approvals/email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              to: recipientEmail,
-              pipelineName: selectedPipeline.name,
-              stageName: "Stage 1 Draft",
-              rejectionChecklist: { reasons: allReasons },
-              feedbackNotes: rejectionFeedback
-            })
+          await apiRequest("POST", "/approvals/email", {
+            to: recipientEmail,
+            pipelineName: selectedPipeline.name,
+            stageName: "Stage 1 Draft",
+            rejectionChecklist: { reasons: allReasons },
+            feedbackNotes: rejectionFeedback
           });
         } catch (mailErr) {
           console.warn("Failed to dispatch rejection email to", recipientEmail, mailErr);
