@@ -5968,7 +5968,8 @@ async def instantiate_approval_pipeline(
             detail="Forbidden: Your role does not have permission to launch approval workflows."
         )
         
-    pipe_res = db.table("approval_pipelines").select("*, approval_stages(*, approval_stage_approvers(*))").eq("id", id).execute()
+    clean_id = deobfuscate_id(id)
+    pipe_res = db.table("approval_pipelines").select("*, approval_stages(*, approval_stage_approvers(*))").eq("id", clean_id).execute()
     if not pipe_res.data:
         raise HTTPException(status_code=404, detail="Template pipeline not found")
         
@@ -6044,7 +6045,8 @@ async def approve_pipeline_stage(
     x_user_email: Optional[str] = Header(None, alias="x-user-email")
 ):
     db = get_admin_supabase_client()
-    pipe_res = db.table("approval_pipelines").select("*, approval_stages(*)").eq("id", id).execute()
+    clean_id = deobfuscate_id(id)
+    pipe_res = db.table("approval_pipelines").select("*, approval_stages(*)").eq("id", clean_id).execute()
     if not pipe_res.data:
         raise HTTPException(status_code=404, detail="Pipeline not found")
         
@@ -6118,7 +6120,7 @@ async def approve_pipeline_stage(
             db.table("approval_pipelines").update({
                 "current_stage_index": next_idx,
                 "status": "pending"
-            }).eq("id", id).execute()
+            }).eq("id", clean_id).execute()
             
             next_stage = stages[next_idx]
             next_stage_name = next_stage.get("stage_name")
@@ -6127,11 +6129,11 @@ async def approve_pipeline_stage(
             # Final Approval!
             db.table("approval_pipelines").update({
                 "status": "approved"
-            }).eq("id", id).execute()
+            }).eq("id", clean_id).execute()
             
     # Audit log
     db.table("approval_logs").insert({
-        "pipeline_id": id,
+        "pipeline_id": clean_id,
         "stage_id": stage_id,
         "actor_id": user_id if user_id and not user_id.startswith("user_") else None,
         "action": "stage_approved",
@@ -6153,7 +6155,8 @@ async def reject_pipeline_stage(
     x_user_email: Optional[str] = Header(None, alias="x-user-email")
 ):
     db = get_admin_supabase_client()
-    pipe_res = db.table("approval_pipelines").select("*, approval_stages(*)").eq("id", id).execute()
+    clean_id = deobfuscate_id(id)
+    pipe_res = db.table("approval_pipelines").select("*, approval_stages(*)").eq("id", clean_id).execute()
     if not pipe_res.data:
         raise HTTPException(status_code=404, detail="Pipeline not found")
         
@@ -6171,7 +6174,7 @@ async def reject_pipeline_stage(
         
     # Store Rejection Checklist
     db.table("approval_rejection_checklists").insert({
-        "pipeline_id": id,
+        "pipeline_id": clean_id,
         "stage_id": stage_id,
         "rejected_by": user_id if user_id and not user_id.startswith("user_") else None,
         "reasons": payload.reasons,
@@ -6183,7 +6186,7 @@ async def reject_pipeline_stage(
     db.table("approval_pipelines").update({
         "status": "rejected",
         "current_stage_index": 0
-    }).eq("id", id).execute()
+    }).eq("id", clean_id).execute()
     
     if stage_id:
         db.table("approval_stages").update({"status": "rejected"}).eq("id", stage_id).execute()
@@ -6196,7 +6199,7 @@ async def reject_pipeline_stage(
             
     # Audit Log
     db.table("approval_logs").insert({
-        "pipeline_id": id,
+        "pipeline_id": clean_id,
         "stage_id": stage_id,
         "actor_id": user_id if user_id and not user_id.startswith("user_") else None,
         "action": "stage_rejected",
@@ -6255,7 +6258,8 @@ async def delete_approval_pipeline(
     x_user_email: Optional[str] = Header(None, alias="x-user-email")
 ):
     db = get_admin_supabase_client()
-    pipe_res = db.table("approval_pipelines").select("id, organization_id, created_by").eq("id", id).execute()
+    clean_id = deobfuscate_id(id)
+    pipe_res = db.table("approval_pipelines").select("id, organization_id, created_by").eq("id", clean_id).execute()
     if not pipe_res.data:
         raise HTTPException(status_code=404, detail="Pipeline not found")
         
@@ -6270,7 +6274,7 @@ async def delete_approval_pipeline(
         )
 
     # Get associated stage IDs
-    stg_res = db.table("approval_stages").select("id").eq("pipeline_id", id).execute()
+    stg_res = db.table("approval_stages").select("id").eq("pipeline_id", clean_id).execute()
     stage_ids = [s["id"] for s in (stg_res.data or []) if "id" in s]
     
     # Delete child relational records
@@ -6278,10 +6282,10 @@ async def delete_approval_pipeline(
         for sid in stage_ids:
             db.table("approval_stage_approvers").delete().eq("stage_id", sid).execute()
     
-    db.table("approval_rejection_checklists").delete().eq("pipeline_id", id).execute()
-    db.table("approval_logs").delete().eq("pipeline_id", id).execute()
-    db.table("approval_stages").delete().eq("pipeline_id", id).execute()
-    db.table("approval_pipelines").delete().eq("id", id).execute()
+    db.table("approval_rejection_checklists").delete().eq("pipeline_id", clean_id).execute()
+    db.table("approval_logs").delete().eq("pipeline_id", clean_id).execute()
+    db.table("approval_stages").delete().eq("pipeline_id", clean_id).execute()
+    db.table("approval_pipelines").delete().eq("id", clean_id).execute()
     
     return {"status": "success", "message": "Approval pipeline deleted successfully"}
 
