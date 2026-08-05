@@ -46,21 +46,28 @@ export async function POST(request: Request) {
 
     const hasAssignedRoles = roleIds.length > 0;
 
+    let isPrimaryAdmin = member.is_primary_admin === true;
+
+    // If member has is_primary_admin null/undefined or true, or if no roles assigned yet, treat as primary admin
+    if (member.is_primary_admin !== false && (!hasAssignedRoles || member.is_primary_admin === true)) {
+      isPrimaryAdmin = true;
+    }
+
     let permissions = {
-      administrator: hasAssignedRoles ? false : true,
-      audit_logs: hasAssignedRoles ? false : true,
+      administrator: isPrimaryAdmin ? true : false,
+      audit_logs: isPrimaryAdmin ? true : false,
       manage_server: false,
-      access_recruitment: hasAssignedRoles,
-      recruiter_dashboard: hasAssignedRoles,
-      recruiter_mandates: hasAssignedRoles,
-      recruiter_jobs: hasAssignedRoles,
-      recruiter_sourcing: hasAssignedRoles,
-      recruiter_reports: hasAssignedRoles,
-      recruiter_qna: hasAssignedRoles,
-      recruiter_resumes: hasAssignedRoles,
-      recruiter_stage_move: hasAssignedRoles,
-      recruiter_stages: hasAssignedRoles,
-      recruiter_pipelines: hasAssignedRoles,
+      access_recruitment: hasAssignedRoles || isPrimaryAdmin,
+      recruiter_dashboard: hasAssignedRoles || isPrimaryAdmin,
+      recruiter_mandates: hasAssignedRoles || isPrimaryAdmin,
+      recruiter_jobs: hasAssignedRoles || isPrimaryAdmin,
+      recruiter_sourcing: hasAssignedRoles || isPrimaryAdmin,
+      recruiter_reports: hasAssignedRoles || isPrimaryAdmin,
+      recruiter_qna: hasAssignedRoles || isPrimaryAdmin,
+      recruiter_resumes: hasAssignedRoles || isPrimaryAdmin,
+      recruiter_stage_move: hasAssignedRoles || isPrimaryAdmin,
+      recruiter_stages: hasAssignedRoles || isPrimaryAdmin,
+      recruiter_pipelines: hasAssignedRoles || isPrimaryAdmin,
       team_monitoring: false,
       interviewer_workspace: false,
       access_client: false,
@@ -70,10 +77,10 @@ export async function POST(request: Request) {
       access_employee: false,
       employee_directory: false,
       employee_org_chart: false,
-      manage_jobs: hasAssignedRoles,
-      view_resumes: hasAssignedRoles,
-      edit_status: hasAssignedRoles,
-      schedule_interviews: hasAssignedRoles
+      manage_jobs: hasAssignedRoles || isPrimaryAdmin,
+      view_resumes: hasAssignedRoles || isPrimaryAdmin,
+      edit_status: hasAssignedRoles || isPrimaryAdmin,
+      schedule_interviews: hasAssignedRoles || isPrimaryAdmin
     };
 
     if (hasAssignedRoles) {
@@ -93,7 +100,9 @@ export async function POST(request: Request) {
       }
     }
 
-    const isPrimaryAdmin = member.is_primary_admin === true || permissions.administrator === true;
+    if (permissions.administrator === true) {
+      isPrimaryAdmin = true;
+    }
 
     if (isPrimaryAdmin) {
       permissions.administrator = true;
@@ -119,7 +128,7 @@ export async function POST(request: Request) {
       must_change_password: member.must_change_password,
       is_primary_admin: isPrimaryAdmin,
       terms_accepted: member.terms_accepted || false,
-      has_assigned_roles: hasAssignedRoles,
+      has_assigned_roles: hasAssignedRoles || isPrimaryAdmin,
       roles: rolesList,
       permissions
     };
@@ -130,7 +139,7 @@ export async function POST(request: Request) {
       success: true,
       must_change_password: member.must_change_password,
       must_accept_terms: !member.terms_accepted,
-      has_assigned_roles: hasAssignedRoles,
+      has_assigned_roles: hasAssignedRoles || isPrimaryAdmin,
       user: jwtPayload,
       token,
       urls: {

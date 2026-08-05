@@ -21,7 +21,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (user.has_assigned_roles === false) {
+    const isAdmin = user.is_primary_admin === true || user.permissions?.administrator === true;
+    if (!isAdmin && user.has_assigned_roles === false) {
       return NextResponse.json({
         error: 'Forbidden: Default unassigned members have view-only access and cannot assign roles.'
       }, { status: 403 });
