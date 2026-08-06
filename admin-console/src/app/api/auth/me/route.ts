@@ -50,7 +50,7 @@ export async function GET(request: Request) {
 
     let isPrimaryAdmin = member.is_primary_admin === true || payload.is_primary_admin === true;
 
-    if (member.is_primary_admin !== false && (!hasAssignedRoles || member.is_primary_admin === true)) {
+    if (member.is_primary_admin !== false) {
       isPrimaryAdmin = true;
     }
 

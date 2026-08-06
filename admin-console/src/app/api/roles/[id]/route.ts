@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { verifyJwtToken } from '@/lib/auth';
 
-function getUserFromReq(request: Request) {
+async function getUserFromReq(request: Request) {
   const authHeader = request.headers.get('authorization') || '';
   const cookieHeader = request.headers.get('cookie') || '';
   let token = authHeader.replace('Bearer ', '');
@@ -10,12 +10,22 @@ function getUserFromReq(request: Request) {
     const match = cookieHeader.match(/kozker_sso_token=([^;]+)/);
     if (match) token = match[1];
   }
-  return verifyJwtToken(token);
+  const user = verifyJwtToken(token);
+  if (user && user.id) {
+    if (!user.organization_id || user.is_primary_admin === undefined) {
+      const { data: mem } = await supabase.from('members').select('organization_id, is_primary_admin').eq('id', user.id).maybeSingle();
+      if (mem) {
+        user.organization_id = user.organization_id || mem.organization_id;
+        if (mem.is_primary_admin !== false) user.is_primary_admin = true;
+      }
+    }
+  }
+  return user;
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
-    const user = getUserFromReq(request);
+    const user = await getUserFromReq(request);
     if (!user || !user.organization_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -104,7 +114,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
-    const user = getUserFromReq(request);
+    const user = await getUserFromReq(request);
     if (!user || !user.organization_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
