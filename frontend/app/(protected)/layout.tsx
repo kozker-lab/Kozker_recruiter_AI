@@ -1709,45 +1709,45 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none select-none">
         {toasts.map((toast) => {
           let ToastIcon = Bell;
-          let iconColor = "text-neutral-500 bg-neutral-100 border-neutral-200";
+          let iconColor = "text-neutral-300 bg-neutral-800 border-neutral-700";
           if (toast.type === "job_generation") {
             ToastIcon = Briefcase;
-            iconColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
+            iconColor = "text-primary bg-primary/10 border-primary/20";
           } else if (toast.type === "candidate_matching") {
             ToastIcon = Sparkles;
-            iconColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
+            iconColor = "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
           } else if (toast.type === "upload") {
             ToastIcon = Upload;
-            iconColor = "text-blue-600 bg-blue-50 border-blue-100";
+            iconColor = "text-blue-400 bg-blue-500/10 border-blue-500/20";
           } else if (toast.type === "error") {
             ToastIcon = AlertCircle;
-            iconColor = "text-rose-600 bg-rose-50 border-rose-100";
+            iconColor = "text-red-400 bg-red-500/10 border-red-500/20";
           } else if (toast.type === "screening_questions") {
             ToastIcon = Layers;
-            iconColor = "text-amber-600 bg-amber-50 border-amber-100";
+            iconColor = "text-amber-400 bg-amber-500/10 border-amber-500/20";
           }
 
           return (
             <div
               key={toast.id}
               onClick={() => handleToastClick(toast)}
-              className="pointer-events-auto cursor-pointer bg-white/90 backdrop-blur-md border border-neutral-200 shadow-md rounded-sm p-3.5 flex gap-3 text-xs text-neutral-800 transition-all duration-300 hover:bg-neutral-50 hover:shadow-lg animate-slide-in relative font-sans group"
+              className="pointer-events-auto cursor-pointer bg-neutral-900/95 backdrop-blur-md border border-neutral-800 shadow-2xl rounded-sm p-3.5 flex gap-3 text-xs text-neutral-200 transition-all duration-300 hover:border-neutral-700 animate-slide-in relative font-sans group"
             >
               <div className={`w-8 h-8 rounded-sm border flex items-center justify-center shrink-0 ${iconColor}`}>
                 <ToastIcon className="w-4 h-4" />
               </div>
               <div className="flex-1 space-y-0.5 pr-4">
-                <p className="font-bold text-[11px] leading-tight text-neutral-900 group-hover:text-primary transition-colors flex items-center gap-1.5">
+                <p className="font-bold text-[11px] leading-tight text-neutral-white group-hover:text-primary transition-colors flex items-center gap-1.5">
                   {toast.title}
                 </p>
-                <p className="text-neutral-500 text-[10px] leading-snug">{toast.message}</p>
+                <p className="text-neutral-400 text-[10px] leading-snug">{toast.message}</p>
               </div>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setToasts(prev => prev.filter(t => t.id !== toast.id));
                 }}
-                className="absolute right-2 top-2 text-neutral-450 hover:text-neutral-700 cursor-pointer p-0.5 rounded-xs hover:bg-neutral-100 transition-colors"
+                className="absolute right-2 top-2 text-neutral-500 hover:text-neutral-200 cursor-pointer p-0.5 rounded-xs hover:bg-neutral-800 transition-colors"
                 title="Dismiss alert"
                 aria-label="Dismiss alert"
               >

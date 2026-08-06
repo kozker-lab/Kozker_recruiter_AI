@@ -72,21 +72,18 @@ export async function GET(request: Request) {
 
         const supervisedRoleIdSet = new Set((supervisedRoles || []).map((r: any) => r.id));
 
-        // Filter members who report to this manager
+        // Filter members who report to this manager:
+        // Prioritize explicit member-manager assignments (member_manager_assignments or manager_member_id)
         filteredMembers = allMembers.filter((m: any) => {
           if (m.id === managerId) return false; // Exclude manager themselves
 
-          // Check direct assignment column on member
-          if (m.manager_member_id === managerId) return true;
+          if (directSuperviseeIds.size > 0 || m.manager_member_id) {
+            return directSuperviseeIds.has(m.id) || m.manager_member_id === managerId;
+          }
 
-          // Check member_manager_assignments table
-          if (directSuperviseeIds.has(m.id)) return true;
-
-          // Check if member holds a role supervised by manager's role
+          // Fallback to role hierarchy supervision if no explicit member assignments exist
           const memberRoleIds = (m.member_roles || []).map((mr: any) => mr.roles?.id).filter(Boolean);
-          if (memberRoleIds.some((rid: string) => supervisedRoleIdSet.has(rid))) return true;
-
-          return false;
+          return memberRoleIds.some((rid: string) => supervisedRoleIdSet.has(rid));
         });
       }
     }
