@@ -6,10 +6,11 @@ import { useAuthStore } from "@/lib/store/auth";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/Logo";
 
+const supabase = createClient();
+
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const setSession = useAuthStore((state) => state.setSession);
   const setLoading = useAuthStore((state) => state.setLoading);
-  const supabase = createClient();
   const pathname = usePathname();
 
   const [isMobile, setIsMobile] = React.useState(false);

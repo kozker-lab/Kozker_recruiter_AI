@@ -319,7 +319,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     } catch {
       // Fallback gracefully
     }
-  }, [user, profile]);
+  }, [user?.email, profile?.email]);
 
   React.useEffect(() => {
     fetchUserData();
