@@ -12,10 +12,10 @@ export async function GET(request: Request) {
     const orgId = searchParams.get('org_id');
     const managerId = searchParams.get('manager_id');
 
-    // Fetch members, their assigned roles, and manager reporting lines
+    // Fetch members and their assigned roles
     let query = supabase
       .from('members')
-      .select('*, member_roles(role_id, roles(name, color_hex, branch_name)), member_manager_assignments!member_manager_assignments_member_id_fkey(*)')
+      .select('*, member_roles(role_id, roles(name, color_hex, branch_name)))')
       .order('name', { ascending: true });
 
     if (orgId && orgId !== 'all') {
@@ -28,20 +28,29 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Fetch all manager assignments to map reporting structures
-    const { data: mmaData } = await supabase
-      .from('member_manager_assignments')
-      .select('member_id, manager_member_id, role_id');
+    // Safely fetch manager assignments to map reporting structures if table exists
+    let mmaData: any[] = [];
+    try {
+      const { data } = await supabase
+        .from('member_manager_assignments')
+        .select('member_id, manager_member_id, role_id');
+      mmaData = data || [];
+    } catch (e) {
+      mmaData = [];
+    }
 
     const managerSuperviseeMap = new Set<string>();
-    (mmaData || []).forEach((mma: any) => {
+    mmaData.forEach((mma: any) => {
       if (managerId && mma.manager_member_id === managerId) {
         managerSuperviseeMap.add(mma.member_id);
       }
     });
 
     // Filter members if manager_id is specified
-    let filteredMembers = members || [];
+    let filteredMembers = (members || []).map((m: any) => ({
+      ...m,
+      member_manager_assignments: mmaData.filter((mma: any) => mma.member_id === m.id)
+    }));
     if (managerId) {
       filteredMembers = filteredMembers.filter(m => 
         managerSuperviseeMap.has(m.id) || m.manager_member_id === managerId

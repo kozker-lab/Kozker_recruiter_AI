@@ -24,11 +24,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Forbidden: Member Directory is restricted strictly to Organization Administrators.' }, { status: 403 });
     }
 
-    const { data: members, error } = await supabase
+    let { data: members, error } = await supabase
       .from('members')
       .select('*, member_roles(role_id, roles(*)), member_manager_assignments(*)')
       .eq('organization_id', user.organization_id)
       .order('name', { ascending: true });
+
+    if (error) {
+      // Fallback if member_manager_assignments table does not exist yet
+      const fallbackRes = await supabase
+        .from('members')
+        .select('*, member_roles(role_id, roles(*))')
+        .eq('organization_id', user.organization_id)
+        .order('name', { ascending: true });
+
+      members = fallbackRes.data;
+      error = fallbackRes.error;
+    }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
