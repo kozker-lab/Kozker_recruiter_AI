@@ -20,14 +20,15 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (user.has_assigned_roles === false) {
+    const isAdmin = user.is_primary_admin === true || user.permissions?.administrator === true;
+    if (!isAdmin && user.has_assigned_roles === false) {
       return NextResponse.json({
         error: 'Forbidden: Default unassigned members have view-only access and cannot modify role configurations.'
       }, { status: 403 });
     }
 
     const roleId = params.id;
-    const { name, parent_id, level, color_hex, permissions, scope_type, branch_name } = await request.json();
+    const { name, parent_id, level, color_hex, permissions, scope_type, branch_name, is_managerial, supervised_by_role_id } = await request.json();
 
     // Update Role metadata
     const { data: role, error } = await supabase
@@ -39,6 +40,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         ...(color_hex ? { color_hex } : {}),
         ...(scope_type ? { scope_type } : {}),
         ...(branch_name ? { branch_name } : {}),
+        ...(is_managerial !== undefined ? { is_managerial: is_managerial === true } : {}),
+        supervised_by_role_id: supervised_by_role_id !== undefined ? (supervised_by_role_id || null) : undefined,
         updated_at: new Date().toISOString()
       })
       .eq('id', roleId)

@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
     const { data: members, error } = await supabase
       .from('members')
-      .select('*, member_roles(role_id, roles(*))')
+      .select('*, member_roles(role_id, roles(*)), member_manager_assignments(*)')
       .eq('organization_id', user.organization_id)
       .order('name', { ascending: true });
 

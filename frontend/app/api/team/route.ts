@@ -10,11 +10,12 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('org_id');
+    const managerId = searchParams.get('manager_id');
 
-    // Fetch members and their roles
+    // Fetch members, their assigned roles, and manager reporting lines
     let query = supabase
       .from('members')
-      .select('*, member_roles(role_id, roles(name, color_hex))')
+      .select('*, member_roles(role_id, roles(name, color_hex, branch_name)), member_manager_assignments!member_manager_assignments_member_id_fkey(*)')
       .order('name', { ascending: true });
 
     if (orgId && orgId !== 'all') {
@@ -27,8 +28,28 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Compute mock/real team workload metrics for demonstration
-    const teamMembers = (members || []).map((m: any) => ({
+    // Fetch all manager assignments to map reporting structures
+    const { data: mmaData } = await supabase
+      .from('member_manager_assignments')
+      .select('member_id, manager_member_id, role_id');
+
+    const managerSuperviseeMap = new Set<string>();
+    (mmaData || []).forEach((mma: any) => {
+      if (managerId && mma.manager_member_id === managerId) {
+        managerSuperviseeMap.add(mma.member_id);
+      }
+    });
+
+    // Filter members if manager_id is specified
+    let filteredMembers = members || [];
+    if (managerId) {
+      filteredMembers = filteredMembers.filter(m => 
+        managerSuperviseeMap.has(m.id) || m.manager_member_id === managerId
+      );
+    }
+
+    // Compute team workload metrics
+    const teamMembers = filteredMembers.map((m: any) => ({
       ...m,
       active_jobs_count: Math.floor(Math.random() * 6) + 2,
       pending_reviews_count: Math.floor(Math.random() * 10) + 3,

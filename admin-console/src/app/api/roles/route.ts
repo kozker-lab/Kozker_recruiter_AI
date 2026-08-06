@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       }, { status: 403 });
     }
 
-    const { name, parent_id, level, color_hex, permissions, scope_type, branch_name } = await request.json();
+    const { name, parent_id, level, color_hex, permissions, scope_type, branch_name, is_managerial, supervised_by_role_id } = await request.json();
 
     if (!name) {
       return NextResponse.json({ error: 'Role name is required' }, { status: 400 });
@@ -93,7 +93,9 @@ export async function POST(request: Request) {
       level: level || 'position',
       color_hex: color_hex || '#ff6e30',
       scope_type: scope_type || 'organization',
-      branch_name: branch_name || 'Main Branch'
+      branch_name: branch_name || 'Main Branch',
+      is_managerial: is_managerial === true,
+      supervised_by_role_id: supervised_by_role_id || null
     };
 
     let { data: role, error: roleError } = await supabase

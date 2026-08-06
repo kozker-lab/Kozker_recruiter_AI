@@ -65,6 +65,8 @@ export default function DashboardPage() {
     edit_status: true,
     schedule_interviews: true
   });
+  const [newRoleIsManagerial, setNewRoleIsManagerial] = useState(false);
+  const [newRoleSupervisedByRoleId, setNewRoleSupervisedByRoleId] = useState('');
 
   // New Pipeline Modal
   const [isNewPipelineOpen, setIsNewPipelineOpen] = useState(false);
@@ -86,6 +88,7 @@ export default function DashboardPage() {
   const [selectedRolesForMember, setSelectedRolesForMember] = useState<string[]>([]);
   const [assignRoleMsg, setAssignRoleMsg] = useState({ error: '', success: '' });
   const [isSavingMemberRole, setIsSavingMemberRole] = useState(false);
+  const [selectedManagerMap, setSelectedManagerMap] = useState<Record<string, string>>({});
 
   // Member Removal Modal
   const [isRemoveMemberModalOpen, setIsRemoveMemberModalOpen] = useState(false);
@@ -294,6 +297,8 @@ export default function DashboardPage() {
       edit_status: true,
       schedule_interviews: true
     });
+    setNewRoleIsManagerial(false);
+    setNewRoleSupervisedByRoleId('');
     setIsNewRoleOpen(true);
   };
 
@@ -304,6 +309,8 @@ export default function DashboardPage() {
     setNewRoleScopeType(r.scope_type || 'organization');
     setNewRoleBranchName(r.branch_name || 'Main Branch');
     setNewRoleColor(r.color_hex || '#ff6e30');
+    setNewRoleIsManagerial(r.is_managerial || false);
+    setNewRoleSupervisedByRoleId(r.supervised_by_role_id || '');
     const permObj = Array.isArray(r.role_permissions) ? r.role_permissions[0] : r.role_permissions;
     setNewRolePermissions(permObj ? { ...permObj } : {
       administrator: false,
@@ -336,6 +343,8 @@ export default function DashboardPage() {
             color_hex: newRoleColor,
             scope_type: newRoleScopeType,
             branch_name: newRoleBranchName,
+            is_managerial: newRoleIsManagerial,
+            supervised_by_role_id: newRoleSupervisedByRoleId || null,
             permissions: newRolePermissions
           })
         });
@@ -358,6 +367,8 @@ export default function DashboardPage() {
             color_hex: newRoleColor,
             scope_type: newRoleScopeType,
             branch_name: newRoleBranchName,
+            is_managerial: newRoleIsManagerial,
+            supervised_by_role_id: newRoleSupervisedByRoleId || null,
             permissions: newRolePermissions
           })
         });
@@ -412,6 +423,16 @@ export default function DashboardPage() {
     setAssignRoleMsg({ error: '', success: '' });
     const currentRoles = (m.member_roles || []).map((mr: any) => mr.role_id).filter(Boolean);
     setSelectedRolesForMember(currentRoles);
+
+    const initialManagerMap: Record<string, string> = {};
+    if (Array.isArray(m.member_manager_assignments)) {
+      m.member_manager_assignments.forEach((mma: any) => {
+        if (mma.role_id && mma.manager_member_id) {
+          initialManagerMap[mma.role_id] = mma.manager_member_id;
+        }
+      });
+    }
+    setSelectedManagerMap(initialManagerMap);
     setIsAssignRoleModalOpen(true);
   };
 
@@ -421,12 +442,18 @@ export default function DashboardPage() {
     setIsSavingMemberRole(true);
     setAssignRoleMsg({ error: '', success: '' });
 
+    const managerAssignments = selectedRolesForMember.map(rid => ({
+      role_id: rid,
+      manager_member_id: selectedManagerMap[rid] || null
+    }));
+
     try {
       const res = await fetch(`/api/members/${targetMember.id}/roles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          role_ids: selectedRolesForMember
+          role_ids: selectedRolesForMember,
+          manager_assignments: managerAssignments
         })
       });
 
@@ -1385,6 +1412,53 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              {/* Managerial Role Designation & Supervision Configuration */}
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-amber-950 text-xs">Managerial Role Designation</span>
+                    <p className="text-[10px] text-amber-800 font-mono">Registers members holding this role as Managers for {newRoleBranchName || 'Branch'}</p>
+                  </div>
+                  <label className="flex items-center gap-1.5 font-bold text-amber-900 cursor-pointer text-xs bg-white px-2.5 py-1 border border-amber-300 rounded-md">
+                    <span>Managerial Role</span>
+                    <input
+                      type="checkbox"
+                      checked={newRoleIsManagerial}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setNewRoleIsManagerial(checked);
+                        if (checked) {
+                          setNewRoleSupervisedByRoleId('');
+                        }
+                      }}
+                      className="accent-amber-600 w-4 h-4 cursor-pointer"
+                    />
+                  </label>
+                </div>
+
+                {!newRoleIsManagerial && (
+                  <div className="pt-2 border-t border-amber-200/80 space-y-1">
+                    <label className="block font-semibold text-stone-800 text-[11px]">
+                      Branch Supervision: Require Reporting Under Managerial Role
+                    </label>
+                    <select
+                      value={newRoleSupervisedByRoleId}
+                      onChange={(e) => setNewRoleSupervisedByRoleId(e.target.value)}
+                      className="w-full p-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-brand font-semibold"
+                    >
+                      <option value="">No Direct Managerial Supervision Required</option>
+                      {roles
+                        .filter(r => r.id !== editingRoleId && r.is_managerial && (r.branch_name === newRoleBranchName || r.scope_type === 'organization' || newRoleScopeType === 'organization'))
+                        .map(r => (
+                          <option key={r.id} value={r.id}>
+                            {r.name} ({r.branch_name || 'Main Branch'}) [MANAGERIAL ROLE]
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
               {/* Granular Permission Matrix inside Pop-up Modal */}
               <div className="space-y-3 pt-3 border-t border-stone-200">
                 <div className="flex items-center justify-between">
@@ -1674,6 +1748,59 @@ export default function DashboardPage() {
                     💡 <strong>Unassigned Member Mode:</strong> Members with 0 checked roles remain in the Unassigned Member (Role-Less) state with 0 panel permissions until a role is assigned.
                   </div>
                 )}
+
+                {/* Manager Selection Pop-Up Section for Supervised Roles */}
+                {selectedRolesForMember.map(rid => {
+                  const r = roles.find(item => item.id === rid);
+                  if (!r || !r.supervised_by_role_id) return null;
+                  const mRole = roles.find(item => item.id === r.supervised_by_role_id);
+                  const branchName = r.branch_name || 'Main Branch';
+
+                  // Find eligible members holding the managerial role for this branch
+                  const eligibleManagers = members.filter(m =>
+                    m.id !== targetMember.id &&
+                    Array.isArray(m.member_roles) &&
+                    m.member_roles.some((mr: any) => mr.role_id === r.supervised_by_role_id || mr.role_id === mRole?.id)
+                  );
+
+                  return (
+                    <div key={rid} className="p-3 bg-amber-50/80 border border-amber-200 rounded-lg space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-amber-950 flex items-center gap-1.5">
+                          <UserCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>Supervision Manager for "{r.name}" ({branchName})</span>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-amber-800 font-mono">
+                        This role is supervised by Managerial Role: <strong>{mRole?.name || 'Branch Manager'}</strong>
+                      </p>
+
+                      {eligibleManagers.length > 0 ? (
+                        <div>
+                          <label className="block font-semibold text-stone-800 text-[10px] uppercase font-mono mb-1">
+                            Choose Active Branch Manager
+                          </label>
+                          <select
+                            value={selectedManagerMap[rid] || ''}
+                            onChange={(e) => setSelectedManagerMap({ ...selectedManagerMap, [rid]: e.target.value })}
+                            className="w-full p-2 bg-white border border-stone-200 rounded text-xs focus:outline-none focus:border-brand font-semibold"
+                          >
+                            <option value="">Select Manager for {branchName}...</option>
+                            {eligibleManagers.map(m => (
+                              <option key={m.id} value={m.id}>
+                                👤 {m.name} ({m.email})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="p-2.5 bg-white border border-amber-300 rounded text-[11px] text-amber-900 font-mono">
+                          ⚠️ <strong>No Active Branch Manager Assigned Yet:</strong> No member in <strong>{branchName}</strong> currently holds the required Managerial Role (<em>{mRole?.name || 'Branch Manager'}</em>). You can assign this role now with an unassigned manager notice.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-150">

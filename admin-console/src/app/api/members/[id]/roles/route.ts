@@ -29,7 +29,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     const memberId = params.id;
-    const { role_ids } = await request.json();
+    const { role_ids, manager_assignments } = await request.json();
 
     const roleIdsList: string[] = Array.isArray(role_ids) ? role_ids.filter(Boolean) : (role_ids ? [role_ids] : []);
 
@@ -55,6 +55,35 @@ export async function POST(request: Request, { params }: { params: { id: string 
       }));
       await supabase.from('member_roles').insert(inserts);
     }
+
+    // 3b. Sync member_manager_assignments table
+    await supabase.from('member_manager_assignments').delete().eq('member_id', memberId);
+
+    let primaryManagerId: string | null = null;
+    if (Array.isArray(manager_assignments) && manager_assignments.length > 0) {
+      const mmaInserts = manager_assignments
+        .filter((ma: any) => ma.role_id && roleIdsList.includes(ma.role_id))
+        .map((ma: any) => {
+          if (!primaryManagerId && ma.manager_member_id) {
+            primaryManagerId = ma.manager_member_id;
+          }
+          return {
+            member_id: memberId,
+            role_id: ma.role_id,
+            manager_member_id: ma.manager_member_id || null
+          };
+        });
+
+      if (mmaInserts.length > 0) {
+        await supabase.from('member_manager_assignments').insert(mmaInserts);
+      }
+    }
+
+    // Update target member's manager_member_id column for direct fallback
+    await supabase
+      .from('members')
+      .update({ manager_member_id: primaryManagerId })
+      .eq('id', memberId);
 
     // 4. Fetch details of assigned roles for email notification
     let assignedRoles: any[] = [];

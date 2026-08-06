@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 export default function TeamOperationsPage() {
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>({
     total_recruiters: 0,
@@ -26,21 +27,58 @@ export default function TeamOperationsPage() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [selectedRecruiter, setSelectedRecruiter] = useState<any | null>(null);
+  const [selectedManagerFilter, setSelectedManagerFilter] = useState<string>("all");
+  const [managersList, setManagersList] = useState<any[]>([]);
   const [messageText, setMessageText] = useState("");
   const [messageSentMsg, setMessageSentMsg] = useState("");
 
   useEffect(() => {
-    fetchTeamData();
+    fetchInitialContext();
   }, []);
 
-  const fetchTeamData = async () => {
+  const fetchInitialContext = async () => {
+    try {
+      const meRes = await fetch("/api/user/me");
+      const meData = await meRes.json();
+      if (meData.success && meData.user) {
+        setCurrentUser(meData.user);
+        // If user is a manager (not primary admin), filter by default to their ID
+        const isPrimaryAdmin = meData.user.is_primary_admin === true || meData.user.permissions?.administrator === true;
+        if (!isPrimaryAdmin) {
+          setSelectedManagerFilter(meData.user.id);
+          fetchTeamData(meData.user.id);
+        } else {
+          fetchTeamData("all");
+        }
+      } else {
+        fetchTeamData("all");
+      }
+    } catch {
+      fetchTeamData("all");
+    }
+  };
+
+  const fetchTeamData = async (mgrId: string = selectedManagerFilter) => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/team");
+      let url = "/api/team";
+      if (mgrId && mgrId !== "all") {
+        url += `?manager_id=${mgrId}`;
+      }
+
+      const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
         setTeamMembers(data.team || []);
         setSummary(data.summary || {});
+
+        // Populate managers list for filter dropdown if viewing all
+        if (mgrId === "all") {
+          const mgrs = (data.team || []).filter((m: any) =>
+            m.is_primary_admin || (Array.isArray(m.member_roles) && m.member_roles.some((mr: any) => mr.roles?.name?.toLowerCase().includes("manager")))
+          );
+          setManagersList(mgrs);
+        }
       }
     } catch (err) {
       console.error("Failed to load team operations data:", err);
@@ -75,9 +113,30 @@ export default function TeamOperationsPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 font-mono text-xs text-neutral-400">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Manager Monitoring Scope</span>
+        <div className="flex items-center gap-3 font-mono text-xs text-neutral-400">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-950 border border-neutral-800 rounded">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Supervision Scope:</span>
+          </div>
+
+          {(currentUser?.is_primary_admin || currentUser?.permissions?.administrator) && (
+            <select
+              value={selectedManagerFilter}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedManagerFilter(val);
+                fetchTeamData(val);
+              }}
+              className="p-1.5 bg-neutral-950 border border-neutral-800 text-neutral-200 rounded font-mono text-xs focus:outline-none focus:border-primary"
+            >
+              <option value="all">All Organization Recruiters</option>
+              {managersList.map((m: any) => (
+                <option key={m.id} value={m.id}>
+                  Manager: {m.name} ({m.email})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
