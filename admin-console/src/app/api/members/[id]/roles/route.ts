@@ -233,26 +233,53 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     const roleId = searchParams.get('role_id');
 
     if (roleId) {
-      // Delete specific assigned role for this member
+      // 1. Delete specific assigned role for this member
       await supabase
         .from('member_roles')
         .delete()
         .eq('member_id', memberId)
         .eq('role_id', roleId);
+
+      // 2. Delete corresponding manager assignment for this role
+      await supabase
+        .from('member_manager_assignments')
+        .delete()
+        .eq('member_id', memberId)
+        .eq('role_id', roleId);
     } else {
-      // Delete all assigned roles for this member
+      // Delete all assigned roles & manager assignments for this member
       await supabase
         .from('member_roles')
         .delete()
         .eq('member_id', memberId);
+
+      await supabase
+        .from('member_manager_assignments')
+        .delete()
+        .eq('member_id', memberId);
     }
+
+    // 3. Sync member's direct manager_member_id column if no manager assignments remain
+    const { data: remainingAssignments } = await supabase
+      .from('member_manager_assignments')
+      .select('manager_member_id')
+      .eq('member_id', memberId);
+
+    const nextManagerId = (remainingAssignments && remainingAssignments.length > 0)
+      ? remainingAssignments[0].manager_member_id
+      : null;
+
+    await supabase
+      .from('members')
+      .update({ manager_member_id: nextManagerId })
+      .eq('id', memberId);
 
     // Audit Log
     await supabase.from('audit_logs').insert({
       organization_id: user.organization_id,
       actor_id: user.id,
       actor_name: user.name,
-      action_description: `Deleted assigned role assignment for member ID '${memberId}'`,
+      action_description: `Deleted assigned role assignment ${roleId ? `(Role ID: ${roleId})` : '(All Roles)'} for member ID '${memberId}'`,
       target_name: `Member ID: ${memberId}`,
       action_type: 'danger'
     });

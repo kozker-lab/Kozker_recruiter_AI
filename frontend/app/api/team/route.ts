@@ -50,11 +50,26 @@ export async function GET(request: Request) {
       const isGlobalAdmin = managerMember?.is_primary_admin === true;
 
       if (!isGlobalAdmin) {
+        // Map active roles for each member
+        const memberActiveRolesMap = new Map<string, Set<string>>();
+        allMembers.forEach((m: any) => {
+          const roleSet = new Set<string>();
+          (m.member_roles || []).forEach((mr: any) => {
+            if (mr.role_id) roleSet.add(mr.role_id);
+            if (mr.roles?.id) roleSet.add(mr.roles.id);
+          });
+          memberActiveRolesMap.set(m.id, roleSet);
+        });
+
         // Find direct supervisees from member_manager_assignments
         const directSuperviseeIds = new Set<string>();
         mmaData.forEach((mma: any) => {
           if (mma.manager_member_id === managerId) {
-            directSuperviseeIds.add(mma.member_id);
+            const activeRoles = memberActiveRolesMap.get(mma.member_id);
+            // Only consider assigned if member has active roles, and if mma specifies role_id it must be active
+            if (activeRoles && activeRoles.size > 0 && (!mma.role_id || activeRoles.has(mma.role_id))) {
+              directSuperviseeIds.add(mma.member_id);
+            }
           }
         });
 
@@ -72,18 +87,26 @@ export async function GET(request: Request) {
 
         const supervisedRoleIdSet = new Set((supervisedRoles || []).map((r: any) => r.id));
 
-        // Filter members who report to this manager:
-        // Prioritize explicit member-manager assignments (member_manager_assignments or manager_member_id)
+        // Filter members who report to this manager
         filteredMembers = allMembers.filter((m: any) => {
           if (m.id === managerId) return false; // Exclude manager themselves
 
-          if (directSuperviseeIds.size > 0 || m.manager_member_id) {
-            return directSuperviseeIds.has(m.id) || m.manager_member_id === managerId;
+          const activeRoles = memberActiveRolesMap.get(m.id);
+          // Member MUST have at least one active assigned role to appear in any manager's team
+          if (!activeRoles || activeRoles.size === 0) return false;
+
+          // Check direct member-manager assignment
+          if (directSuperviseeIds.has(m.id)) return true;
+
+          // Check member's manager_member_id column if direct assignment table has no match
+          if (directSuperviseeIds.size === 0 && m.manager_member_id === managerId) return true;
+
+          // Fallback to role hierarchy supervision
+          if (directSuperviseeIds.size === 0 && !m.manager_member_id) {
+            return Array.from(activeRoles).some((rid: string) => supervisedRoleIdSet.has(rid));
           }
 
-          // Fallback to role hierarchy supervision if no explicit member assignments exist
-          const memberRoleIds = (m.member_roles || []).map((mr: any) => mr.roles?.id).filter(Boolean);
-          return memberRoleIds.some((rid: string) => supervisedRoleIdSet.has(rid));
+          return false;
         });
       }
     }
