@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Mail, Lock, Eye, EyeOff } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Mail, Lock, Eye, EyeOff, Building2 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selectedOrg, setSelectedOrg] = useState("");
+  const [organizations, setOrganizations] = useState<any[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -16,28 +18,103 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("logout") === "true") {
+        document.cookie.split(";").forEach((c) => {
+          const cookieName = c.split("=")[0].trim();
+          document.cookie = `${cookieName}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+        });
+        localStorage.clear();
+        sessionStorage.clear();
+      }
+    }
+    fetchOrganizations();
+  }, []);
+
+  const fetchOrganizations = async () => {
+    try {
+      const res = await fetch("/api/organizations");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.organizations)) {
+        setOrganizations(data.organizations);
+        if (data.organizations.length > 0 && !selectedOrg) {
+          setSelectedOrg(data.organizations[0].id);
+        }
+      }
+    } catch {
+      // Ignore background fetch error
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
+      const cleanEmail = email.trim().toLowerCase();
+      if (typeof window !== "undefined") {
+        localStorage.setItem("kozker_user_email", cleanEmail);
+        document.cookie = `kozker_user_email=${encodeURIComponent(cleanEmail)}; path=/; max-age=86400; SameSite=Lax`;
+        if (selectedOrg) {
+          localStorage.setItem("kozker_selected_org", selectedOrg);
+        }
+      }
+
+      // 1. Try Supabase Auth
       const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
+        email: cleanEmail,
         password,
       });
 
-      if (authError) throw authError;
+      if (!authError) {
+        window.location.href = "/dashboard";
+        return;
+      }
 
-      window.location.href = "/dashboard";
+      // 2. Fallback to Admin Console SSO Authentication Endpoint
+      const adminConsoleUrl = process.env.NEXT_PUBLIC_ADMIN_CONSOLE_URL || "http://localhost:3001";
+      try {
+        const ssoRes = await fetch(`${adminConsoleUrl}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          mode: "cors",
+          body: JSON.stringify({ email: cleanEmail, password, organization_id: selectedOrg || undefined })
+        });
+
+        if (ssoRes.ok) {
+          const ssoData = await ssoRes.json();
+          if (ssoData.token) {
+            document.cookie = `kozker_sso_token=${ssoData.token}; path=/; max-age=86400; SameSite=Lax`;
+            window.location.href = "/dashboard";
+            return;
+          }
+        } else {
+          const errData = await ssoRes.json().catch(() => ({}));
+          throw new Error(errData.error || "Invalid email or password");
+        }
+      } catch (fetchErr: any) {
+        if (fetchErr.message && !fetchErr.message.includes("fetch") && !fetchErr.message.includes("NetworkError")) {
+          throw fetchErr;
+        }
+      }
+
+      throw new Error("Invalid email or password. Please verify your credentials or complete password setup via your invitation email.");
     } catch (err: any) {
-      setError(err.message || "Failed to log in");
+      const rawMsg = err?.message || "";
+      if (rawMsg.includes("NetworkError") || rawMsg.includes("fetch")) {
+        setError("Invalid email or password. Please verify your credentials or complete password setup via your invitation email.");
+      } else {
+        setError(rawMsg || "Failed to log in");
+      }
       setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-8 animate-in fade-in duration-500 font-sans">
       <div className="space-y-2 text-center md:text-left">
         <h2 className="text-2xl font-tight font-semibold text-neutral-white tracking-tight">
           Welcome back
@@ -48,12 +125,13 @@ export default function LoginPage() {
       </div>
 
       {error && (
-        <div className="p-3 bg-error/10 border border-error/20 text-error text-xs rounded-sm font-mono">
+        <div className="p-3 bg-error/10 border border-error/20 text-error text-xs rounded-sm font-mono leading-relaxed">
           {error}
         </div>
       )}
 
-      <form onSubmit={handleLogin} className="space-y-4 font-sans text-sm">
+      <form onSubmit={handleLogin} className="space-y-4 text-sm">
+
         <div className="space-y-1.5">
           <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Email Address</label>
           <div className="relative">
@@ -89,7 +167,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-2.5 text-neutral-500 hover:text-neutral-300"
+              className="absolute right-3 top-2.5 text-neutral-500 hover:text-neutral-300 cursor-pointer"
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -104,15 +182,6 @@ export default function LoginPage() {
           {loading ? "Logging in..." : "Log In"}
         </button>
       </form>
-
-      <div className="text-center font-sans text-xs pt-2">
-        <Link
-          href="/auth/signup"
-          className="text-neutral-400 hover:text-primary transition-colors cursor-pointer underline underline-offset-4"
-        >
-          Need an account? Sign up
-        </Link>
-      </div>
     </div>
   );
 }

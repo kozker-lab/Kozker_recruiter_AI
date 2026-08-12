@@ -1,0 +1,562 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ats-extract-weighted-skills",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1f0a4a25-ae7b-4bb2-9882-d354d8ded112",
+      "name": "Webhook Trigger - ATS Extract Weighted Skills",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        400,
+        2160
+      ],
+      "webhookId": "9f0c2df4-4ecd-41b0-b5df-e05199fb3115"
+    },
+    {
+      "parameters": {
+        "tableId": "job_opening_skills",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "job_opening_id",
+              "fieldValue": "={{ $json.job_opening_id }}"
+            },
+            {
+              "fieldId": "skills",
+              "fieldValue": "={{ $json.skills }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "8cc8c965-2066-4c16-814f-72d9e2c746e8",
+      "name": "Supabase - Store Weighted Skills JSONB",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        2064
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nconst jobOpening = {\n  job_opening_id: body.job_opening_id || body.id || body.job_id || null,\n  title: body.title || '',\n  description: body.description || '',\n  responsibilities: Array.isArray(body.responsibilities) ? body.responsibilities : [],\n  qualifications: Array.isArray(body.qualifications) ? body.qualifications : [],\n  keywords: Array.isArray(body.keywords) ? body.keywords : [],\n  salary_range: body.salary_range || ''\n};\n\nreturn [{\n  json: {\n    request_id: body.request_id || `skill_req_${Date.now()}`,\n    automation_type: body.automation_type || 'extract_weighted_skills',\n    callback_url: body.callback_url || null,\n    authorization: body.authorization || body.auth_header || '',\n    job_opening: jobOpening,\n    skill_count: Number(body.skill_count || 5),\n    received_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "f52f9f65-8103-4f55-b0dc-c27ab48419fa",
+      "name": "Set - Extract Request Data1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        2160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.job_opening.job_opening_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.job_opening.title }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.job_opening.description }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "c4",
+              "leftValue": "={{ $json.callback_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "18e3c848-9105-4b5f-b4e9-9606126ba61c",
+      "name": "IF - Validate Required Fields1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        2160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $json.job_opening;\nconst skillCount = Math.max(1, Math.min(Number($json.skill_count || 5), 10));\n\nconst prompt = `You are a recruitment analysis assistant.\n\nAnalyze this job opening and extract the top ${skillCount} weighted skills needed to screen candidates.\n\nRules:\n- Return ONLY valid JSON.\n- Do not include markdown.\n- Do not include explanation.\n- Return exactly ${skillCount} skills.\n- Weights must sum to exactly 1.0.\n- Use decimal weights, not percentages.\n- Order from highest priority to lowest.\n- Skill names must be practical recruiter-facing skills.\n- Do not add generic soft skills unless clearly required.\n\nJob opening:\n${JSON.stringify(job, null, 2)}\n\nReturn this exact JSON structure:\n{\n  \"skills\": [\n    {\n      \"skill_name\": \"string\",\n      \"weight\": 0.30,\n      \"order\": 1\n    }\n  ]\n}`;\n\nreturn [{\n  json: {\n    ...$json,\n    prompt\n  }\n}];"
+      },
+      "id": "28b9d9c0-dae8-45a8-877e-5b47b749dd0f",
+      "name": "Code - Build AI Prompt2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        2064
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "options": {
+          "systemMessage": "You are a strict JSON-only recruitment skill extraction agent. Return only valid JSON matching the requested schema.",
+          "maxIterations": 3
+        }
+      },
+      "id": "0b31865a-078e-4d37-8eb6-d19424e8cd88",
+      "name": "AI Agent - Extract Weighted Skills2",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1408,
+        2064
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o-mini",
+        "options": {
+          "responseFormat": "json_object",
+          "temperature": 0.1
+        }
+      },
+      "id": "9b249c59-18d8-4105-b37b-31e11f17825b",
+      "name": "OpenRouter Chat Model2",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        2320
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "9eFaLRPmLH4eA8yC",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Set - Extract Request Data1').first().json.job_opening.job_opening_id }}"
+      },
+      "id": "767cd1ff-4a36-44ce-a7fb-2235008826aa",
+      "name": "Simple Memory - Job Skill Session2",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1552,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseJson(value) {\n  if (typeof value === 'object' && value !== null) return value;\n  if (typeof value !== 'string') throw new Error('AI output is not a string or object');\n\n  let text = value.trim()\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/```$/i, '')\n    .trim();\n\n  const first = text.indexOf('{');\n  const last = text.lastIndexOf('}');\n  if (first >= 0 && last > first) text = text.slice(first, last + 1);\n\n  return JSON.parse(text);\n}\n\nconst original = $('Set - Extract Request Data1').first().json;\nconst raw = $json.output || $json.text || $json.response || $json.message;\nconst parsed = parseJson(raw);\n\nif (!Array.isArray(parsed.skills)) {\n  throw new Error('AI response must contain skills array');\n}\n\nconst skillCount = Math.max(1, Math.min(Number(original.skill_count || 5), 10));\n\nlet skills = parsed.skills\n  .slice(0, skillCount)\n  .map((s, index) => ({\n    id: `sk-${Date.now()}-${index + 1}`,\n    job_opening_id: original.job_opening.job_opening_id,\n    name: String(s.skill_name || s.name || '').trim(),\n    skill_name: String(s.skill_name || s.name || '').trim(),\n    weight: Number(s.weight || 0),\n    skill_order: Number(s.order || s.skill_order || index + 1),\n    approved: false\n  }))\n  .filter(s => s.skill_name && s.weight > 0);\n\nif (skills.length !== skillCount) {\n  throw new Error(`Expected ${skillCount} skills, received ${skills.length}`);\n}\n\nlet total = skills.reduce((sum, s) => sum + s.weight, 0);\nif (!total) throw new Error('Total skill weight is zero');\n\nif (Math.abs(total - 1) > 0.001) {\n  skills = skills.map(s => ({ ...s, weight: Number((s.weight / total).toFixed(4)) }));\n  const adjustedTotal = skills.reduce((sum, s) => sum + s.weight, 0);\n  skills[skills.length - 1].weight = Number((skills[skills.length - 1].weight + (1 - adjustedTotal)).toFixed(4));\n}\n\nskills = skills\n  .sort((a, b) => b.weight - a.weight)\n  .map((s, index) => ({\n    ...s,\n    skill_order: index + 1\n  }));\n\nreturn [{\n  json: {\n    request_id: original.request_id,\n    automation_type: original.automation_type,\n    status: 'success',\n    processing_status: 'skill_approval',\n    job_opening_id: original.job_opening.job_opening_id,\n    skill_count: skills.length,\n    callback_url: original.callback_url,\n    authorization: original.authorization,\n    skills,\n    processed_at: new Date().toISOString(),\n    errors: []\n  }\n}];"
+      },
+      "id": "1632b231-dfe8-4f00-a1d8-ade1c27a671f",
+      "name": "Code - Parse and Normalize AI Response2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        2064
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Code - Parse and Normalize AI Response2').first().json;\nconst inserted = items[0]?.json || {};\n\nreturn [{\n  json: {\n    request_id: parsed.request_id,\n    automation_type: parsed.automation_type,\n    status: 'success',\n    processing_status: 'skill_approval',\n    message: 'Weighted skills generated and stored in job_opening_skills JSONB table. Awaiting recruiter approval.',\n    job_opening_id: parsed.job_opening_id,\n    skill_count: parsed.skills.length,\n    skills: parsed.skills,\n    stored_row: inserted,\n    callback_url: parsed.callback_url,\n    authorization: parsed.authorization,\n    processed_at: parsed.processed_at,\n    errors: []\n  }\n}];"
+      },
+      "id": "da9cff4c-d475-49fa-9c51-99199ce360a4",
+      "name": "Code - Build Success Payload1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2272,
+        2064
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authorization }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ request_id: $json.request_id, automation_type: $json.automation_type, status: $json.status, processing_status: $json.processing_status, message: $json.message, job_opening_id: $json.job_opening_id, skill_count: $json.skill_count, skills: $json.skills, processed_at: $json.processed_at, errors: $json.errors }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "ebdcd7d8-b17a-402c-bb26-233443a6c1c5",
+      "name": "HTTP Request - Send Success Callback1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2528,
+        2064
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Code - Build Success Payload1').first().json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "1e75be93-00b0-4cd3-94d2-43088b795a9b",
+      "name": "Respond to Webhook - Success2",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2784,
+        2064
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const missing = [];\nif (!$json.callback_url) missing.push('callback_url');\nif (!$json.job_opening?.job_opening_id) missing.push('job_opening_id');\nif (!$json.job_opening?.title) missing.push('title');\nif (!$json.job_opening?.description) missing.push('description');\n\nreturn [{\n  json: {\n    status: 'failed',\n    error_type: 'validation_error',\n    message: 'Missing required fields',\n    missing_fields: missing,\n    request_id: $json.request_id || null\n  }\n}];"
+      },
+      "id": "dca5bc87-9cd4-42e6-952f-f7005b622ee3",
+      "name": "Code - Build Validation Error2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        2528
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "bb1596f3-e8da-4860-a35d-da52a69eb599",
+      "name": "Respond to Webhook - Validation Error2",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1424,
+        2544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Set - Extract Request Data1').first().json;\nconst msg = $json.error?.message || $json.message || 'Skill extraction/storage failed';\n\nreturn [{\n  json: {\n    request_id: original.request_id,\n    automation_type: original.automation_type,\n    status: 'failed',\n    job_opening_id: original.job_opening?.job_opening_id || null,\n    callback_url: original.callback_url,\n    authorization: original.authorization,\n    error: {\n      code: 'SKILL_EXTRACTION_FAILED',\n      message: msg\n    },\n    skills: []\n  }\n}];"
+      },
+      "id": "56f5bfd1-6052-4e60-a328-a60d7c82af12",
+      "name": "Code - Build Error Payload1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authorization }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "27d7612b-8f12-47b5-b1cc-ab9a80f7239a",
+      "name": "HTTP Request - Send Error Callback1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2272,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Code - Build Error Payload1').first().json) }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "ecdd8e55-cf4d-467c-8726-989bc51bf01f",
+      "name": "Respond to Webhook - Error2",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2528,
+        2320
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger - ATS Extract Weighted Skills": {
+      "main": [
+        [
+          {
+            "node": "Set - Extract Request Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Store Weighted Skills JSONB": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Success Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Error Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Extract Request Data1": {
+      "main": [
+        [
+          {
+            "node": "IF - Validate Required Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Validate Required Fields1": {
+      "main": [
+        [
+          {
+            "node": "Code - Build AI Prompt2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Validation Error2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build AI Prompt2": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Extract Weighted Skills2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Extract Weighted Skills2": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse and Normalize AI Response2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Error Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Extract Weighted Skills2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory - Job Skill Session2": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent - Extract Weighted Skills2",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse and Normalize AI Response2": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Store Weighted Skills JSONB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Error Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Success Payload1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Send Success Callback1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Send Success Callback1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Success2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Validation Error2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Validation Error2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Error Payload1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Send Error Callback1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Send Error Callback1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Error2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2699c31bf46f1254e44a3fc07872ed7884890827d6a26afa9647feac8ff83d44"
+  },
+  "id": "c78e8925-668e-42",
+  "name": "ATS_EXTRACT_WEIGHTED_SKILLS"
+}

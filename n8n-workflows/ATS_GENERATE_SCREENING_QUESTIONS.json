@@ -1,0 +1,1165 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ats-screening-questions",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "618b6bfc-dc1f-437b-9237-e4016bf24142",
+      "name": "Webhook - ATS Questions",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -6080,
+        1872
+      ],
+      "webhookId": "79bdfbfe-47a1-4a2a-93df-ea7b99ffdbdc"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "request_id",
+              "value": "={{ $json.body.request_id || 'question_req_' + Date.now() }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "mode",
+              "value": "={{ $json.body.mode || 'generate' }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "callback_url",
+              "value": "={{ $json.body.callback_url }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "application_id",
+              "value": "={{ $json.body.application_id }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "recruiter_instruction",
+              "value": "={{ $json.body.recruiter_instruction || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "existing_questions",
+              "value": "={{ $json.body.existing_questions || [] }}",
+              "type": "array"
+            },
+            {
+              "id": "7",
+              "name": "force_regenerate",
+              "value": "={{ $json.body.force_regenerate || false }}",
+              "type": "boolean"
+            },
+            {
+              "id": "db1caffb-43f0-4b8d-afc2-228b8003683e",
+              "name": "refinement_prompt",
+              "value": "={{ $json.body.refining_prompt }}",
+              "type": "string"
+            },
+            {
+              "id": "5e5a0d71-bfef-46e6-ae96-bd87e776c120",
+              "name": "question_id",
+              "value": "={{ $json.body.question_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "922299c5-33b3-444c-b6f3-e6e629da90ce",
+      "name": "Set - Extract Request Data1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -5856,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.callback_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "leftValue": "={{ $json.application_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "leftValue": "={{ ['generate','regenerate'].includes($json.mode) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3338633f-3887-405a-b8f1-d2b993707b3e",
+      "name": "IF - Validate Required Fields1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -5616,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "applications",
+        "limit": 1,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Set - Extract Request Data1').first().json.application_id }}"
+            }
+          ]
+        }
+      },
+      "id": "66061315-446b-479d-9085-abc9d174b362",
+      "name": "Supabase - Fetch Application1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -5264,
+        1792
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Set - Extract Request Data1').first().json;\n\nif (!items.length) {\n  throw new Error('Application not found: ' + req.application_id);\n}\n\nconst app = items[0].json;\n\n// Inject refinement_prompt into matching screening question\nif (\n  req.question_id &&\n  req.refinement_prompt &&\n  Array.isArray(app.screening_questions)\n) {\n  app.screening_questions = app.screening_questions.map(q => {\n    if (q.id === req.question_id) {\n      return {\n        ...q,\n        refinement_prompt: req.refinement_prompt\n      };\n    }\n    return q;\n  });\n}\n\nreturn [{\n  json: {\n    request_id: req.request_id,\n    mode: req.mode,\n    callback_url: req.callback_url,\n    recruiter_instruction: req.recruiter_instruction || '',\n    force_regenerate: req.force_regenerate || false,\n    provided_existing_questions: req.existing_questions || [],\n    application: app,\n    application_id: app.id || req.application_id,\n    candidate_id: app.candidate_id,\n    job_opening_id: app.job_opening_id\n  }\n}];"
+      },
+      "id": "62ccd570-8584-4602-89e8-53bb39e56ff1",
+      "name": "Code - Normalize Application1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4896,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.mode === 'generate' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "leftValue": "={{ Array.isArray($json.application.screening_questions) && $json.application.screening_questions.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "leftValue": "={{ $json.force_regenerate === false }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c41f9450-2417-49ca-9d94-0069956fb055",
+      "name": "IF - Existing Questions And Generate Mode1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -4656,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const x = $json;\n\nconst questions = x.application?.screening_questions || [];\n\nconst targetQuestion = questions.find(\n  q => q.refining === true && q.refinement_prompt\n);\n\nif (!targetQuestion) {\n  throw new Error(\n    \"No question marked for refinement was found.\"\n  );\n}\n\nconst prompt = `You are helping a recruiter refine a screening question.\n\nYour task is to improve ONLY the provided question based on the refinement request.\n\nRules:\n- Modify only this single question.\n- Keep the same order.\n- Keep the same difficulty unless the refinement explicitly requires otherwise.\n- Keep the question relevant to the candidate and the role.\n- Generate exactly ONE replacement question.\n- Return only valid JSON.\n- No markdown.\n- No explanation.\n\nRefinement request:\n${targetQuestion.refinement_prompt}\n\nQuestion to refine:\n${JSON.stringify(targetQuestion, null, 2)}\n\nApplication context:\n${JSON.stringify({\n  fuzzy_score: x.application.fuzzy_score,\n  match_reason: x.application.match_reason,\n  strengths: x.application.strengths,\n  skill_gaps: x.application.skill_gaps\n}, null, 2)}\n\nReturn exactly:\n\n{\n  \"question\": {\n    \"id\": \"${targetQuestion.id}\",\n    \"order\": ${targetQuestion.order},\n    \"difficulty\": \"${targetQuestion.difficulty}\",\n    \"question\": \"updated question text\",\n    \"reason\": \"why this updated question is relevant\"\n  }\n}`;\n\nreturn [{\n  json: {\n    ...x,\n    target_question_id: targetQuestion.id,\n    target_question: targetQuestion,\n    prompt\n  }\n}];"
+      },
+      "id": "d429e93e-49c1-4720-963b-91f4f0314498",
+      "name": "Code - Build Already Ready Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4416,
+        1616
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "candidates",
+        "limit": 1,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.application.candidate_id }}"
+            }
+          ]
+        }
+      },
+      "id": "5e7cf368-b021-4aa3-9ed4-1406d37ef26e",
+      "name": "Supabase - Fetch Candidate1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -4416,
+        1824
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base=$('Code - Normalize Application1').first().json;if(!items.length)throw new Error('Candidate not found: '+base.candidate_id);const c=items[0].json;return [{json:{...base,candidate:{candidate_id:c.id||c.candidate_id,full_name:c.full_name||'',email:c.email||'',phone:c.phone||'',skills:c.skills||[],experience_years:c.experience_years||0,parsed_resume_json:c.raw_text||c.parsed_resume_json||'',resume_url:c.resume_url||'',source:c.source||''}}}];"
+      },
+      "id": "c0a9f064-71f3-4ac5-827d-21435fd1ab12",
+      "name": "Code - Attach Candidate1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4176,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "job_openings",
+        "limit": 1,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_opening_id }}"
+            }
+          ]
+        }
+      },
+      "id": "3e4ca965-706a-408c-9423-3d570da87a30",
+      "name": "Supabase - Fetch Job Opening1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3936,
+        1824
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base=$('Code - Attach Candidate1').first().json;const job=items.length?items[0].json:{};return [{json:{...base,job_opening:{job_opening_id:job.id||base.job_opening_id,title:job.title||base.application.job_title||'',description:job.description||'',responsibilities:job.responsibilities||[],qualifications:job.qualifications||[],keywords:job.keywords||[]}}}];"
+      },
+      "id": "4cf87154-bee7-4714-8588-3d6ca0ff1aa2",
+      "name": "Code - Attach Job Opening1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3696,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "job_opening_skills",
+        "limit": 20,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "job_opening_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.job_opening_id }}"
+            }
+          ]
+        }
+      },
+      "id": "21ebd3ae-17d6-4bf2-910f-553758bafee7",
+      "name": "Supabase - Fetch Approved Skills1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3456,
+        1824
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base=$('Code - Attach Job Opening1').first().json;const skills=items.map(i=>i.json).map(s=>({skill_name:s.skill_name||s.name||'',weight:Number(s.weight||0),order:s.skill_order||s.order||0})).filter(s=>s.skill_name);return [{json:{...base,approved_skills:skills}}];"
+      },
+      "id": "b6e49240-e1fa-4fca-b997-6f53fdf02b45",
+      "name": "Code - Attach Approved Skills1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3216,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.candidate.parsed_resume_json.raw_text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              },
+              "id": "49a3422c-6b2f-4909-a122-d4c788809aea"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "892cf9f8-83b9-4d57-913f-a4b99dd03fa4",
+      "name": "IF - Candidate Has Resume Text1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2976,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.candidate.resume_url }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "b1e77f30-ada7-4199-b4e6-c481b43d8b5b",
+      "name": "HTTP Request - Download Resume1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2736,
+        1984
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "818b934d-81fb-4a84-a377-a88bd3da6c79",
+      "name": "Extract From File - Resume Text1",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -2496,
+        1984
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const original=$('IF - Candidate Has Resume Text1').item.json;const text=$json.text||$json.data||$json.content||JSON.stringify($json);original.candidate.resume_text=text;return {json:original};"
+      },
+      "id": "049a6539-5c1a-40bf-8c5e-171e21d97350",
+      "name": "Code - Attach Extracted Resume Text1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        1984
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const mode=$json.mode||'generate';\nconst candidate=$json.candidate||{};\nconst app=$json.application||{};\nconst job=$json.job_opening||{};\nconst skills=$json.approved_skills||[];\nconst resumeText=(candidate.resume_text||'').slice(0,8000);\nconst provided=$json.provided_existing_questions||[];\nconst existing=provided.length?provided:(app.screening_questions||[]);\nconst instruction=$json.recruiter_instruction||'';\nlet prompt;\nif(mode==='regenerate'){\nprompt=`You are helping a recruiter refine screening questions.\n\nRegenerate the screening questions using the recruiter instruction.\n\nRules:\n- Preserve candidate-specific relevance.\n- Keep questions tied to the resume and job opening.\n- Improve or replace the previous questions based on the instruction.\n- Return exactly 10 questions.\n- Use difficulty distribution: 3 easy, 4 medium, 3 hard.\n- Return only valid JSON. No markdown. No explanation.\n\nRecruiter instruction:\n${instruction}\n\nExisting questions:\n${JSON.stringify(existing,null,2)}\n\nJob opening:\n${JSON.stringify(job,null,2)}\n\nApproved weighted skills:\n${JSON.stringify(skills,null,2)}\n\nCandidate:\n${JSON.stringify(candidate,null,2)}\n\nApplication match context:\n${JSON.stringify({fuzzy_score:app.fuzzy_score,match_reason:app.match_reason,strengths:app.strengths,skill_gaps:app.skill_gaps},null,2)}\n\nCandidate resume:\n${resumeText}\n\nReturn this exact JSON:\n{\"questions\":[{\"order\":1,\"difficulty\":\"easy\",\"question\":\"string\",\"reason\":\"why this question is relevant to this candidate\"}]}`;\n}else{\nprompt=`You are a technical interviewer generating personalised screening questions.\n\nGenerate screening questions for this specific candidate and this specific job.\n\nRules:\n- Questions must be based on the candidate resume, matched skills, skill gaps, and job opening.\n- Do not generate generic questions only.\n- Include questions that verify claimed experience.\n- Include questions that test gaps or weaker areas.\n- Generate exactly 10 questions: 3 easy, 4 medium, 3 hard.\n- Keep questions clear and practical.\n- Return only valid JSON. No markdown. No explanation.\n\nJob opening:\n${JSON.stringify(job,null,2)}\n\nApproved weighted skills:\n${JSON.stringify(skills,null,2)}\n\nCandidate:\n${JSON.stringify(candidate,null,2)}\n\nApplication match context:\n${JSON.stringify({fuzzy_score:app.fuzzy_score,match_reason:app.match_reason,strengths:app.strengths,skill_gaps:app.skill_gaps},null,2)}\n\nCandidate resume:\n${resumeText}\n\nReturn this exact JSON:\n{\"questions\":[{\"order\":1,\"difficulty\":\"easy\",\"question\":\"string\",\"reason\":\"why this question is relevant to this candidate\"}]}`;\n}\nreturn {json:{...$json,prompt}};"
+      },
+      "id": "2b673e06-ace8-426c-b207-12ebc3a67b8a",
+      "name": "Code - Build Question Prompt1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2016,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "options": {
+          "systemMessage": "You are an ATS screening question generation agent. Return only valid JSON. No markdown. No explanation."
+        }
+      },
+      "id": "cda57711-eeff-4844-be96-9d5c0c627d0e",
+      "name": "AI Agent - Generate Questions1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -1760,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o-mini",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "ca258ad2-25cc-4159-8e72-83db704aa92b",
+      "name": "OpenRouter Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -1808,
+        1584
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "9eFaLRPmLH4eA8yC",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.application_id + '-' + $json.mode }}",
+        "contextWindowLength": 3
+      },
+      "id": "d1dcff49-f4f5-4ec6-8659-588faed31990",
+      "name": "Simple Memory - Question Session1",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -1632,
+        1568
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function parseJSON(value){if(typeof value==='object'&&value!==null)return value;let text=String(value||'').trim();text=text.replace(/^```json\\s*/i,'').replace(/^```\\s*/i,'').replace(/```$/i,'').trim();const first=text.indexOf('{');const last=text.lastIndexOf('}');if(first>=0&&last>first)text=text.slice(first,last+1);return JSON.parse(text);}\nconst raw=$json.output||$json.text||$json.response||$json.message;const parsed=parseJSON(raw);let questions=Array.isArray(parsed.questions)?parsed.questions:[];\nquestions=questions.slice(0,10).map((q,index)=>({order:Number(q.order||index+1),difficulty:['easy','medium','hard'].includes(String(q.difficulty||'').toLowerCase())?String(q.difficulty).toLowerCase():(index<3?'easy':index<7?'medium':'hard'),question:String(q.question||'').trim(),reason:String(q.reason||'').trim()})).filter(q=>q.question);\nif(!questions.length)throw new Error('AI returned no valid questions');\nreturn {json:{...$json,questions,question_count:questions.length}};"
+      },
+      "id": "d14e42c7-f3a9-49eb-8f8f-b1e3c7e3f235",
+      "name": "Code - Parse and Validate Questions1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1216,
+        1888
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "applications",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Webhook - ATS Questions').item.json.body.application_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "screening_questions",
+              "fieldValue": "={{ $json.questions }}"
+            },
+            {
+              "fieldId": "created_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "ce1aedd5-5f2b-4a73-a889-040c58a0680c",
+      "name": "Supabase - Update Application With Questions1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -1040,
+        1824
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let x;\n\ntry {\n  x = $('Code - Parse and Validate Questions1').first().json;\n} catch (e) {\n  x = $('Code - Parse and Apply Refined Question').first().json;\n}\n\nconst questions =\n  x.questions ||\n  x.screening_questions ||\n  [];\n\nreturn [{\n  json: {\n    request_id: x.request_id,\n    mode: x.mode,\n\n    status: \"ready\",\n    processing_status: \"ready\",\n\n    message:\n      x.refined_question\n        ? \"Question refined successfully.\"\n        : x.mode === \"regenerate\"\n          ? \"Screening questions regenerated successfully.\"\n          : \"Screening questions generated successfully.\",\n\n    application_id: $('Webhook - ATS Questions').first().json.body.application_id,\n    candidate_id: x.candidate_id,\n    job_opening_id: x.job_opening_id,\n\n    // <-- This is what the callback expects\n    questions,\n\n    completed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "886581a3-486a-45bd-8463-7aaa227a4d81",
+      "name": "Code - Build Success Payload1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Webhook - ATS Questions').item.json.body.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Webhook - ATS Questions').item.json.body.authorization }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "e402765d-1326-4bf7-9450-76bcc9539b5b",
+      "name": "HTTP Request - Send Success Callback1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -560,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Code - Build Success Payload1').first().json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "2ce7b1a1-e035-4d19-8a92-f94ed5c3a7ce",
+      "name": "Respond to Webhook - Success1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -320,
+        1824
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data=$('Set - Extract Request Data1').first().json;return [{json:{status:'validation_error',request_id:data.request_id||null,message:'Missing callback_url, application_id, or valid mode. mode must be generate or regenerate.',received:data}}];"
+      },
+      "id": "64f38d6d-3b06-4bdb-915e-88b071637872",
+      "name": "Code - Build Validation Error1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5376,
+        2048
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "a9ce460a-ce22-487c-969d-f6cc9a816b45",
+      "name": "Respond to Webhook - Validation Error1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -5136,
+        2048
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1f7e1e0d-a222-4895-a60d-0a42d25f693b",
+              "leftValue": "={{ !!JSON.parse($json.output).question }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1456,
+        1824
+      ],
+      "id": "2645e84e-3a3e-44d6-975f-afdac38c17a7",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function parseJSON(value) {\n  if (typeof value === 'object' && value !== null) return value;\n\n  let text = String(value || '').trim();\n  text = text\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/```$/i, '')\n    .trim();\n\n  return JSON.parse(text);\n}\n\nconst parsed = parseJSON($json.output);\n\nif (!parsed.question) {\n  throw new Error('AI did not return a refined question');\n}\n\nconst refinedQuestion = parsed.question;\n\n// Get original payload\nconst source = $('Code - Build Already Ready Response1').first().json;\n\nconst screeningQuestions =\n  source.application.screening_questions || [];\n\nconst updatedQuestions = screeningQuestions.map(q => {\n  if (q.id === refinedQuestion.id) {\n    return {\n      ...q,\n      question: refinedQuestion.question,\n      reason: refinedQuestion.reason,\n      difficulty: refinedQuestion.difficulty,\n      refining: false,\n      refinement_prompt: null\n    };\n  }\n\n  return {\n    ...q,\n    refining: false\n  };\n});\n\nreturn {\n  json: {\n    ...source,\n    refined_question: refinedQuestion,\n    questions: updatedQuestions,\n    question_count: updatedQuestions.length\n  }\n};"
+      },
+      "id": "a55258de-e990-4d85-a646-8da3aceded3c",
+      "name": "Code - Parse and Apply Refined Question",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        1632
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - ATS Questions": {
+      "main": [
+        [
+          {
+            "node": "Set - Extract Request Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Extract Request Data1": {
+      "main": [
+        [
+          {
+            "node": "IF - Validate Required Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Validate Required Fields1": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Fetch Application1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Validation Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Fetch Application1": {
+      "main": [
+        [
+          {
+            "node": "Code - Normalize Application1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Normalize Application1": {
+      "main": [
+        [
+          {
+            "node": "IF - Existing Questions And Generate Mode1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Existing Questions And Generate Mode1": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Already Ready Response1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase - Fetch Candidate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Already Ready Response1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Generate Questions1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Fetch Candidate1": {
+      "main": [
+        [
+          {
+            "node": "Code - Attach Candidate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Attach Candidate1": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Fetch Job Opening1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Fetch Job Opening1": {
+      "main": [
+        [
+          {
+            "node": "Code - Attach Job Opening1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Attach Job Opening1": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Fetch Approved Skills1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Fetch Approved Skills1": {
+      "main": [
+        [
+          {
+            "node": "Code - Attach Approved Skills1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Attach Approved Skills1": {
+      "main": [
+        [
+          {
+            "node": "IF - Candidate Has Resume Text1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Candidate Has Resume Text1": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Question Prompt1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request - Download Resume1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Download Resume1": {
+      "main": [
+        [
+          {
+            "node": "Extract From File - Resume Text1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract From File - Resume Text1": {
+      "main": [
+        [
+          {
+            "node": "Code - Attach Extracted Resume Text1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Attach Extracted Resume Text1": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Question Prompt1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Question Prompt1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Generate Questions1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Generate Questions1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Generate Questions1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory - Question Session1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent - Generate Questions1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse and Validate Questions1": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Update Application With Questions1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Update Application With Questions1": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Success Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Success Payload1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Send Success Callback1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Send Success Callback1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Success1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Validation Error1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Validation Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse and Apply Refined Question",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Parse and Validate Questions1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse and Apply Refined Question": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Update Application With Questions1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Webhook - ATS Questions": [
+      {
+        "headers": {
+          "host": "n8n.srv832341.hstgr.cloud",
+          "user-agent": "python-httpx/0.28.1",
+          "content-length": "9395",
+          "accept": "*/*",
+          "accept-encoding": "gzip, deflate",
+          "content-type": "application/json",
+          "x-forwarded-for": "187.127.190.236",
+          "x-forwarded-host": "n8n.srv832341.hstgr.cloud",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+          "x-forwarded-server": "63b0f3269f63",
+          "x-real-ip": "187.127.190.236"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "application_id": "54726f5a-d7ce-4feb-96e0-9b703f7f22ea",
+          "callback_url": "https://api.recruiter.kozker.com/api/v1/callbacks/screening-questions",
+          "authorization": "Bearer kozker_callback_secret_token",
+          "auth_header": "Bearer kozker_callback_secret_token",
+          "candidate": {
+            "id": "78c5320c-45f8-4602-b15a-bbe03a918ee3",
+            "full_name": "AKSHAY JAYESH",
+            "email": "akshayjayeshjp@gmail.com",
+            "skills": [
+              "React",
+              "Next.js",
+              "TypeScript",
+              "JavaScript",
+              "CSS",
+              "Tailwind",
+              "Node.js",
+              "Python",
+              "FastAPI",
+              "Django",
+              "Java",
+              "SQL",
+              "PostgreSQL",
+              "MongoDB",
+              "Docker",
+              "Git"
+            ],
+            "experience_years": 3,
+            "raw_text": "AKSHAY JAYESH\nFull Stack Developer | AI & Automation Engineer | B.Tech (AI & ML)\n+91 8078309818 | akshayjayeshjp@gmail.com | LinkedIn | GitHub\nBangalore, Karnataka 560064\nCAREER OBJECTIVE\nResults-driven Full Stack Developer and AI Automation Engineer with 10+ months of hands-on industry experience\nbuilding intelligent, scalable web applications and automation pipelines. Adept at working across the full development\nlifecycle \u2014 from requirements gathering to deployment \u2014 in fast-paced startup environments. Passionate about\nleveraging AI tools, modern frameworks, and no-code/low-code platforms to deliver impactful, production-ready\nsolutions. Actively seeking a role where I can contribute across full stack development and AI-driven automation to help\nteams move faster and smarter.\nPROFESSIONAL SUMMARY\nA versatile developer with a B.Tech in Computer Engineering (AI & ML) and practical experience spanning full stack web\ndevelopment, AI-powered automation, and independent project ownership. At Kozker Tech, Iindependently architected\nand delivered an internal multi-tool AI SaaS platform, integrated n8n-based automation workflows into ERP systems, and\nimplemented AI-driven hiring pipelines \u2014 all while managing projects from requirement analysis through to live\ndeployment. Proficient in Next.js, TypeScript, React, Spring Boot, Java, Python, and backend services including Supabase\nand Firebase. Experienced with AI-assisted development workflows using LLM tools, and modern dev stacks. Strong\nfoundation in OOP, REST APIs, microservices, and agile practices. A self-starter who thrives in dynamic, ownership-driven\nenvironments.\nTECHNICAL SKILLS\nLanguages: Java, Python, JavaScript, TypeScript, SQL\nFront-End: Next.js, React.js, HTML5, CSS3, Bootstrap, Tailwind CSS\nBack-End: Spring Boot, Hibernate, REST APIs, FastAPI (Basic), Microservices, Node.js\nDatabases: MySQL, MongoDB, Supabase (PostgreSQL)\nAI & Automation: n8n, OpenAI API, LLM Integration, AI-assisted Development,\nCMS & Deployment: Supabase CMS, Payload CMS, Coolify (Self-hosted), Hostinger, Notion, Trello\nTools: Git, GitHub, Docker, Maven, Postman, IntelliJ IDEA, VS Code, STS, Figma\nConcepts: MVC Architecture, OOP, CRUD, DSA, Agile, CI/CD, Unit Testing, Microservices\nEXPERIENCE\nJunior Full Stack Developer | Kozker Tech, Kochi, Kerala\nJul 2025 \u2013 Present (10+ months)\nAI Tools Platform \u2014 Internal Product (Solo Ownership)\n\u2022 Independently designed, built, and deployed an internal multi-tool AI SaaS website featuring 8+ utilities: FAQ\nBuilder, Script Generator, Caption & Hashtag Generator, Domain Name Genie, Blog Post Generator, Project\nTimeline Builder, Business Plan Generator, and more.\n\u2022 Developed the complete frontend using Next.js and TypeScript; used n8n to power all backend automation\nworkflows, API integrations, and AI prompt pipelines.\n\u2022 Managed the full project lifecycle solo \u2014 from requirement gathering, UI/UX, and architecture to build, test,\nand live deployment on Coolify server via Hostinger.\n\u2022 Leveraged modern development tooling and workflows to accelerate feature delivery without compromising\nquality or scalability..\nERPNext Automation & AI Hiring Pipeline\n\u2022 Integrated a conversational AI chatbot into an ERPNext application, enabling users to interact with and edit ERP\nfields through natural language \u2014 significantly reducing manual data entry.\n\u2022 Built an intelligent hiring automation system that auto-generates a tailored interview question set from a Job\nDescription (JD) using LLM APIs, and dynamically creates candidate-specific questions based on their skill\nprofile.\n\u2022 Streamlined the end-to-end recruitment workflow using n8n, reducing manual HR screening effort and\naccelerating the overall hiring process.\nFull Stack & CMS Development\n\u2022 Built and maintained full-stack web applications using Next.js and Supabase (PostgreSQL) for dynamic, data-\ndriven features across client and internal projects.\n\u2022 Developed and managed CMS-driven content workflows, empowering non-technical stakeholders to update\nplatform content independently.\n\u2022 Collaborated in an agile startup environment using Notion for project tracking and Trello for sprint and task\nmanagement.\nPROJECTS\nEmployee Management System [Link]\nTech Stack: Spring Boot, Angular, MySQL, Hibernate\n\u2022 Built a full-stack enterprise-grade system with secure, role-based access control (RBAC) and responsive UI\nusing Angular and Bootstrap.\n\u2022 Developed RESTful APIs with Spring Boot and managed ORM-based database interactions via Hibernate.\nFood Ordering Website [Link]\nTech Stack: Node.js, React.js, Firebase Auth, Firebase Realtime DB, JWT\n\u2022 Developed a real-time food ordering platform with user authentication, live order tracking, and an admin\ndashboard.\n\u2022 Integrated Firebase Cloud Messaging (FCM) for push notifications and implemented JWT-based auth with\noptimized DB queries.\nAI-Powered Cold Email Outreach System [Link]\nTech Stack: Python, FastAPI, OpenAI API, SMTP/IMAP, HTTPX\n\u2022 Built an AI-driven B2B cold email automation system with web scraping and LLM-based generation for\npersonalized, high-conversion outreach at scale.\n\u2022 Automated bulk sending, intelligent reply detection, and follow-up scheduling for meeting bookings.\nFinal Year Capstone \u2014 AI-Powered Server Log Management System\nTech Stack: Python, Django, KNN (Machine Learning)\n\u2022 Developed an AI-based server log analysis system using Django and KNN for real-time anomaly and error\nprediction.\n\u2022 Built a live monitoring dashboard with WebSocket support; reduced debugging and incident resolution time by\n~70% through automated log classification.\nEDUCATION\nPresidency University Bangalore Bangalore , Karnataka\nB Tech CE with Artificial Intelligence and Machine Learning Jun 2020 \u2013 Jun2024\nGPA: 7.66/10\nBesant Technology Bangalore Bangalore, Karnataka\nCertification In Full Stack Web Development Jun2024\nCERTIFICATIONS\n\u2022 Cyber Security & Ethical Hacking \u2014 Rinex & E-Cell, IIT Kharagpur\n\u2022 Introduction to AI \u2014 IBM via Coursera (2023)\n\u2022 UI/UX Design using Figma \u2014 Udemy\n\u2022 Git & GitHub \u2014 Geekster (2023)\nSOFT SKILLS\n\u2022 Ownership Mindset: Comfortable owning projects end-to-end, from requirements to production deployment.\n\u2022 Adaptability: Thrive in fast-moving startup environments with evolving priorities and tech stacks.\n\u2022 Problem Solving: Proactively tackle challenges using the best available tools \u2014 code or no-code.\n\u2022 Communication: Strong communicator who builds trust quickly with teammates, clients, and stakeholders.\nLANGUAGES\n\u2022 Malayalam \u2014 Fluent (Spoken & Written)\n\u2022 English \u2014 Fluent (Spoken & Written)\n\u2022 Hindi \u2014 Proficient (Spoken & Written)"
+          },
+          "job_details": {
+            "id": "0e0220c4-7d6d-4405-8461-8738a94ec4ae",
+            "title": "Junior Java Developer",
+            "description": "ABC Company is seeking a Junior Java Developer to join our backend development team. The ideal candidate will possess foundational knowledge of Java, Spring Boot, REST APIs, SQL databases, and Git. You will collaborate with senior developers to build, test, and maintain backend services for web applications. Strong problem-solving skills and a willingness to learn are essential for this role.",
+            "responsibilities": [
+              "Assist in the development of backend services using Java and Spring Boot.",
+              "Collaborate with senior developers to design and implement REST APIs.",
+              "Participate in code reviews and contribute to team knowledge sharing.",
+              "Write unit and integration tests to ensure code quality.",
+              "Maintain and optimize SQL databases for performance.",
+              "Utilize Git for version control and collaboration on projects."
+            ],
+            "qualifications": [
+              "Bachelor's degree in Computer Science or related field.",
+              "Basic knowledge of Java programming language.",
+              "Familiarity with Spring Boot framework.",
+              "Understanding of RESTful API design principles.",
+              "Experience with MySQL or other SQL databases.",
+              "Proficiency in using Git for version control.",
+              "Strong analytical and problem-solving skills."
+            ],
+            "keywords": [
+              "Java",
+              "Spring Boot",
+              "REST API",
+              "MySQL",
+              "Git",
+              "Backend Development",
+              "Junior Developer",
+              "Software Engineering",
+              "Problem Solving",
+              "Web Applications"
+            ]
+          },
+          "requirement_details": {
+            "id": "4baba5b6-7368-42f5-a985-e793832be6ec",
+            "title": "Need a Junior Java Developer to join the backend d",
+            "description": "Need a Junior Java Developer to join the backend development team. The candidate should have basic knowledge of Java, Spring Boot, REST APIs, SQL databases, and Git. They will work with senior developers to build, test, and maintain backend services for web applications. Good problem-solving skills and willingness to learn are important",
+            "skills": [
+              "Java",
+              "Spring Boot",
+              "REST API",
+              "MySQL",
+              "Git"
+            ],
+            "experience_min": 0,
+            "experience_max": 3,
+            "seniority": "mid"
+          }
+        },
+        "webhookUrl": "https://n8n.srv832341.hstgr.cloud/webhook/ats-screening-questions",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2699c31bf46f1254e44a3fc07872ed7884890827d6a26afa9647feac8ff83d44"
+  },
+  "id": "a6412690-524c-4d",
+  "name": "ATS_GENERATE_SCREENING_QUESTIONS"
+}

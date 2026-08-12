@@ -1,0 +1,95 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "57c713ae-2169-4f8a-999d-f939a52f0a82",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "96ead947-a956-4335-a26e-4b3618f02ebb",
+      "name": "Webhook",
+      "webhookId": "57c713ae-2169-4f8a-999d-f939a52f0a82"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "kozker-main",
+        "remoteJid": "=91{{ $json.body.number }}",
+        "messageText": "={{ $json.body.message }}",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        192,
+        0
+      ],
+      "id": "920bdc07-c522-4a7f-be77-bef8548abe60",
+      "name": "Enviar texto",
+      "credentials": {
+        "evolutionApi": {
+          "id": "m55xlGkr6yFI3RIr",
+          "name": "Evolution account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Enviar texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Webhook": [
+      {
+        "headers": {
+          "host": "n8n.srv832341.hstgr.cloud",
+          "user-agent": "python-httpx/0.28.1",
+          "content-length": "553",
+          "accept": "*/*",
+          "accept-encoding": "gzip, deflate",
+          "content-type": "application/json",
+          "x-forwarded-for": "223.181.12.235",
+          "x-forwarded-host": "n8n.srv832341.hstgr.cloud",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+          "x-forwarded-server": "63b0f3269f63",
+          "x-real-ip": "223.181.12.235"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "phone": "8075743823",
+          "number": "8075743823",
+          "message": "Hello Test Script Candidate, your application for the 'Junior Software Engineer - CI/CD Management' role has been successfully submitted! We will review it shortly. Thank you.",
+          "text": "Hello Test Script Candidate, your application for the 'Junior Software Engineer - CI/CD Management' role has been successfully submitted! We will review it shortly. Thank you.",
+          "candidate_name": "Test Script Candidate",
+          "job_title": "Junior Software Engineer - CI/CD Management",
+          "event_type": "application_submitted"
+        },
+        "webhookUrl": "https://n8n.srv832341.hstgr.cloud/webhook/57c713ae-2169-4f8a-999d-f939a52f0a82",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2699c31bf46f1254e44a3fc07872ed7884890827d6a26afa9647feac8ff83d44"
+  },
+  "id": "03e1f061-735b-45",
+  "name": "ATS_WHATSAPP_CLIENT"
+}

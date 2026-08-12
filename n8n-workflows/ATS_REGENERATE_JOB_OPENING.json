@@ -1,0 +1,764 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ats-regenerate-job-opening",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "292c62c0-0a38-411e-abf9-b4e8d86ce967",
+      "name": "Webhook - ATS Regenerate Job Opening",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        320,
+        2144
+      ],
+      "webhookId": "ats-regenerate-job-opening"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nconst recruiterInstruction =\n  body.recruiter_instruction ||\n  body.ai_instruction?.instruction ||\n  body.instruction ||\n  'Regenerate and improve this job opening.';\n\nconst jobOpeningUuid =\n  body.job_opening_uuid ||\n  body.id ||\n  body.job_uuid ||\n  null;\n\nconst jobOpeningId =\n  body.job_opening_id ||\n  body.job_id ||\n  null;\n\nconst lookupField = jobOpeningUuid ? 'id' : 'job_opening_id';\nconst lookupValue = jobOpeningUuid || jobOpeningId || null;\n\nreturn [{\n  json: {\n    request_id: body.request_id || `regen_req_${Date.now()}`,\n    automation_type: body.automation_type || 'regenerate_job_opening',\n    mode: body.mode || 'regenerate',\n\n    callback_url: body.callback_url || null,\n    authorization: body.authorization || body.auth_header || '',\n\n    job_opening_uuid: jobOpeningUuid,\n    job_opening_id: jobOpeningId,\n\n    lookup_field: lookupField,\n    lookup_value: lookupValue,\n\n    recruiter_instruction: recruiterInstruction,\n    ai_instruction: body.ai_instruction || {},\n\n    job_opening_override: body.job_opening_override || null,\n    metadata: body.metadata || {},\n\n    received_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "a5766a46-3a27-473a-902d-7a3f5a673448",
+      "name": "Code - Extract Regeneration Request1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        2144
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.lookup_value }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.callback_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.recruiter_instruction }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1a487ec0-71cc-4a03-b19e-f7bbafc11f71",
+      "name": "IF - Validate Required Fields1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        816,
+        2144
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "job_openings",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "=id",
+              "condition": "eq",
+              "keyValue": "={{ $json.lookup_value }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "4c0f2f48-2297-407a-9aeb-b169c704a1ee",
+      "name": "Supabase - Mark Job Opening Regenerating1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1072,
+        2016
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "job_openings",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "=id",
+              "condition": "eq",
+              "keyValue": "={{ $('Code - Extract Regeneration Request1').first().json.lookup_value }}"
+            }
+          ]
+        }
+      },
+      "id": "b5425846-aee4-4f09-a9ec-31c3268fcc2f",
+      "name": "Supabase - Fetch Existing Job Opening1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        2016
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Code - Extract Regeneration Request1').first().json;\nconst row = items[0]?.json || null;\n\nif (!row || Object.keys(row).length === 0) {\n  throw new Error(`Job opening not found for ${req.lookup_field}=${req.lookup_value}`);\n}\n\nreturn [{\n  json: {\n    ...req,\n    existing_job_opening: row,\n    db_row_id: row.id,\n    job_opening_id: req.job_opening_id || row.job_opening_id\n  }\n}];"
+      },
+      "id": "58bd6974-3a0a-4b7b-a34a-a31b75c8e1de",
+      "name": "Code - Attach Existing Job Opening1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        2016
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\nconst job = data.job_opening_override || data.existing_job_opening;\nconst instruction = data.recruiter_instruction || data.ai_instruction?.instruction || 'Regenerate and improve the job opening.';\n\nconst systemPrompt = `You are a professional ATS job opening regeneration assistant. Return only valid JSON. No markdown. No explanation.`;\n\nconst userPrompt = `Regenerate this job opening using the recruiter instruction.\n\nExisting job opening:\n${JSON.stringify(job, null, 2)}\n\nRecruiter instruction:\n${instruction}\n\nRules:\n- Preserve the same database row. Do not invent IDs.\n- Preserve role intent unless the recruiter instruction clearly asks otherwise.\n- Improve clarity, structure, and recruiter-readiness.\n- Keep the output suitable for an ATS/job board.\n- Return ONLY valid JSON.\n- Do not include markdown.\n- Responsibilities must contain 6 to 8 items.\n- Qualifications must contain 5 to 7 items.\n- Keywords must contain 8 to 12 searchable keywords.\n\nReturn this exact JSON structure:\n{\n  \"title\": \"string\",\n  \"description\": \"string\",\n  \"responsibilities\": [\"string\"],\n  \"qualifications\": [\"string\"],\n  \"salary_range\": \"string\",\n  \"keywords\": [\"string\"],\n  \"department\": \"string\"\n}`;\n\nreturn [{\n  json: {\n    ...data,\n    ai_system_prompt: systemPrompt,\n    ai_user_prompt: userPrompt\n  }\n}];"
+      },
+      "id": "12015c60-fe3a-42d9-a4bc-076243e88825",
+      "name": "Code - Build Regeneration Prompt1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1856,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_user_prompt }}",
+        "options": {
+          "systemMessage": "={{ $json.ai_system_prompt }}",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "6e0bda04-4d33-43c8-8cf2-8d06015c9cf1",
+      "name": "AI Agent - Regenerate Job Opening1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        2144,
+        2016
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o-mini",
+        "options": {
+          "responseFormat": "json_object",
+          "temperature": 0.2
+        }
+      },
+      "id": "d1e55e5a-406c-450d-8e6c-fa7393a54653",
+      "name": "OpenRouter Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        2112,
+        2304
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "9eFaLRPmLH4eA8yC",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Code - Extract Regeneration Request1').first().json.request_id }}"
+      },
+      "id": "1b7953f1-d1da-409a-b29b-6c1f55e842db",
+      "name": "Simple Memory - Job Regeneration Session1",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        2336,
+        2304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseJson(value) {\n  if (typeof value === 'object' && value !== null) return value;\n\n  let text = String(value || '').trim();\n\n  text = text\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/```$/i, '')\n    .trim();\n\n  const first = text.indexOf('{');\n  const last = text.lastIndexOf('}');\n\n  if (first >= 0 && last > first) {\n    text = text.slice(first, last + 1);\n  }\n\n  return JSON.parse(text);\n}\n\nconst data = $('Code - Build Regeneration Prompt1').first().json;\nconst fetchedJob = data.existing_job_opening || {};\n\nconst raw =\n  $json.output ||\n  $json.text ||\n  $json.response ||\n  $json.message ||\n  $json;\n\nconst parsed = parseJson(raw);\nconst updatedJob = parsed.updated_job_opening || parsed.job_opening || parsed;\n\nreturn [{\n  json: {\n    request_id: data.request_id,\n    automation_type: data.automation_type,\n    mode: data.mode,\n    status: 'success',\n\n    callback_url: data.callback_url,\n    authorization: data.authorization,\n\n    lookup_field: data.lookup_field,\n    lookup_value: data.lookup_value,\n    job_opening_uuid: data.job_opening_uuid || fetchedJob.id,\n    job_opening_id: data.job_opening_id || fetchedJob.job_opening_id,\n    db_row_id: data.db_row_id || fetchedJob.id,\n\n    recruiter_instruction: data.recruiter_instruction,\n\n    updated_job_opening: {\n      title: updatedJob.title || fetchedJob.title || '',\n      description: updatedJob.description || fetchedJob.description || '',\n      responsibilities: Array.isArray(updatedJob.responsibilities)\n        ? updatedJob.responsibilities\n        : fetchedJob.responsibilities || [],\n      qualifications: Array.isArray(updatedJob.qualifications)\n        ? updatedJob.qualifications\n        : fetchedJob.qualifications || [],\n      keywords: Array.isArray(updatedJob.keywords)\n        ? updatedJob.keywords\n        : fetchedJob.keywords || [],\n      salary_range: updatedJob.salary_range || fetchedJob.salary_range || '',\n      department: updatedJob.department || fetchedJob.department || ''\n    },\n\n    processed_at: new Date().toISOString(),\n    errors: []\n  }\n}];"
+      },
+      "id": "9fd96bcf-c8c8-4a1d-a7f2-7cbce1ed0f0b",
+      "name": "Code - Parse Regenerated Job Opening1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2496,
+        2016
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "job_openings",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "=id",
+              "condition": "eq",
+              "keyValue": "={{ $json.lookup_value }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.updated_job_opening.title }}"
+            },
+            {
+              "fieldId": "description",
+              "fieldValue": "={{ $json.updated_job_opening.description }}"
+            },
+            {
+              "fieldId": "responsibilities",
+              "fieldValue": "={{ $json.updated_job_opening.responsibilities }}"
+            },
+            {
+              "fieldId": "qualifications",
+              "fieldValue": "={{ $json.updated_job_opening.qualifications }}"
+            },
+            {
+              "fieldId": "keywords",
+              "fieldValue": "={{ $json.updated_job_opening.keywords }}"
+            },
+            {
+              "fieldId": "salary_range",
+              "fieldValue": "={{ $json.updated_job_opening.salary_range }}"
+            },
+            {
+              "fieldId": "processing_status",
+              "fieldValue": "ready"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "fafecd40-a52c-456b-9645-aa0be710632b",
+      "name": "Supabase - Update Job Opening1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2784,
+        2016
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Code - Parse Regenerated Job Opening1').first().json;\nconst updatedRow = items[0]?.json || {};\n\nconst payload = {\n  request_id: parsed.request_id,\n  automation_type: parsed.automation_type,\n  mode: parsed.mode,\n  status: 'success',\n  processing_status: 'ready',\n  message: 'Job opening regenerated and updated successfully.',\n  job_opening_uuid: parsed.job_opening_uuid || parsed.db_row_id || updatedRow.id || null,\n  job_opening_id: parsed.job_opening_id || updatedRow.job_opening_id || null,\n  db_row_id: parsed.db_row_id || updatedRow.id || null,\n  job_opening: {\n    ...(parsed.updated_job_opening || {}),\n    id: updatedRow.id || parsed.db_row_id || null,\n    job_opening_id: updatedRow.job_opening_id || parsed.job_opening_id || null\n  },\n  processed_at: parsed.processed_at,\n  errors: []\n};\n\nreturn [{ json: { ...payload, callback_url: parsed.callback_url, authorization: parsed.authorization } }];"
+      },
+      "id": "3089573c-434b-4962-9ca0-abcc0fcb8055",
+      "name": "Code - Build Success Payload1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3040,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authorization }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ request_id: $json.request_id, automation_type: $json.automation_type, mode: $json.mode, status: $json.status, processing_status: $json.processing_status, message: $json.message, job_opening_uuid: $json.job_opening_uuid, job_opening_id: $json.job_opening_id, db_row_id: $json.db_row_id, job_opening: $json.job_opening, processed_at: $json.processed_at, errors: $json.errors }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "2d57e265-a230-4569-9d69-7913957d0f3a",
+      "name": "HTTP Request - Send Success Callback1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3280,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: $('Code - Build Success Payload1').first().json.status, processing_status: $('Code - Build Success Payload1').first().json.processing_status, request_id: $('Code - Build Success Payload1').first().json.request_id, automation_type: $('Code - Build Success Payload1').first().json.automation_type, mode: $('Code - Build Success Payload1').first().json.mode, message: $('Code - Build Success Payload1').first().json.message, job_opening_uuid: $('Code - Build Success Payload1').first().json.job_opening_uuid, job_opening_id: $('Code - Build Success Payload1').first().json.job_opening_id, db_row_id: $('Code - Build Success Payload1').first().json.db_row_id, job_opening: $('Code - Build Success Payload1').first().json.job_opening, should_refresh_page: true, processed_at: $('Code - Build Success Payload1').first().json.processed_at, errors: $('Code - Build Success Payload1').first().json.errors || [] }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "fa430329-f304-4dd6-8729-a52c403d39de",
+      "name": "Respond to Webhook - Success1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3520,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Code - Extract Regeneration Request1').first().json;\nconst missing = [];\nif (!original.lookup_value) missing.push('job_opening_uuid or job_opening_id');\nif (!original.callback_url) missing.push('callback_url');\nif (!original.recruiter_instruction) missing.push('recruiter_instruction');\n\nreturn [{\n  json: {\n    request_id: original.request_id,\n    automation_type: original.automation_type,\n    status: 'failed',\n    error_type: 'validation_error',\n    message: 'Missing required fields',\n    missing_fields: missing,\n    job_opening_uuid: original.job_opening_uuid || null,\n    job_opening_id: original.job_opening_id || null\n  }\n}];"
+      },
+      "id": "acda883c-da2e-41ad-a7a3-74e36e77fe72",
+      "name": "Code - Build Validation Error1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        2352
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "35612fa2-8488-41e0-8260-f2cde742a14b",
+      "name": "Respond to Webhook - Validation Error1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1360,
+        2352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Code - Extract Regeneration Request1').first().json;\nconst msg = $json.error?.message || $json.message || 'Job opening regeneration failed';\n\nreturn [{\n  json: {\n    request_id: original.request_id,\n    automation_type: original.automation_type,\n    mode: original.mode,\n    status: 'failed',\n    job_opening_uuid: original.job_opening_uuid || null,\n    job_opening_id: original.job_opening_id || null,\n    callback_url: original.callback_url,\n    authorization: original.authorization,\n    error: {\n      code: 'JOB_OPENING_REGENERATION_FAILED',\n      message: msg\n    },\n    processed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "da7f44a3-9e6d-4b1c-8706-862ee1fd984d",
+      "name": "Code - Build Error Callback Payload1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2496,
+        2304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authorization }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ request_id: $json.request_id, automation_type: $json.automation_type, mode: $json.mode, status: $json.status, job_opening_uuid: $json.job_opening_uuid, job_opening_id: $json.job_opening_id, error: $json.error, processed_at: $json.processed_at }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "ddf728e8-6c2d-4694-91c1-dd522db93914",
+      "name": "HTTP Request - Send Error Callback1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2784,
+        2304
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'failed_callback_sent', request_id: $('Code - Build Error Callback Payload1').first().json.request_id, error: $('Code - Build Error Callback Payload1').first().json.error }) }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "4b1e9865-c29c-4cac-aef5-58ba26cd4a4c",
+      "name": "Respond to Webhook - Error1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3040,
+        2304
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - ATS Regenerate Job Opening": {
+      "main": [
+        [
+          {
+            "node": "Code - Extract Regeneration Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Extract Regeneration Request1": {
+      "main": [
+        [
+          {
+            "node": "IF - Validate Required Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Validate Required Fields1": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Mark Job Opening Regenerating1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Validation Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Mark Job Opening Regenerating1": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Fetch Existing Job Opening1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Fetch Existing Job Opening1": {
+      "main": [
+        [
+          {
+            "node": "Code - Attach Existing Job Opening1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Attach Existing Job Opening1": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Regeneration Prompt1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Error Callback Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Regeneration Prompt1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Regenerate Job Opening1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Regenerate Job Opening1": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse Regenerated Job Opening1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Error Callback Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Regenerate Job Opening1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory - Job Regeneration Session1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent - Regenerate Job Opening1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse Regenerated Job Opening1": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Update Job Opening1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Error Callback Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Update Job Opening1": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Success Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Success Payload1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Send Success Callback1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Send Success Callback1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Success1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Validation Error1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Validation Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Error Callback Payload1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Send Error Callback1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Send Error Callback1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Webhook - ATS Regenerate Job Opening": [
+      {
+        "headers": {
+          "host": "n8n.srv832341.hstgr.cloud",
+          "user-agent": "python-httpx/0.28.1",
+          "content-length": "1663",
+          "accept": "*/*",
+          "accept-encoding": "gzip, deflate",
+          "content-type": "application/json",
+          "x-forwarded-for": "223.181.9.237",
+          "x-forwarded-host": "n8n.srv832341.hstgr.cloud",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+          "x-forwarded-server": "63b0f3269f63",
+          "x-real-ip": "223.181.9.237"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "automation_type": "regenerate_job_opening",
+          "job_opening_id": "effa4c27-31d7-42a5-9546-5bf49f4b1b33",
+          "requirement_id": "135577cb-571e-4aaa-9979-490b1ed9b3d9",
+          "instruction": "Ensure that in qualifications the canidates has a BTech",
+          "callback_url": "http://localhost:8000/api/v1/callbacks/job-openings/regenerate",
+          "auth_header": "Bearer kozker_callback_secret_token",
+          "job_details": {
+            "title": "CI/CD Workflow Engineer",
+            "description": "We are seeking a skilled CI/CD Workflow Engineer to join our team at ArenaF. The ideal candidate will have experience in managing continuous integration and continuous deployment workflows, ensuring efficient software delivery processes.",
+            "responsibilities": [
+              "Design and implement CI/CD pipelines for various projects.",
+              "Collaborate with development teams to integrate automated testing.",
+              "Monitor and optimize CI/CD processes for performance and reliability.",
+              "Troubleshoot and resolve issues related to build and deployment.",
+              "Maintain documentation for CI/CD workflows and processes.",
+              "Stay updated with industry trends and best practices in CI/CD."
+            ],
+            "qualifications": [
+              "Bachelor's degree in Computer Science or related field.",
+              "3-5 years of experience in CI/CD management.",
+              "Proficiency in tools such as Jenkins, GitLab CI, or CircleCI.",
+              "Experience with containerization technologies like Docker.",
+              "Strong understanding of version control systems, particularly Git.",
+              "Familiarity with cloud platforms such as AWS or Azure."
+            ],
+            "salary_range": "\u20b96,00,000 - \u20b917,00,000",
+            "keywords": [
+              "CI/CD",
+              "DevOps",
+              "Automation",
+              "Jenkins",
+              "Docker",
+              "Cloud",
+              "Git",
+              "Software Development",
+              "Continuous Integration",
+              "Continuous Deployment"
+            ],
+            "status": "draft"
+          }
+        },
+        "webhookUrl": "https://n8n.srv832341.hstgr.cloud/webhook/ats-regenerate-job-opening",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "instanceId": "2699c31bf46f1254e44a3fc07872ed7884890827d6a26afa9647feac8ff83d44"
+  },
+  "id": "0e808f76-758d-4a",
+  "name": "ATS_REGENERATE_JOB_OPENING"
+}

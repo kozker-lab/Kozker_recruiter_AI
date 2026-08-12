@@ -671,14 +671,12 @@ export default function ClientsView() {
     }
     
     return true;
-  }).sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: 'base' }));
+  });
 
-  const filteredClients = clients
-    .filter(c => 
-      c.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
-      c.id.toLowerCase().includes(clientSearchQuery.toLowerCase())
-    )
-    .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: 'base' }));
+  const filteredClients = clients.filter(c => 
+    c.name.toLowerCase().includes(clientSearchQuery.toLowerCase()) ||
+    c.id.toLowerCase().includes(clientSearchQuery.toLowerCase())
+  );
 
   const activeClient = clients.find(c => c.id === selectedClientId);
 
@@ -1143,7 +1141,7 @@ export default function ClientsView() {
               <div key={r.id} className="border border-neutral-200 rounded-sm p-4 hover:border-neutral-300 transition-all space-y-3 bg-neutral-white shadow-xs">
                 <div className="flex items-start justify-between">
                   <div className="space-y-0.5">
-                    <h4 className="font-tight font-bold text-sm text-neutral-850">{r.title}</h4>
+                    <h4 className="font-tight font-bold text-sm text-neutral-850 uppercase">{r.title?.toUpperCase()}</h4>
                     <p className="text-[10px] text-neutral-400 font-mono">ID: {r.id}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1262,7 +1260,7 @@ export default function ClientsView() {
                                   >
                                     <Activity className="w-3.5 h-3.5 text-primary/70 animate-pulse" />
                                     <span>
-                                      Post #{job.post_index || 1}: <span className="group-hover:underline">{job.title}</span>
+                                      Post #{job.post_index || 1}: <span className="group-hover:underline uppercase">{job.title?.toUpperCase()}</span>
                                     </span>
                                   </Link>
                                   <div className="flex items-center gap-2">

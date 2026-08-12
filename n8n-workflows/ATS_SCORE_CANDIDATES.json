@@ -1,0 +1,1008 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ats-score-candidates",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "91d2c699-6e0f-4f09-949b-2de56da85761",
+      "name": "Webhook - ATS Score Candidates1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        9536
+      ],
+      "webhookId": "3d8b60b4-90b3-42de-879e-c72f38956eeb"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst job = $json.job_opening || {};\nconst skills = Array.isArray($json.approved_skills) ? $json.approved_skills : [];\nconst candidate = $json.candidate || {};\n\nconst text = [\n  job.title,\n  job.department,\n  job.description,\n  ...(Array.isArray(job.responsibilities) ? job.responsibilities : []),\n  ...(Array.isArray(job.qualifications) ? job.qualifications : []),\n  ...(Array.isArray(job.keywords) ? job.keywords : []),\n  ...skills.map(s => s.skill_name || s.name || '')\n].filter(Boolean).join(' ').toLowerCase();\n\nconst technicalKeywords = [\n  'software','developer','engineer','frontend','backend','full stack','fullstack','react','next.js','node','typescript','javascript','java','python','django','spring','api','rest','graphql','database','sql','postgres','mongodb','devops','aws','azure','gcp','cloud','docker','kubernetes','terraform','ci/cd','machine learning','ml','ai','data scientist','data engineer','data analyst','analytics','power bi','tableau','qa','quality assurance','tester','testing','automation testing','manual testing','sdet','cybersecurity','security','network','system admin','it support','technical support','implementation','solutions engineer','product engineer','site reliability','sre','mobile','android','ios','flutter','react native','web development','architecture','microservices'\n];\n\nconst technicalAdjacentKeywords = [\n  'business analyst','technical analyst','product owner','product manager','scrum master','project manager','implementation consultant','erp consultant','crm consultant','solution consultant','pre sales engineer','technical writer','manual qa','uat','support analyst','application support','functional consultant','systems analyst'\n];\n\nconst nonTechnicalKeywords = [\n  'marketing','sales','business development','hr','human resources','recruiter','talent acquisition','finance','accounting','admin','operations','customer success','customer support','content','seo','copywriter','designer','graphic','social media','brand','legal','procurement','office manager','delivery partner','driver','logistics','warehouse','field sales','retail','b2b sales','inside sales'\n];\n\nconst hasAny = (arr) => arr.some(k => text.includes(k));\nlet role_category = 'non_technical';\nlet role_subtype = 'business_non_technical';\n\nif (hasAny(technicalKeywords)) {\n  role_category = 'technical';\n  role_subtype = 'core_technical';\n}\n\nif (hasAny(technicalAdjacentKeywords)) {\n  role_category = 'technical';\n  role_subtype = 'technical_adjacent_non_coding';\n}\n\nif (hasAny(nonTechnicalKeywords) && !hasAny(technicalKeywords) && !hasAny(technicalAdjacentKeywords)) {\n  role_category = 'non_technical';\n  role_subtype = 'business_non_technical';\n}\n\nif (text.includes('technical recruiter') || text.includes('it recruiter') || text.includes('tech recruiter')) {\n  role_category = 'non_technical';\n  role_subtype = 'recruitment_hr';\n}\n\nconst role_detection = {\n  role_category,\n  role_subtype,\n  detection_basis: {\n    job_title: job.title || '',\n    department: job.department || '',\n    weighted_skills: skills.map(s => s.skill_name || s.name || '').filter(Boolean),\n    rule: role_category === 'technical'\n      ? 'Technical or technical-adjacent role detected from job title/skills/description.'\n      : 'Business/non-technical role detected from job title/skills/description.'\n  }\n};\n\nreturn {\n  json: {\n    ...$json,\n    role_detection,\n    role_category,\n    role_subtype\n  }\n};\n"
+      },
+      "id": "9685d340-f29a-4410-96cf-def753a85937",
+      "name": "Code - Classify Role Category",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        9232
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "options": {
+          "systemMessage": "You are a strict JSON-only ATS scoring agent for technical and technical-adjacent roles. Score evidence-based candidate-role fit. Return only valid JSON."
+        }
+      },
+      "id": "39500cbc-acb3-40e7-b483-aff25e66022b",
+      "name": "AI Agent - Score Technical Candidate",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        3344,
+        8992
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.job_opening.category }}",
+              "rightValue": "technical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "cb669294-2f45-498e-84d9-a0e6bbf3f150"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "68022ad5-f107-4f54-bea8-9fb45e1c532b",
+      "name": "IF - Role Is Technical",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2864,
+        9232
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const c = $json.candidate || {};\nconst job = $json.job_opening || {};\nconst skills = Array.isArray($json.approved_skills) ? $json.approved_skills : [];\nconst resumeText = (c.resume_text || '').slice(0, 7000);\n\nconst prompt = `You are a senior technical recruitment screening assistant.\n\nRole category: ${job.category || 'technical'}\nRole subtype: ${job.sub_category || 'core_technical'}\n\nEvaluate how well this candidate matches the job opening based mainly on resume_text and weighted skills.\n\nTechnical scoring rules:\n- Score primarily from resume_text and actual project/work evidence.\n- candidate.skills may be incomplete or outdated. Do not over-rely on candidate.skills.\n- For core technical roles, give strong credit for direct evidence of tools, frameworks, languages, architecture, production work, deployments, APIs, databases, cloud, testing, data/ML, security, or engineering ownership.\n- For technical-adjacent or non-coding technical roles such as Business Analyst, Product Owner, Implementation Consultant, Technical Support, Manual QA, UAT, Solution Consultant, ERP/CRM Consultant, or Technical Writer:\n  - Do NOT penalize the candidate for lack of coding unless coding is explicitly required.\n  - Score domain understanding, tools, workflows, documentation, stakeholder communication, implementation exposure, support experience, QA/UAT, requirements analysis, and technical coordination.\n- If the candidate has less experience than required, reduce fuzzy_score proportionally, but do not set all skill scores to 0 when skill evidence exists.\n- Score each weighted skill from 0 to 100.\n- Compute fuzzy_score as weighted sum of skill scores using the provided weights.\n- recommendation must be \"shortlist\" only if fuzzy_score >= ${$json.match_threshold || 60}, otherwise \"reject\".\n- Return only valid JSON.\n\nWeighted skills:\n${JSON.stringify(skills, null, 2)}\n\nJob opening:\n${JSON.stringify(job, null, 2)}\n\nCandidate structured profile:\n${JSON.stringify({\n  candidate_id: c.candidate_id,\n  full_name: c.full_name,\n  email: c.email,\n  skills: c.skills,\n  experience_years: c.experience_years,\n  source: c.source\n}, null, 2)}\n\nResume text:\n${resumeText}\n\nReturn ONLY valid JSON in this exact format:\n{\n  \"fuzzy_score\": 0,\n  \"skill_scores\": [\n    {\n      \"skill_name\": \"string\",\n      \"weight\": 0.3,\n      \"score\": 0,\n      \"evidence\": \"short evidence from resume\"\n    }\n  ],\n  \"match_reason\": \"brief recruiter-facing explanation\",\n  \"strengths\": [\"string\"],\n  \"skill_gaps\": [\"string\"],\n  \"recommendation\": \"shortlist\"\n}\n\nNo markdown. No code fences. No explanation outside JSON.`;\n\nreturn { json: { ...$json, prompt } };"
+      },
+      "id": "d8cddce7-c2b7-41ae-980f-08ba30be7661",
+      "name": "Code - Build Technical AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3104,
+        9120
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const c = $json.candidate || {};\nconst job = $json.job_opening || {};\nconst skills = Array.isArray($json.approved_skills) ? $json.approved_skills : [];\nconst resumeText = (c.resume_text || '').slice(0, 7000);\n\nconst prompt = `You are a senior non-technical recruitment screening assistant.\n\nRole category: ${job.category || 'non_technical'}\nRole subtype: ${job.sub_category || 'business_non_technical'}\n\nEvaluate how well this candidate matches a business/non-technical role based mainly on resume_text and weighted skills.\n\nNon-technical scoring rules:\n- Score primarily from resume_text and real work evidence.\n- candidate.skills may be incomplete or outdated. Do not over-rely on candidate.skills.\n- For Marketing roles: score campaign ownership, SEO/SEM, content, analytics, brand, social media, CRM, lead generation, and measurable outcomes.\n- For Sales/BD roles: score lead generation, prospecting, CRM, negotiation, quotas, industry exposure, pipeline handling, and client communication.\n- For HR/Recruitment roles: score sourcing, screening, ATS usage, stakeholder handling, interview coordination, hiring pipelines, onboarding, and compliance.\n- For Operations/Admin roles: score process ownership, coordination, documentation, vendor/client handling, reporting, scheduling, and execution discipline.\n- For Finance/Accounting roles: score accounting tools, reconciliation, invoicing, taxation basics, reporting, compliance, and accuracy.\n- Do NOT require coding or engineering depth unless the job explicitly demands it.\n- Score each weighted skill from 0 to 100 based on evidence.\n- Compute fuzzy_score as weighted sum of skill scores using the provided weights.\n- recommendation must be \"shortlist\" only if fuzzy_score >= ${$json.match_threshold || 60}, otherwise \"reject\".\n- Return only valid JSON.\n\nWeighted skills:\n${JSON.stringify(skills, null, 2)}\n\nJob opening:\n${JSON.stringify(job, null, 2)}\n\nCandidate structured profile:\n${JSON.stringify({\n  candidate_id: c.candidate_id,\n  full_name: c.full_name,\n  email: c.email,\n  skills: c.skills,\n  experience_years: c.experience_years,\n  source: c.source\n}, null, 2)}\n\nResume text:\n${resumeText}\n\nReturn ONLY valid JSON in this exact format:\n{\n  \"fuzzy_score\": 0,\n  \"skill_scores\": [\n    {\n      \"skill_name\": \"string\",\n      \"weight\": 0.3,\n      \"score\": 0,\n      \"evidence\": \"short evidence from resume\"\n    }\n  ],\n  \"match_reason\": \"brief recruiter-facing explanation\",\n  \"strengths\": [\"string\"],\n  \"skill_gaps\": [\"string\"],\n  \"recommendation\": \"shortlist\"\n}\n\nNo markdown. No code fences. No explanation outside JSON.`;\n\nreturn { json: { ...$json, prompt } };"
+      },
+      "id": "75ce0c26-766b-4235-9c72-466c18c97f8e",
+      "name": "Code - Build Non Technical AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3104,
+        9344
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "options": {
+          "systemMessage": "You are a strict JSON-only ATS scoring agent for business and non-technical roles such as sales, marketing, HR, operations, finance, admin, and customer success. Return only valid JSON."
+        }
+      },
+      "id": "4491c474-befb-448b-879b-40dd5e40b22d",
+      "name": "AI Agent - Score Non Technical Candidate",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        3344,
+        9344
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_shortlisted }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "b0d6c220-167f-4029-b6d1-182adff3ed4a",
+      "name": "IF - Candidate Shortlisted Now1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3696,
+        9232
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst req = $('Set - Extract Request Data6').first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst key = req.request_id || 'default';\nconst storeKey = `candidate_scan_${key}`;\nif (!staticData[storeKey]) staticData[storeKey] = { processed_count: 0, shortlisted_count: 0, rejected_count: 0, inserted: [], rejected: [], errors: [] };\nconst nextRank = Number(staticData[storeKey].shortlisted_count || 0) + 1;\nreturn { json: { ...$json, rank_order: nextRank, screening_status: 'pending', stage: 'screening', stage_status: 'pending' } };\n"
+      },
+      "id": "c220dad7-c3d4-4ecb-8c22-5a605bd2499a",
+      "name": "Code - Prepare Shortlisted Application Insert1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3904,
+        9136
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst original = $('Code - Prepare Shortlisted Application Insert1').item.json;\nconst inserted = $json;\nconst req = $('Set - Extract Request Data6').first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst key = req.request_id || 'default';\nconst storeKey = `candidate_scan_${key}`;\nif (!staticData[storeKey]) staticData[storeKey] = { processed_count: 0, shortlisted_count: 0, rejected_count: 0, inserted: [], rejected: [], errors: [] };\nstaticData[storeKey].processed_count = Number(staticData[storeKey].processed_count || 0) + 1;\nstaticData[storeKey].shortlisted_count = Number(staticData[storeKey].shortlisted_count || 0) + 1;\nstaticData[storeKey].inserted.push({\n  application_id: inserted.id || inserted.application_id || null,\n  rank_order: original.rank_order,\n  candidate_id: original.candidate.candidate_id,\n  full_name: original.candidate.full_name,\n  email: original.candidate.email,\n  fuzzy_score: original.fuzzy_score,\n  skill_scores: original.skill_scores,\n  match_reason: original.match_reason,\n  strengths: original.strengths,\n  skill_gaps: original.skill_gaps,\n  recommendation: original.recommendation || 'shortlist'\n});\nreturn { json: { ...original, inserted_application: inserted, saved_to_applications: true } };\n"
+      },
+      "id": "d9e16a16-3731-460c-88aa-c0601ecdae83",
+      "name": "Code - Save Inserted Shortlisted Candidate1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4384,
+        9136
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst req = $('Set - Extract Request Data6').first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst key = req.request_id || 'default';\nconst storeKey = `candidate_scan_${key}`;\nif (!staticData[storeKey]) staticData[storeKey] = { processed_count: 0, shortlisted_count: 0, rejected_count: 0, inserted: [], rejected: [], errors: [] };\nstaticData[storeKey].processed_count = Number(staticData[storeKey].processed_count || 0) + 1;\nstaticData[storeKey].rejected_count = Number(staticData[storeKey].rejected_count || 0) + 1;\nstaticData[storeKey].rejected.push({\n  candidate_id: $json.candidate.candidate_id,\n  full_name: $json.candidate.full_name,\n  email: $json.candidate.email,\n  fuzzy_score: $json.fuzzy_score,\n  recommendation: $json.recommendation || 'reject'\n});\nreturn { json: { ...$json, saved_to_applications: false } };\n"
+      },
+      "id": "499151a6-c63a-4ad7-a200-aa9940cf28ef",
+      "name": "Code - Save Rejected Candidate1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3904,
+        9360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst req = $('Set - Extract Request Data6').first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst key = req.request_id || 'default';\nconst storeKey = `candidate_scan_${key}`;\nconst state = staticData[storeKey] || { processed_count: 0, shortlisted_count: 0, rejected_count: 0, inserted: [], rejected: [], errors: [] };\nconst payload = {\n  request_id: req.request_id,\n  automation_type: 'score_candidates',\n  status: 'ready',\n  processing_status: 'ready',\n  message: 'Candidate scanning completed. Candidates were scanned one by one. Each shortlisted candidate was inserted immediately into the applications table before moving to the next candidate.',\n  job_opening_id: req.job_opening.job_opening_id,\n  total_candidates_processed: Number(state.processed_count || 0),\n  shortlisted_count: Number(state.shortlisted_count || 0),\n  rejected_candidates_count: Number(state.rejected_count || 0),\n  match_threshold: Number(req.match_threshold || 60),\n  matches: state.inserted || [],\n  inserted_into: 'applications',\n  rank_storage: 'applications.rank_order',\n  completed_at: new Date().toISOString(),\n  errors: state.errors || []\n};\ndelete staticData[storeKey];\nreturn [{ json: payload }];\n"
+      },
+      "id": "65e7ed1e-0816-4558-8cb6-dd861736ce4f",
+      "name": "Code - Build Ready Callback1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        9680
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "request_id",
+              "value": "={{ $json.body.request_id || 'score_req_' + Date.now() }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "automation_type",
+              "value": "={{ $json.body.automation_type || 'score_candidates' }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "callback_url",
+              "value": "={{ $json.body.callback_url }}",
+              "type": "string"
+            },
+            {
+              "id": "ef72fdfc-0042-4cd0-bc6d-8ca37d998a69",
+              "name": "job_opening",
+              "value": "={{ $json.body.job_opening }}",
+              "type": "object"
+            },
+            {
+              "id": "5",
+              "name": "approved_skills",
+              "value": "={{ $json.body.approved_skills }}",
+              "type": "array"
+            },
+            {
+              "id": "6",
+              "name": "match_threshold",
+              "value": "={{ $json.body.match_threshold || 60 }}",
+              "type": "number"
+            },
+            {
+              "id": "7",
+              "name": "limit",
+              "value": "={{ $json.body.limit || 100 }}",
+              "type": "number"
+            },
+            {
+              "id": "8",
+              "name": "received_at",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            },
+            {
+              "id": "candidate_ids_extraction",
+              "name": "candidate_ids",
+              "value": "={{ $json.body.candidate_ids || [] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f3dde0dd-862b-4276-9d4f-0c80d4e32b49",
+      "name": "Set - Extract Request Data6",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1216,
+        9536
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "a",
+              "leftValue": "={{ $json.callback_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "b",
+              "leftValue": "={{ $json.job_opening }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "d",
+              "leftValue": "={{ Array.isArray($json.approved_skills) && $json.approved_skills.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1d5c636-c1da-42ee-9673-fb3432e3a1b1",
+      "name": "IF - Validate Required Fields6",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1424,
+        9536
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst req = $('Set - Extract Request Data6').first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst key = req.request_id || `score_${Date.now()}`;\nstaticData[`candidate_scan_${key}`] = {\n  request_id: req.request_id,\n  started_at: new Date().toISOString(),\n  processed_count: 0,\n  shortlisted_count: 0,\n  rejected_count: 0,\n  inserted: [],\n  rejected: [],\n  errors: []\n};\nreturn items;\n"
+      },
+      "id": "459312a4-7579-40bf-84d4-5ed274d4c85a",
+      "name": "Code - Reset Candidate Scan State1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        9408
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "candidates",
+        "limit": "={{ $('Set - Extract Request Data6').first().json.candidate_ids.length }}",
+        "filterType": "string",
+        "filterString": "=id=in.({{ $('Set - Extract Request Data6').first().json.candidate_ids.join(',') }})"
+      },
+      "id": "14d31d63-60c6-49bb-8c91-d9d01f0bc9f3",
+      "name": "Supabase - Fetch Selected Candidates",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1904,
+        9408
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const req = $('Set - Extract Request Data6').first().json;\nconst c = $json;\n\nconst parsedResume =\n  typeof c.parsed_resume_json === 'string'\n    ? JSON.parse(c.parsed_resume_json || '{}')\n    : (c.parsed_resume_json || {});\n\nreturn {\n  json: {\n    request_id: req.request_id,\n    automation_type: req.automation_type,\n    callback_url: req.callback_url,\n    job_opening: req.job_opening,\n    approved_skills: req.approved_skills,\n    match_threshold: Number(req.match_threshold || 60),\n\n    candidate: {\n      candidate_id: c.id || c.candidate_id,\n      full_name: c.full_name || c.name || '',\n      email: c.email || '',\n      phone: c.phone || '',\n      skills: c.skills || [],\n      experience_years: c.experience_years || 0,\n      resume_url: c.resume_url || c.cv_url || c.candidate_cv || '',\n      resume_text:\n        parsedResume.raw_text ||\n        parsedResume.summary ||\n        c.raw_text ||\n        c.resume_text ||\n        c.cv_text ||\n        '',\n      parsed_resume: parsedResume,\n      source: c.source || 'supabase'\n    }\n  }\n};"
+      },
+      "id": "152d1563-da74-4be8-953f-06240aa5741c",
+      "name": "Code - Prepare Candidate Items6",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2144,
+        9408
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "2ae1de4f-f438-4fb4-89b1-089fa2b8d888",
+      "name": "Loop Over Candidates One By One1",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2384,
+        9408
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.candidate.resume_text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "64df5931-d5b7-4044-98fb-36e636f4c2dd",
+      "name": "IF - Candidate Has Resume Text6",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        9424
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o-mini",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "144d3b67-8d3c-4e39-8663-0f82bbe09e7d",
+      "name": "OpenRouter Chat Model6",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        3792,
+        9728
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "9eFaLRPmLH4eA8yC",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 1. Get original candidate and job details from the classification node\nconst originalData = $('Code - Classify Role Category').item.json;\n\n// 2. Extract output string from the AI Agent node\nconst aiOutput = $json.output || $json.text || $json.response || $json.message;\n\nif (!aiOutput) {\n  throw new Error('AI Agent returned empty output');\n}\n\n// 3. Robust JSON parser helper\nfunction parseJson(value) {\n  if (typeof value === 'object' && value !== null) return value;\n\n  let text = String(value || '').trim();\n  text = text\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/```$/i, '')\n    .trim();\n\n  const first = text.indexOf('{');\n  const last = text.lastIndexOf('}');\n  if (first >= 0 && last > first) {\n    text = text.slice(first, last + 1);\n  }\n\n  return JSON.parse(text);\n}\n\nlet parsed;\ntry {\n  parsed = parseJson(aiOutput);\n} catch (err) {\n  parsed = {\n    fuzzy_score: 0,\n    skill_scores: [],\n    match_reason: 'Failed to parse AI output: ' + err.message,\n    strengths: [],\n    skill_gaps: [],\n    recommendation: 'reject'\n  };\n}\n\nconst is_shortlisted = \n  parsed.recommendation === 'shortlist' || \n  (Number(parsed.fuzzy_score || 0) >= Number(originalData.match_threshold || 60));\n\nreturn {\n  json: {\n    ...originalData,\n    ...parsed,\n    is_shortlisted,\n    fuzzy_score: Number(parsed.fuzzy_score || 0),\n    skill_scores: parsed.skill_scores || [],\n    match_reason: parsed.match_reason || '',\n    strengths: parsed.strengths || [],\n    skill_gaps: parsed.skill_gaps || [],\n    recommendation: parsed.recommendation || 'reject'\n  }\n};"
+      },
+      "id": "770c854e-c862-4ddd-a8c0-3179551c14cd",
+      "name": "Code - Parse Candidate Score6",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3488,
+        9200
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "job_candidates",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "job_opening_id",
+              "fieldValue": "={{ $json.job_opening.job_opening_id }}"
+            },
+            {
+              "fieldId": "candidate_id",
+              "fieldValue": "={{ $json.candidate.candidate_id }}"
+            },
+            {
+              "fieldId": "application_id",
+              "fieldValue": "={{ $json.application_id || crypto.randomUUID() }}"
+            },
+            {
+              "fieldId": "fuzzy_score",
+              "fieldValue": "={{ Number($json.fuzzy_score) }}"
+            },
+            {
+              "fieldId": "rank_order",
+              "fieldValue": "={{ Number($json.rank_order) }}"
+            },
+            {
+              "fieldId": "strengths",
+              "fieldValue": "={{ $json.strengths || [] }}"
+            },
+            {
+              "fieldId": "skill_gaps",
+              "fieldValue": "={{ $json.skill_gaps || [] }}"
+            },
+            {
+              "fieldId": "ai_reasoning",
+              "fieldValue": "={{ $json.match_reason || '' }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "pending"
+            },
+            {
+              "fieldId": "parsed_resume",
+              "fieldValue": "={{ $json.candidate.parsed_resume || { raw_text: $json.candidate.resume_text || '' } }}"
+            }
+          ]
+        }
+      },
+      "id": "1630d37e-2974-4dfc-94a7-adfa05fecbdb",
+      "name": "Supabase - Insert Shortlisted Application6",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4144,
+        9136
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Set - Extract Request Data6').first().json.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Webhook - ATS Score Candidates1').item.json.body.authorization }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "87c4054b-ad30-4f83-af87-451a3b9b8dba",
+      "name": "HTTP Request - Send Success Callback6",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2624,
+        9760
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Code - Build Ready Callback1').first().json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "85129931-cbdc-45ae-ad7f-e57c27394228",
+      "name": "Respond to Webhook - Success6",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2864,
+        9760
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst data = $('Set - Extract Request Data6').first().json;\nreturn [{json:{status:'validation_error',request_id:data.request_id || null,message:'Missing callback_url, job_opening.job_opening_id, job_opening.title, or approved_skills',received:data}}];\n"
+      },
+      "id": "f1682284-f289-4cad-9ed1-0112fdc34492",
+      "name": "Code - Build Validation Error6",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        9728
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "3a778d45-5450-4f2c-adb4-3fa3dc585481",
+      "name": "Respond to Webhook - Validation Error6",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1904,
+        9728
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - ATS Score Candidates1": {
+      "main": [
+        [
+          {
+            "node": "Set - Extract Request Data6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Classify Role Category": {
+      "main": [
+        [
+          {
+            "node": "IF - Role Is Technical",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Score Technical Candidate": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse Candidate Score6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Role Is Technical": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Technical AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Non Technical AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Technical AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Score Technical Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Non Technical AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Score Non Technical Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Score Non Technical Candidate": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse Candidate Score6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Candidate Shortlisted Now1": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare Shortlisted Application Insert1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Save Rejected Candidate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare Shortlisted Application Insert1": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Insert Shortlisted Application6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Save Inserted Shortlisted Candidate1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Candidates One By One1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Save Rejected Candidate1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Candidates One By One1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Ready Callback1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Send Success Callback6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Extract Request Data6": {
+      "main": [
+        [
+          {
+            "node": "IF - Validate Required Fields6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Validate Required Fields6": {
+      "main": [
+        [
+          {
+            "node": "Code - Reset Candidate Scan State1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Validation Error6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Reset Candidate Scan State1": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Fetch Selected Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Fetch Selected Candidates": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare Candidate Items6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare Candidate Items6": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Candidates One By One1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Candidates One By One1": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Ready Callback1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF - Candidate Has Resume Text6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Candidate Has Resume Text6": {
+      "main": [
+        [
+          {
+            "node": "Code - Classify Role Category",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Save Rejected Candidate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model6": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Score Technical Candidate",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI Agent - Score Non Technical Candidate",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse Candidate Score6": {
+      "main": [
+        [
+          {
+            "node": "IF - Candidate Shortlisted Now1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Insert Shortlisted Application6": {
+      "main": [
+        [
+          {
+            "node": "Code - Save Inserted Shortlisted Candidate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Send Success Callback6": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Success6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Validation Error6": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Validation Error6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Webhook - ATS Score Candidates1": [
+      {
+        "headers": {
+          "host": "n8n.srv832341.hstgr.cloud",
+          "user-agent": "python-httpx/0.28.1",
+          "content-length": "1434",
+          "accept": "*/*",
+          "accept-encoding": "gzip, deflate",
+          "content-type": "application/json",
+          "x-forwarded-for": "187.127.190.236",
+          "x-forwarded-host": "n8n.srv832341.hstgr.cloud",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+          "x-forwarded-server": "63b0f3269f63",
+          "x-real-ip": "187.127.190.236"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "job_opening": {
+            "job_opening_id": "deaf09e3-9b2a-4b8c-a32d-8b32025b9320",
+            "title": "Sales Associate for Touch Screen Phones",
+            "category": "non-technical",
+            "sub_category": "Sales"
+          },
+          "approved_skills": [
+            {
+              "id": "sk-1783945257552-1",
+              "weight": 0.3,
+              "approved": true,
+              "skill_name": "retail sales",
+              "skill_order": 1,
+              "job_opening_id": "deaf09e3-9b2a-4b8c-a32d-8b32025b9320"
+            },
+            {
+              "id": "sk-1783945257552-2",
+              "weight": 0.25,
+              "approved": true,
+              "skill_name": "customer engagement",
+              "skill_order": 2,
+              "job_opening_id": "deaf09e3-9b2a-4b8c-a32d-8b32025b9320"
+            },
+            {
+              "id": "sk-1783945257552-3",
+              "weight": 0.2,
+              "approved": true,
+              "skill_name": "product knowledge",
+              "skill_order": 3,
+              "job_opening_id": "deaf09e3-9b2a-4b8c-a32d-8b32025b9320"
+            },
+            {
+              "id": "sk-1783945257552-4",
+              "weight": 0.15,
+              "approved": true,
+              "skill_name": "customer service",
+              "skill_order": 4,
+              "job_opening_id": "deaf09e3-9b2a-4b8c-a32d-8b32025b9320"
+            },
+            {
+              "id": "sk-1783945257552-5",
+              "weight": 0.1,
+              "approved": true,
+              "skill_name": "technology products",
+              "skill_order": 5,
+              "job_opening_id": "deaf09e3-9b2a-4b8c-a32d-8b32025b9320"
+            }
+          ],
+          "matching_scope": "applied",
+          "candidate_ids": [
+            "f70db9f6-3057-403e-843e-67ef0d2069a5",
+            "f78ce48d-28ac-4622-a3b4-db42d27635c6",
+            "f2ff0e2c-9692-4e10-9518-848a6891cc6c",
+            "6c70a0ad-8e6a-4351-8a2a-1692d82f3378",
+            "f4936df9-7f38-48be-978a-7f657101bc0e"
+          ],
+          "callback_url": "https://api.recruiter.kozker.com/api/v1/callbacks/candidate-matches",
+          "authorization": "Bearer kozker_callback_secret_token",
+          "auth_header": "Bearer kozker_callback_secret_token"
+        },
+        "webhookUrl": "https://n8n.srv832341.hstgr.cloud/webhook/ats-score-candidates",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2699c31bf46f1254e44a3fc07872ed7884890827d6a26afa9647feac8ff83d44"
+  },
+  "id": "b2936516-e3f0-4e",
+  "name": "ATS_SCORE_CANDIDATES"
+}

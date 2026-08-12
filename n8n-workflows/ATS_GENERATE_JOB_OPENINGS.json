@@ -1,0 +1,829 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ats-generate-job-openings",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "8d4bccad-6b30-44e1-8073-ec183aacd650",
+      "name": "Webhook Trigger - ATS Generate Job Openings",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1088,
+        1872
+      ],
+      "webhookId": "ats-generate-job-openings"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nconst requirement = body.requirement || {};\nconst aiInstruction = body.ai_instruction || {};\n\nreturn [{\n  json: {\n    request_id: body.request_id || `reqjob_${Date.now()}`,\n    automation_type: body.automation_type || 'generate_job_openings',\n    callback_url: body.callback_url || null,\n    authorization: body.authorization || body.auth_header || '',\n    auth_header: body.auth_header || body.authorization || '',\n    requirement,\n    ai_instruction: aiInstruction,\n    metadata: body.metadata || {},\n    received_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "dcca3767-0bbc-403e-a411-c29d1b499e7d",
+      "name": "Code - Extract Request Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -832,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "r1",
+              "leftValue": "={{ $json.request_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "r2",
+              "leftValue": "={{ $json.requirement.requirement_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "r3",
+              "leftValue": "={{ $json.requirement.title }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "r4",
+              "leftValue": "={{ $json.requirement.description }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "r5",
+              "leftValue": "={{ Number($json.requirement.num_posts_requested || 0) > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "239768f0-4b2b-4653-996f-3aef42b8e858",
+      "name": "IF - Validate Required Fields",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Code - Extract Request Data').first().json;\nconst errorMsg = $json.error?.message || $json.message || 'AI generation or response parsing failed';\n\nreturn [{\n  json: {\n    request_id: original.request_id,\n    automation_type: original.automation_type || 'generate_job_openings',\n    status: 'failed',\n    requirement_id: original.requirement?.requirement_id || null,\n    client_id: original.requirement?.client_id || null,\n    error: {\n      code: 'AI_GENERATION_FAILED',\n      message: errorMsg\n    },\n    job_openings: [],\n    errors: [{ message: errorMsg }]\n  }\n}];"
+      },
+      "id": "f97b1de7-d90f-4158-9187-f313adc9e0c6",
+      "name": "Code - Build AI Error Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        1936
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Code - Extract Request Data').first().json.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Code - Extract Request Data').first().json.authorization }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "849b2e15-f555-4c22-bbc2-9362920e7687",
+      "name": "HTTP Request - Send Failed Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        624,
+        1936
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Code - Extract Request Data').first().json;\nconst missing = [];\nif (!data.request_id) missing.push('request_id');\nif (!data.requirement?.requirement_id) missing.push('requirement.requirement_id');\nif (!data.requirement?.title) missing.push('requirement.title');\nif (!data.requirement?.description) missing.push('requirement.description');\nif (!data.requirement?.num_posts_requested) missing.push('requirement.num_posts_requested');\n\nreturn [{\n  json: {\n    request_id: data.request_id || null,\n    automation_type: data.automation_type || 'generate_job_openings',\n    status: 'failed',\n    requirement_id: data.requirement?.requirement_id || null,\n    client_id: data.requirement?.client_id || null,\n    error: {\n      code: 'VALIDATION_FAILED',\n      message: `Missing required field(s): ${missing.join(', ')}`\n    },\n    job_openings: []\n  }\n}];"
+      },
+      "id": "3d7baec5-da96-44ab-86bf-2bd0d6e9475c",
+      "name": "Code - Build Validation Error1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        2144
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "f71337bf-55fa-423d-bfa0-065cff2b9f1b",
+      "name": "Respond to Webhook - Validation Error1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -112,
+        2144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const requirement = $json.requirement;\nconst aiInstruction = $json.ai_instruction || {};\nconst count = Math.max(1,Number(requirement.num_posts_requested || 1));\nrequirement.num_posts_requested = count;\n\nconst systemPrompt = `You are a professional recruitment assistant. Generate complete job opening drafts from recruitment requirements, including classification tags. You must return only valid JSON. No markdown. No explanations.`;\n\nconst userPrompt = `Generate job opening drafts from the given recruitment requirement.\n\nRequirement:\n${JSON.stringify(requirement, null, 2)}\n\nRecruiter instruction:\n${aiInstruction.instruction || 'No extra instruction provided.'}\n\nAdditional AI controls:\n- Tone: ${aiInstruction.tone || 'professional'}\n- Output language: ${aiInstruction.output_language || 'en'}\n- Must include: ${(aiInstruction.must_include || []).join(', ') || 'None'}\n- Avoid: ${(aiInstruction.avoid || []).join(', ') || 'None'}\n\nRules:\n- Generate exactly ${count} job openings.\n- Return ONLY valid JSON.\n- Do not include markdown.\n- Do not include explanation.\n- Each job opening must be distinct if more than one is requested.\n- Responsibilities must contain 6 to 8 items.\n- Qualifications must contain 5 to 7 items.\n- Keywords must contain 8 to 10 searchable keywords.\n- If the requirement is vague, create realistic but not exaggerated job openings.\n- Use Indian salary format when INR is provided.\n- Assign a \"category\" tag: Must be exactly either \"technical\" or \"non-technical\".\n- Assign a \"sub_category\" tag: E.g., \"Sales\", \"Resource Management\", or \"Higher Management\" for non-technical; and \"CI/CD\", \"Full Stack\", \"Kotlin Specialist\", or a similar specific technical domain/technology for technical.\n\nReturn this exact JSON structure:\n{\n  \"job_openings\": [\n    {\n      \"post_index\": 1,\n      \"title\": \"string\",\n      \"description\": \"string\",\n      \"responsibilities\": [\"string\"],\n      \"qualifications\": [\"string\"],\n      \"salary_range\": \"string\",\n      \"keywords\": [\"string\"],\n      \"category\": \"string ('technical' or 'non-technical')\",\n      \"sub_category\": \"string\"\n    }\n  ]\n}`;\n\nreturn [{\n  json: {\n    ...$json,\n    expected_count: count,\n    ai_system_prompt: systemPrompt,\n    ai_user_prompt: userPrompt\n  }\n}];"
+      },
+      "id": "3d9713b9-2e74-4403-9e48-e21e0afa0d2f",
+      "name": "Code - Build AI Prompt1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_user_prompt }}",
+        "options": {
+          "systemMessage": "={{ $json.ai_system_prompt }}",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "97552d5c-9986-482d-81cd-f06feac4451c",
+      "name": "AI Agent - Generate Job Openings1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -48,
+        1744
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o-mini",
+        "options": {
+          "responseFormat": "json_object",
+          "temperature": 0.2
+        }
+      },
+      "id": "e2049c01-2a95-479d-88e1-45c8bcde69fc",
+      "name": "OpenRouter Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        1984
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "9eFaLRPmLH4eA8yC",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.request_id }}",
+        "contextWindowLength": 10
+      },
+      "id": "c65153a4-9bc2-4dcf-9d71-ee481e5b08ce",
+      "name": "Simple Memory - Requirement Session1",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        80,
+        1984
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const originalData = $('Code - Extract Request Data').first().json;\nconst aiOutput = $json.output || $json.text || $json.response || $json.message;\n\nif (!aiOutput) {\n  throw new Error('AI Agent returned empty output');\n}\n\nfunction parseJson(value) {\n  if (typeof value === 'object' && value !== null) return value;\n\n  let text = String(value || '').trim();\n  text = text\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/```$/i, '')\n    .trim();\n\n  const first = text.indexOf('{');\n  const last = text.lastIndexOf('}');\n  if (first >= 0 && last > first) {\n    text = text.slice(first, last + 1);\n  }\n\n  return JSON.parse(text);\n}\n\nlet parsed;\ntry {\n  parsed = parseJson(aiOutput);\n} catch (err) {\n  return [{\n    json: {\n      request_id: originalData.request_id,\n      automation_type: originalData.automation_type,\n      status: 'failed',\n      requirement_id: originalData.requirement.requirement_id,\n      client_id: originalData.requirement.client_id,\n      generated_count: 0,\n      job_openings: [],\n      errors: [{\n        code: 'AI_JSON_PARSE_FAILED',\n        message: err.message,\n        raw_tail: String(aiOutput).slice(-500)\n      }]\n    }\n  }];\n}\n\nif (!Array.isArray(parsed.job_openings)) {\n  throw new Error('job_openings array missing');\n}\n\nconst expectedCount = Number(originalData.requirement.num_posts_requested || parsed.job_openings.length || 1);\n\nconst normalizedOpenings = parsed.job_openings.slice(0, expectedCount).map((job, index) => {\n  // Normalize and validate category\n  let category = null;\n  if (job.category && typeof job.category === 'string') {\n    const cleanCategory = job.category.toLowerCase().trim();\n    if (cleanCategory === 'technical' || cleanCategory === 'non-technical') {\n      category = cleanCategory;\n    }\n  }\n\n  return {\n    job_opening_id: job.job_opening_id || `job_${originalData.requirement.requirement_id}_${index + 1}`,\n    requirement_id: originalData.requirement.requirement_id,\n    client_id: originalData.requirement.client_id,\n    client_name: originalData.requirement.client_name || '',\n    post_index: Number(job.post_index || index + 1),\n    title: job.title || '',\n    description: job.description || '',\n    responsibilities: Array.isArray(job.responsibilities) ? job.responsibilities : [],\n    qualifications: Array.isArray(job.qualifications) ? job.qualifications : [],\n    salary_range: job.salary_range || '',\n    keywords: Array.isArray(job.keywords) ? job.keywords : [],\n    category: category,\n    sub_category: (job.sub_category && typeof job.sub_category === 'string') ? job.sub_category.trim() : null,\n    status: 'draft',\n    processing_status: 'ready',\n    source: 'ai',\n    created_at: new Date().toISOString()\n  };\n});\n\nreturn [{\n  json: {\n    request_id: originalData.request_id,\n    automation_type: originalData.automation_type,\n    status: 'success',\n    requirement_id: originalData.requirement.requirement_id,\n    client_id: originalData.requirement.client_id,\n    generated_count: normalizedOpenings.length,\n    processed_at: new Date().toISOString(),\n    job_openings: normalizedOpenings,\n    errors: []\n  }\n}];"
+      },
+      "id": "7281aa54-4ae3-4090-8049-99c21e080115",
+      "name": "Code - Parse and Normalize AI Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1696
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "fee363b5-a69e-4298-abb1-271e0313f31a",
+      "name": "Respond to Webhook - Error1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        864,
+        1936
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Code - Parse and Normalize AI Response1').first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst storeKey = `job_generation_${parsed.request_id}`;\n\nstaticData[storeKey] = {\n  request_id: parsed.request_id,\n  inserted_rows: [],\n  errors: []\n};\n\nreturn items;"
+      },
+      "id": "105cb8c3-4f5e-4bce-bd94-62f8e558cbf6",
+      "name": "Code - Reset Insert State1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Code - Parse and Normalize AI Response1').first().json;\n\nif (payload.status !== 'success') {\n  return [{ json: payload }];\n}\n\nreturn payload.job_openings.map(job => ({\n  json: {\n    request_id: payload.request_id,\n    automation_type: payload.automation_type,\n    requirement_id: payload.requirement_id,\n    client_id: payload.client_id,\n    generated_count: payload.generated_count,\n    processed_at: payload.processed_at,\n\n    job_opening_id: job.job_opening_id,\n    requirement_id_insert: job.requirement_id,\n    client_id_insert: job.client_id,\n    post_index: job.post_index,\n    title: job.title,\n    description: job.description,\n    responsibilities: job.responsibilities,\n    qualifications: job.qualifications,\n    salary_range: job.salary_range,\n    keywords: job.keywords,\n    category: job.category,\n    sub_category: job.sub_category,\n    status: job.status,\n    processing_status: job.processing_status,\n    source: job.source\n  }\n}));"
+      },
+      "id": "a2496c00-44e6-4b26-bc00-5bd90b5448ab",
+      "name": "Code - Prepare Job Opening Rows1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "fecf78f0-c762-4319-85a7-b683089f2d53",
+      "name": "Loop - Insert Job Openings One By One1",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1088,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "job_openings",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "requirement_id",
+              "fieldValue": "={{ $json.requirement_id_insert }}"
+            },
+            {
+              "fieldId": "post_index",
+              "fieldValue": "={{ $json.post_index }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.title }}"
+            },
+            {
+              "fieldId": "description",
+              "fieldValue": "={{ $json.description }}"
+            },
+            {
+              "fieldId": "responsibilities",
+              "fieldValue": "={{ $json.responsibilities }}"
+            },
+            {
+              "fieldId": "qualifications",
+              "fieldValue": "={{ $json.qualifications }}"
+            },
+            {
+              "fieldId": "salary_range",
+              "fieldValue": "={{ $json.salary_range }}"
+            },
+            {
+              "fieldId": "keywords",
+              "fieldValue": "={{ $json.keywords }}"
+            },
+            {
+              "fieldId": "category",
+              "fieldValue": "={{ $json.category }}"
+            },
+            {
+              "fieldId": "sub_category",
+              "fieldValue": "={{ $json.sub_category }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "processing_status",
+              "fieldValue": "={{ $json.processing_status }}"
+            }
+          ]
+        }
+      },
+      "id": "ce204242-aa45-48f2-af8f-fb00f3d6b5a4",
+      "name": "Supabase - Insert Job Opening Row1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        1776
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $json;\nconst staticData = $getWorkflowStaticData('global');\n\nconst key = original.request_id || 'default';\nconst storeKey = `job_generation_${key}`;\n\nif (!staticData[storeKey]) {\n  staticData[storeKey] = {\n    request_id: original.request_id,\n    inserted_rows: [],\n    errors: [],\n  };\n}\n\nstaticData[storeKey].inserted_rows.push({\n  id: original.id || null,\n  job_opening_id: original.job_opening_id,\n  requirement_id: original.requirement_id_insert,\n  client_id: original.client_id_insert,\n  post_index: original.post_index,\n  title: original.title,\n  description: original.description,\n  responsibilities: original.responsibilities,\n  qualifications: original.qualifications,\n  salary_range: original.salary_range,\n  keywords: original.keywords,\n  category: original.category,\n  sub_category: original.sub_category,\n  status: original.status,\n  processing_status: original.processing_status,\n  source: original.source,\n});\n\nreturn items;"
+      },
+      "id": "0ecf4111-5e8f-4373-982f-3d021f032b5f",
+      "name": "Code - Save Inserted Job Opening1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "requirements",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Code - Parse and Normalize AI Response1').first().json.requirement_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "=ready"
+            }
+          ]
+        }
+      },
+      "id": "686b822e-8f33-42f3-b38d-5e16642a0ea7",
+      "name": "Supabase - Update Requirement Ready1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        1488
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "8I3bRhL0gzbROs1i",
+          "name": "Arjunspdb"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Code - Parse and Normalize AI Response1').first().json;\nconst staticData = $getWorkflowStaticData('global');\nconst storeKey = `job_generation_${parsed.request_id}`;\nconst inserted = (staticData[storeKey] && staticData[storeKey].inserted_rows) || [];\n\nconst jobOpenings = inserted.length ? inserted : parsed.job_openings;\n\ndelete staticData[storeKey];\n\nreturn [{\n  json: {\n    request_id: parsed.request_id,\n    automation_type: parsed.automation_type,\n    status: 'success',\n    requirement_id: parsed.requirement_id,\n    client_id: parsed.client_id,\n    generated_count: jobOpenings.length,\n    inserted_count: inserted.length,\n    processed_at: parsed.processed_at,\n    job_openings: jobOpenings,\n    errors: []\n  }\n}];"
+      },
+      "id": "2e45d6ca-eaa2-4153-b9ea-0562299979c3",
+      "name": "Code - Build Success Payload1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Webhook Trigger - ATS Generate Job Openings').item.json.body.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Code - Extract Request Data').first().json.authorization }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "40bcf10f-22b5-4228-81eb-7c559e05af1e",
+      "name": "HTTP Request - Send Success Callback to FastAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1856,
+        1488
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "350f2e47-d50e-405d-9249-53fe86118d85",
+      "name": "Respond to Webhook - Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2096,
+        1488
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger - ATS Generate Job Openings": {
+      "main": [
+        [
+          {
+            "node": "Code - Extract Request Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Extract Request Data": {
+      "main": [
+        [
+          {
+            "node": "IF - Validate Required Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Validate Required Fields": {
+      "main": [
+        [
+          {
+            "node": "Code - Build AI Prompt1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Validation Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build AI Error Payload": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Send Failed Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Send Failed Callback": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Validation Error1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Validation Error1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build AI Prompt1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Generate Job Openings1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Generate Job Openings1": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse and Normalize AI Response1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build AI Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Generate Job Openings1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory - Requirement Session1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent - Generate Job Openings1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse and Normalize AI Response1": {
+      "main": [
+        [
+          {
+            "node": "Code - Reset Insert State1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build AI Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Reset Insert State1": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare Job Opening Rows1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare Job Opening Rows1": {
+      "main": [
+        [
+          {
+            "node": "Loop - Insert Job Openings One By One1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop - Insert Job Openings One By One1": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Update Requirement Ready1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase - Insert Job Opening Row1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Insert Job Opening Row1": {
+      "main": [
+        [
+          {
+            "node": "Code - Save Inserted Job Opening1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Save Inserted Job Opening1": {
+      "main": [
+        [
+          {
+            "node": "Loop - Insert Job Openings One By One1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Update Requirement Ready1": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Success Payload1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Success Payload1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Send Success Callback to FastAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Send Success Callback to FastAPI": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build AI Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Webhook Trigger - ATS Generate Job Openings": [
+      {
+        "headers": {
+          "host": "n8n.srv832341.hstgr.cloud",
+          "user-agent": "python-httpx/0.28.1",
+          "content-length": "1520",
+          "accept": "*/*",
+          "accept-encoding": "gzip, deflate",
+          "content-type": "application/json",
+          "x-forwarded-for": "187.127.190.236",
+          "x-forwarded-host": "n8n.srv832341.hstgr.cloud",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+          "x-forwarded-server": "63b0f3269f63",
+          "x-real-ip": "187.127.190.236"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "automation_type": "generate_job_openings",
+          "request_id": "reqjob_4baba5b6-7368-42f5-a985-e793832be6ec",
+          "callback_url": "https://api.recruiter.kozker.com/api/v1/callbacks/job-openings",
+          "authorization": "Bearer kozker_callback_secret_token",
+          "auth_header": "Bearer kozker_callback_secret_token",
+          "requirement": {
+            "requirement_id": "4baba5b6-7368-42f5-a985-e793832be6ec",
+            "client_id": "8292fb0d-36a3-407b-85a0-8f163ee4dbd5",
+            "client_name": "ABC Company",
+            "title": "Need a Junior Java Developer to join the backend d",
+            "description": "Need a Junior Java Developer to join the backend development team. The candidate should have basic knowledge of Java, Spring Boot, REST APIs, SQL databases, and Git. They will work with senior developers to build, test, and maintain backend services for web applications. Good problem-solving skills and willingness to learn are important",
+            "skills": [
+              "Java",
+              "Spring Boot",
+              "REST API",
+              "MySQL",
+              "Git"
+            ],
+            "experience_min": 0,
+            "experience_max": 3,
+            "budget_min": 3,
+            "budget_max": 10,
+            "currency": "INR",
+            "seniority": "mid",
+            "location": "Bangalore / Remote",
+            "employment_type": "full_time",
+            "notes": "Freshers or candidates with internship/project experience can be considered. Prefer candidates with strong Java basics and immediate availability.",
+            "num_posts_requested": 2
+          },
+          "ai_instruction": {
+            "instruction": "Generate 2 job openings: technical, leadership, or concise as specified.",
+            "tone": "professional",
+            "output_language": "en",
+            "must_include": [
+              "Java",
+              "Spring Boot",
+              "REST API",
+              "MySQL",
+              "Git"
+            ],
+            "avoid": [
+              "casual wording"
+            ]
+          },
+          "metadata": {}
+        },
+        "webhookUrl": "https://n8n.srv832341.hstgr.cloud/webhook/ats-generate-job-openings",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2699c31bf46f1254e44a3fc07872ed7884890827d6a26afa9647feac8ff83d44"
+  },
+  "id": "07d20ecd-e088-48",
+  "name": "ATS_GENERATE_JOB_OPENINGS"
+}

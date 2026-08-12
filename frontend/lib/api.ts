@@ -7,8 +7,9 @@ import { createClient } from "./supabase/client";
 
 // Base Configuration - Dynamic Browser/Server Resolving
 const isBrowser = typeof window !== "undefined";
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
-  || (isBrowser ? `${window.location.origin}/api/v1` : "http://backend:8000/api/v1");
+export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.startsWith("http"))
+  ? process.env.NEXT_PUBLIC_API_URL 
+  : "/api/v1";
 
 export function obfuscateId(uuidStr: string): string {
   if (!uuidStr) return "";
@@ -596,15 +597,40 @@ export async function apiRequest<T>(
     "Content-Type": "application/json",
   };
   
-  // Retrieve Supabase token if available
+  // Retrieve authentication headers (token & user email)
   try {
+    let storedToken = "";
+    let storedEmail = "";
+
     const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
-      headers["Authorization"] = `Bearer ${session.access_token}`;
+      storedToken = session.access_token;
+    }
+    if (session?.user?.email) {
+      storedEmail = session.user.email;
+    }
+
+    if (!storedEmail && typeof document !== "undefined") {
+      const match = document.cookie.match(/kozker_user_email=([^;]+)/);
+      if (match) storedEmail = decodeURIComponent(match[1]).trim().toLowerCase();
+    }
+    if (!storedEmail && typeof window !== "undefined") {
+      storedEmail = (localStorage.getItem("kozker_user_email") || "").trim().toLowerCase();
+    }
+
+    if (!storedToken && typeof window !== "undefined") {
+      storedToken = localStorage.getItem("kozker_sso_token") || localStorage.getItem("token") || "";
+    }
+
+    if (storedEmail) {
+      headers["X-User-Email"] = storedEmail;
+    }
+    if (storedToken) {
+      headers["Authorization"] = `Bearer ${storedToken}`;
     }
   } catch (tokenErr) {
-    console.warn("Could not retrieve supabase token for API request", tokenErr);
+    console.warn("Could not retrieve authentication headers for API request", tokenErr);
   }
   
   try {

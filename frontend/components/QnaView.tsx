@@ -154,13 +154,13 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
   const pendingCount = conversations.filter(c => !c.is_resolved && !c.is_ended).length;
   const resolvedCount = conversations.filter(c => c.is_resolved || c.is_ended).length;
 
-  // Extract unique client names (sorted A-Z)
+  // Extract unique client names
   const uniqueClients = React.useMemo(() => {
     const clients = new Set<string>();
     conversations.forEach(c => {
       if (c.client_name) clients.add(c.client_name);
     });
-    return Array.from(clients).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return Array.from(clients);
   }, [conversations]);
 
   // Filter conversations
@@ -193,7 +193,7 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
     });
   }, [conversations, searchQuery, clientFilter, statusFilter]);
 
-  // Group filtered conversations for Tree / File System view (sorted A-Z)
+  // Group filtered conversations for Tree / File System view
   const groupedConversations = React.useMemo(() => {
     const grouped: Record<string, {
       jobs: Record<string, {
@@ -217,24 +217,7 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
       grouped[c.client_name].jobs[c.job_id].conversations.push(c);
     });
 
-    const sortedGrouped: typeof grouped = {};
-    const sortedClientNames = Object.keys(grouped).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-
-    sortedClientNames.forEach(clientName => {
-      const cData = grouped[clientName];
-      const sortedJobs: typeof cData.jobs = {};
-      const sortedJobIds = Object.keys(cData.jobs).sort((a, b) => 
-        (cData.jobs[a].job_title || "").localeCompare(cData.jobs[b].job_title || "", undefined, { sensitivity: 'base' })
-      );
-
-      sortedJobIds.forEach(jobId => {
-        sortedJobs[jobId] = cData.jobs[jobId];
-      });
-
-      sortedGrouped[clientName] = { jobs: sortedJobs };
-    });
-
-    return sortedGrouped;
+    return grouped;
   }, [filteredConversations]);
 
   const toggleNode = (key: string) => {
@@ -545,8 +528,8 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
                                ) : (
                                   <Folder className="w-3.5 h-3.5 text-neutral-450" />
                                 )}
-                                <span className="font-medium text-neutral-800 text-xs">
-                                  {jobData.job_title}
+                                <span className="font-medium text-neutral-800 text-xs uppercase">
+                                  {jobData.job_title?.toUpperCase()}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2">
@@ -647,7 +630,7 @@ export default function QnaView({ onNavigate }: QnaViewProps) {
                         {c.job_title && (
                           <span className="font-mono text-[9px] px-1.5 py-0.5 bg-neutral-900 text-neutral-100 rounded-sm font-bold uppercase flex items-center gap-1">
                             <Building2 className="w-3 h-3" />
-                            Role: {c.job_title}
+                            Role: {c.job_title?.toUpperCase()}
                           </span>
                         )}
                         <span className="text-[10px] text-neutral-400 font-mono flex items-center gap-1">

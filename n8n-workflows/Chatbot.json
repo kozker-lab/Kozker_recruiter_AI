@@ -1,0 +1,2825 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ats-ai-copilot",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "d4a5b006-2446-46b4-96d4-147f5c8559e8",
+      "name": "Webhook - ATS AI Copilot",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -5184,
+        2544
+      ],
+      "webhookId": "0a9c9d2c-df2b-4a9d-b140-95f7bc37b5b3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nconst pageContext =\n  body.page_context ||\n  body.pageContext ||\n  {};\n\nconst selectedEntity =\n  body.selected_entity ||\n  body.selectedEntity ||\n  pageContext.selected_entity ||\n  {};\n\nconst message = String(\n  body.message ||\n  body.user_message ||\n  body.prompt ||\n  body.query ||\n  ''\n).trim();\n\nconst sessionId =\n  body.session_id ||\n  body.sessionId ||\n  body.recruiter_id ||\n  body.user_id ||\n  'ats_copilot_default_session';\n\n// Always force production webhook base URL\nconst n8nBaseUrl = 'https://n8n.srv832341.hstgr.cloud/webhook';\n\n// Use production FastAPI callback base when provided.\n// Do not default to localhost in hosted n8n.\nconst callbackBase = (\n  body.callback_base_url ||\n  body.fastapi_callback_base_url ||\n  'https://YOUR-PRODUCTION-FASTAPI-DOMAIN/api/v1/callbacks'\n).replace(/\\/$/, '');\n\nreturn [\n  {\n    json: {\n      request_id: body.request_id || `copilot_req_${Date.now()}`,\n      automation_type: body.automation_type || 'ats_ai_copilot',\n\n      session_id: sessionId,\n      recruiter_id: body.recruiter_id || null,\n      workspace_id: body.workspace_id || null,\n\n      current_page: body.current_page || pageContext.current_page || '',\n      route: body.route || pageContext.route || '',\n\n      message,\n\n      callback_url: body.callback_url || null,\n      callback_base_url: callbackBase,\n\n      authorization: body.authorization || body.auth_header || '',\n      auth_header: body.auth_header || body.authorization || '',\n\n      n8n_base_url: n8nBaseUrl,\n\n      page_context: pageContext,\n      selected_entity: selectedEntity,\n\n      visible_rows: body.visible_rows || pageContext.visible_rows || [],\n      visible_data:\n        body.visible_data ||\n        body.page_data ||\n        pageContext.visible_data ||\n        {},\n\n      entities: body.entities || {},\n      action_hint: body.action_hint || '',\n\n      frontend_capabilities: body.frontend_capabilities || {\n        navigation: true,\n        refresh_page: true,\n        show_toast: true,\n        open_drawer: true,\n        update_local_state: true\n      },\n\n      workflow_endpoints: {\n        generate_job_openings: '/ats-generate-job-openings',\n        regenerate_job_opening: '/ats-regenerate-job-opening',\n        extract_weighted_skills: '/ats-extract-weighted-skills',\n        score_candidates: '/ats-score-candidates',\n        screening_questions: '/ats-screening-questions',\n        refine_screening_question: '/ats-screening-questions'\n      },\n\n      workflow_urls: {\n        generate_job_openings:\n          `${n8nBaseUrl}/ats-generate-job-openings`,\n\n        regenerate_job_opening:\n          `${n8nBaseUrl}/ats-regenerate-job-opening`,\n\n        extract_weighted_skills:\n          `${n8nBaseUrl}/ats-extract-weighted-skills`,\n\n        score_candidates:\n          `${n8nBaseUrl}/ats-score-candidates`,\n\n        screening_questions:\n          `${n8nBaseUrl}/ats-screening-questions`,\n\n        refine_screening_question:\n          `${n8nBaseUrl}/ats-screening-questions`\n      },\n\n      default_callback_urls: {\n        generate_job_openings:\n          `${callbackBase}/job-openings`,\n\n        regenerate_job_opening:\n          `${callbackBase}/job-openings/regenerate`,\n\n        extract_weighted_skills:\n          `${callbackBase}/job-skills`,\n\n        score_candidates:\n          `${callbackBase}/candidate-scoring`,\n\n        screening_questions:\n          `${callbackBase}/questions`,\n\n        refine_screening_question:\n          `${callbackBase}/questions/refine`\n      },\n\n      received_at: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "id": "2977a324-8234-4597-b238-6f5c65c6df3a",
+      "name": "Code - Extract Copilot Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4944,
+        2544
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "m1",
+              "leftValue": "={{ $json.message }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "m2",
+              "leftValue": "={{ $json.session_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "711ddd12-9e30-4e6a-8658-3d8e8432386a",
+      "name": "IF - Validate Required Fields",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -4704,
+        2544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst x = $json;\nconst prompt = `You are the INTENT ROUTER for KOZKER Recruiter AI Copilot.\n\nYour job is to understand the recruiter message, the current UI page, selected entity, and visible page context. Decide whether to answer directly, navigate, or call one of the ATS n8n automation workflows.\n\nAvailable workflow actions:\n1. generate_job_openings\n   Use when recruiter wants to create job openings from a requirement/mandate.\n   Endpoint path: /ats-generate-job-openings\n\n2. regenerate_job_opening\n   Use when recruiter asks to edit, modify, rewrite, improve, regenerate, change experience, change salary, add/remove skills, change tone, make role senior/junior, change wording, or update any existing job opening.\n   Endpoint path: /ats-regenerate-job-opening\n   Important: If current_page is job_catalog and page_context has job_opening_id, job_opening_uuid, or id, route job-edit messages here.\n\n3. extract_weighted_skills\n   Use when recruiter asks to publish, scan, extract skills, generate weighted skills, skill approval, or prepare matching skills for a job opening.\n   Endpoint path: /ats-extract-weighted-skills\n\n4. score_candidates\n   Use when recruiter asks to scan candidates, match candidates, rank candidates, shortlist candidates, run CV analysis, candidate scoring, or fuzzy scoring.\n   Endpoint path: /ats-score-candidates\n\n5. screening_questions\n   Use when recruiter asks to generate interview/screening questions for an application/candidate.\n   Endpoint path: /ats-screening-questions\n\n6. refine_screening_question\n   Use when recruiter asks to edit/refine/regenerate one existing screening question.\n   Endpoint path: /ats-screening-questions\n\nDirect response actions:\n- answer: answer using page_context, visible_rows, selected_entity, and entities.\n- navigate: return a route/page target when the recruiter asks where to go or says \u201ctake me to...\u201d.\n- ui_action: for simple frontend-only actions such as open drawer, show filters, switch tab, sort, or highlight entity.\n- clarification: ask for missing details when the requested action cannot be safely completed.\n\nCurrent request context:\n${JSON.stringify({\n  request_id: x.request_id,\n  current_page: x.current_page,\n  route: x.route,\n  message: x.message,\n  action_hint: x.action_hint,\n  page_context: x.page_context,\n  selected_entity: x.selected_entity,\n  visible_rows: x.visible_rows,\n  visible_data: x.visible_data,\n  entities: x.entities\n}, null, 2)}\n\nReturn ONLY valid JSON with this exact shape:\n{\n  \"action_type\": \"answer | navigate | ui_action | call_workflow | clarification\",\n  \"intent\": \"short_intent_name\",\n  \"workflow_key\": \"generate_job_openings | regenerate_job_opening | extract_weighted_skills | score_candidates | screening_questions | refine_screening_question | null\",\n  \"confidence\": 0.0,\n  \"reason\": \"brief routing reason\",\n  \"target_page\": \"dashboard | clients | jobs | pool | rounds | notifications | settings | qna | help | null\",\n  \"route\": \"/path-or-null\",\n  \"entity_type\": \"job_opening | requirement | candidate | application | client | question | null\",\n  \"entity_id\": \"id-or-null\",\n  \"missing_fields\": [],\n  \"ui_action\": {\"type\": null, \"payload\": {}},\n  \"recruiter_instruction\": \"cleaned instruction to pass to workflow or UI\",\n  \"should_refresh_page\": false\n}`;\nreturn [{ json: { ...x, router_prompt: prompt } }];\n"
+      },
+      "id": "b3c64b2f-18d9-4abb-83e8-a95c0cd1df7d",
+      "name": "Code - Build Router Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4464,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.router_prompt }}",
+        "options": {
+          "systemMessage": "You are a strict JSON-only intent router for an ATS copilot. Return only valid JSON. No markdown. No explanation.",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "4b242d26-48eb-45fa-9dc5-00514b9dd239",
+      "name": "AI Agent - Copilot Intent Router",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -4192,
+        2448
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o-mini",
+        "options": {
+          "responseFormat": "json_object",
+          "temperature": 0.1
+        }
+      },
+      "id": "823ee953-c3ce-40b3-85ba-91ad51914315",
+      "name": "OpenRouter Chat Model - Copilot",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -3984,
+        3152
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "9eFaLRPmLH4eA8yC",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Code - Extract Copilot Request').first().json.session_id }}",
+        "contextWindowLength": 8
+      },
+      "id": "aba75442-e5db-473d-9f9c-3bdaac5de28c",
+      "name": "Simple Memory - Copilot Session",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -3792,
+        3136
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction parseJSON(value) {\n  if (typeof value === 'object' && value !== null) return value;\n  let text = String(value || '').trim();\n  text = text.replace(/^```json\\s*/i, '').replace(/^```\\s*/i, '').replace(/```$/i, '').trim();\n  const first = text.indexOf('{');\n  const last = text.lastIndexOf('}');\n  if (first >= 0 && last > first) text = text.slice(first, last + 1);\n  return JSON.parse(text);\n}\nfunction isUuid(v) {\n  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ''));\n}\nconst src = $('Code - Extract Copilot Request').first().json;\nconst raw = $json.output || $json.text || $json.response || $json.message || $json;\nlet d = {};\ntry { d = parseJSON(raw); } catch (e) { d = {}; }\n\nconst msg = String(src.message || '').toLowerCase();\nconst page = String(src.current_page || '').toLowerCase();\nconst pc = src.page_context || {};\nconst se = src.selected_entity || {};\nconst anyJobId = pc.job_opening_uuid || pc.id || pc.job_opening_id || se.job_opening_uuid || se.id || se.job_opening_id || null;\nconst anyAppId = pc.application_id || pc.application?.id || se.application_id || se.id || null;\n\nlet action_type = d.action_type || 'answer';\nlet workflow_key = d.workflow_key || null;\nlet intent = d.intent || 'answer_question';\nlet target_page = d.target_page || null;\nlet route = d.route || null;\nlet ui_action = d.ui_action || { type: null, payload: {} };\nlet missing_fields = Array.isArray(d.missing_fields) ? d.missing_fields : [];\nlet should_refresh_page = Boolean(d.should_refresh_page || false);\nlet confidence = Number(d.confidence || 0.5);\nlet reason = d.reason || '';\n\nconst editWords = /(change|update|edit|modify|rewrite|regenerate|improve|convert|make|increase|decrease|add|remove|replace|revise|alter|set)/i;\nconst jobWords = /(job|opening|role|jd|description|experience|salary|responsibilit|qualification|skill|keyword|senior|junior|architect|developer|engineer)/i;\nconst skillWords = /(weighted skill|extract skill|generate skill|skill approval|scan and publish|publish|scan job|prepare matching skill)/i;\nconst scoreWords = /(score candidate|scan candidate|match candidate|rank candidate|shortlist|cv analysis|resume analysis|fuzzy|candidate scanning|candidate matching)/i;\nconst questionWords = /(generate question|screening question|interview question|question set|create question)/i;\nconst refineQuestionWords = /(refine question|edit question|change question|regenerate question|modify question|rewrite question)/i;\nconst navWords = /(take me to|go to|navigate|open page|where is|show me page|switch to)/i;\nconst newJobWords = /(generate job opening|create job opening|new job opening|from requirement|from mandate|jd from requirement)/i;\n\nif ((page.includes('job') || page.includes('catalog')) && editWords.test(msg) && jobWords.test(msg) && anyJobId) {\n  action_type = 'call_workflow'; workflow_key = 'regenerate_job_opening'; intent = 'edit_existing_job_opening'; confidence = Math.max(confidence, 0.98); should_refresh_page = true; reason = 'Job catalog edit request with selected job opening context.';\n}\nif (skillWords.test(msg) && anyJobId) {\n  action_type = 'call_workflow'; workflow_key = 'extract_weighted_skills'; intent = 'extract_weighted_skills'; confidence = Math.max(confidence, 0.95); should_refresh_page = true;\n}\nif (scoreWords.test(msg) && anyJobId) {\n  action_type = 'call_workflow'; workflow_key = 'score_candidates'; intent = 'score_candidates'; confidence = Math.max(confidence, 0.94); should_refresh_page = true;\n}\nif (refineQuestionWords.test(msg) && (pc.question_id || se.question_id || pc.question?.id)) {\n  action_type = 'call_workflow'; workflow_key = 'refine_screening_question'; intent = 'refine_screening_question'; confidence = Math.max(confidence, 0.94); should_refresh_page = true;\n} else if (questionWords.test(msg) && anyAppId) {\n  action_type = 'call_workflow'; workflow_key = 'screening_questions'; intent = 'generate_screening_questions'; confidence = Math.max(confidence, 0.94); should_refresh_page = true;\n}\nif (newJobWords.test(msg) && (pc.requirement || se.requirement || src.entities?.requirement)) {\n  action_type = 'call_workflow'; workflow_key = 'generate_job_openings'; intent = 'generate_job_openings'; confidence = Math.max(confidence, 0.93); should_refresh_page = true;\n}\nif (navWords.test(msg) && action_type !== 'call_workflow') {\n  action_type = 'navigate'; intent = 'navigation_help'; confidence = Math.max(confidence, 0.85);\n  if (msg.includes('job catalog') || msg.includes('catalog')) { target_page = 'job_catalog'; route = '/jobs'; }\n  else if (msg.includes('sourcing')) { target_page = 'sourcing_pool'; route = '/pool'; }\n  else if (msg.includes('stage')) { target_page = 'stages'; route = '/rounds'; }\n  else if (msg.includes('client') || msg.includes('mandate')) { target_page = 'clients_mandates'; route = '/clients'; }\n  else if (msg.includes('notification') || msg.includes('alert')) { target_page = 'notifications'; route = '/notifications'; }\n  else if (msg.includes('setting')) { target_page = 'settings'; route = '/settings'; }\n  else if (msg.includes('dashboard')) { target_page = 'dashboard'; route = '/dashboard'; }\n}\n\nif (action_type === 'call_workflow' && !workflow_key) {\n  action_type = 'clarification';\n  missing_fields.push('workflow_key');\n}\n\nreturn [{\n  json: {\n    ...src,\n    action_type,\n    intent,\n    workflow_key,\n    confidence,\n    reason,\n    target_page,\n    route,\n    entity_type: d.entity_type || null,\n    entity_id: d.entity_id || anyJobId || anyAppId || null,\n    missing_fields,\n    ui_action,\n    recruiter_instruction: d.recruiter_instruction || src.message,\n    should_refresh_page,\n    router_raw: d,\n    has_missing_fields: missing_fields.length > 0\n  }\n}];\n"
+      },
+      "id": "bc1d353a-bed3-4ffe-bbfc-cf3149b6652e",
+      "name": "Code - Parse Router Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3872,
+        2448
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.action_type === 'call_workflow' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ !$json.has_missing_fields }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d46f1b27-22e8-4a8d-972a-8eff2da466a2",
+      "name": "IF - Should Call Automation Workflow",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -3616,
+        2448
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst x = $json;\nconst prompt = `You are KOZKER Recruiter AI Copilot, an expert assistant inside a recruitment operations dashboard.\n\nAnswer the recruiter using ONLY the current page context, selected entity, visible rows, and known ATS workflow capabilities. Be practical, short, and action-oriented. If a navigation action is needed, include it in JSON. If details are missing, ask for the exact missing item.\n\nCurrent request:\n${JSON.stringify({\n  current_page: x.current_page,\n  route: x.route,\n  message: x.message,\n  action_type: x.action_type,\n  intent: x.intent,\n  target_page: x.target_page,\n  suggested_route: x.route,\n  reason: x.reason,\n  missing_fields: x.missing_fields,\n  page_context: x.page_context,\n  selected_entity: x.selected_entity,\n  visible_rows: x.visible_rows,\n  visible_data: x.visible_data,\n  entities: x.entities\n}, null, 2)}\n\nRoutes available:\n- dashboard: /dashboard\n- clients_mandates: /clients\n- job_catalog: /jobs\n- sourcing_pool: /pool\n- stages: /rounds\n- candidate_q&a: /qna\n- notifications: /notifications\n- help: /help\n- settings: /settings\n\nReturn ONLY valid JSON:\n{\n  \"message\": \"chat response for recruiter\",\n  \"navigation\": {\"route\": null, \"page\": null, \"entity_id\": null, \"reason\": null},\n  \"ui_action\": {\"type\": null, \"payload\": {}},\n  \"data\": {},\n  \"missing_fields\": [],\n  \"should_refresh_page\": false,\n  \"confidence\": 0.0\n}`;\nreturn [{ json: { ...x, direct_prompt: prompt } }];\n"
+      },
+      "id": "a351cb40-895b-40f7-9538-33e125b147a9",
+      "name": "Code - Build Direct Help Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3344,
+        2608
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.direct_prompt }}",
+        "options": {
+          "systemMessage": "You are a JSON-only recruiter copilot helper. Return only valid JSON. No markdown.",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "14b3e224-6cb7-42dd-a1e0-29d9863fed83",
+      "name": "AI Agent - Page Guide and Navigation",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -3088,
+        2608
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction parseJSON(value){ if(typeof value==='object'&&value!==null)return value; let text=String(value||'').trim().replace(/^```json\\s*/i,'').replace(/^```\\s*/i,'').replace(/```$/i,'').trim(); const f=text.indexOf('{'); const l=text.lastIndexOf('}'); if(f>=0&&l>f) text=text.slice(f,l+1); return JSON.parse(text); }\nconst src = $('Code - Build Direct Help Prompt').first().json;\nlet p = {};\ntry { p = parseJSON($json.output || $json.text || $json.response || $json.message || $json); } catch(e) { p = {}; }\nlet message = p.message || '';\nif (!message) {\n  if (src.action_type === 'navigate') message = `Opening ${src.target_page || 'the requested page'}.`;\n  else if ((src.missing_fields || []).length) message = `I need ${src.missing_fields.join(', ')} to continue.`;\n  else message = 'I can help with this page. Please share the exact item you want to update or review.';\n}\nreturn [{ json: {\n  status: 'success',\n  request_id: src.request_id,\n  automation_type: 'ats_ai_copilot',\n  action_type: src.action_type || 'answer',\n  intent: src.intent,\n  workflow_called: false,\n  workflow_key: null,\n  message,\n  assistant_reply: message,\n  navigation: p.navigation || { route: src.route || null, page: src.target_page || null, entity_id: src.entity_id || null, reason: src.reason || null },\n  ui_action: p.ui_action || src.ui_action || { type: null, payload: {} },\n  data: p.data || {},\n  missing_fields: p.missing_fields || src.missing_fields || [],\n  should_refresh_page: Boolean(p.should_refresh_page || src.should_refresh_page || false),\n  confidence: Number(p.confidence || src.confidence || 0.5),\n  completed_at: new Date().toISOString()\n}}];\n"
+      },
+      "id": "eb095989-cbb9-4b46-9a65-f1feb5ca5e1f",
+      "name": "Code - Build Direct Chat Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2832,
+        2608
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst x = $json;\nconst prompt = `You are the WORKFLOW PAYLOAD ARCHITECT for KOZKER Recruiter AI Copilot.\n\nBuild the JSON payload required to call the selected n8n workflow. Use page_context and selected_entity first. Keep IDs exactly as received. Do not invent database IDs. If a required field is unavailable, list it in missing_fields.\n\nSelected workflow: ${x.workflow_key}\nRecruiter instruction: ${x.recruiter_instruction || x.message}\n\nWorkflow contracts:\n1. regenerate_job_opening (/ats-regenerate-job-opening)\nRequired: job_opening_uuid OR job_opening_id, callback_url, instruction/recruiter_instruction.\nIf an ID looks like a UUID, send it as job_opening_uuid because the regeneration workflow fetches job_openings.id.\nPayload fields: automation_type, request_id, job_opening_uuid, job_opening_id, instruction, recruiter_instruction, callback_url, authorization, auth_header, job_details.\n\n2. extract_weighted_skills (/ats-extract-weighted-skills)\nRequired: job_opening_id, title, description, callback_url.\nPayload fields: job_opening_id, title, description, responsibilities, qualifications, keywords, salary_range, callback_url, authorization, auth_header.\n\n3. score_candidates (/ats-score-candidates)\nRequired: job_opening object, approved_skills array, callback_url.\nPayload fields: automation_type, request_id, job_opening, approved_skills, match_threshold, callback_url, authorization, auth_header.\n\n4. screening_questions (/ats-screening-questions)\nRequired: application_id, callback_url.\nPayload fields: automation_type, request_id, mode, application_id, recruiter_instruction, existing_questions, force_regenerate, callback_url, authorization, auth_header.\n\n5. refine_screening_question (/ats-screening-questions)\nRequired: application_id, question_id, refining_prompt/refine_prompt, callback_url.\nPayload fields: automation_type, request_id, mode, application_id, question_id, refining_prompt, refine_prompt, recruiter_instruction, callback_url, authorization, auth_header.\n\n6. generate_job_openings (/ats-generate-job-openings)\nRequired: requirement.requirement_id, requirement.title, requirement.description, requirement.num_posts_requested.\nPayload fields: automation_type, request_id, requirement, ai_instruction, callback_url, authorization, auth_header.\n\nContext:\n${JSON.stringify({\n  request_id: x.request_id,\n  current_page: x.current_page,\n  message: x.message,\n  page_context: x.page_context,\n  selected_entity: x.selected_entity,\n  visible_rows: x.visible_rows,\n  visible_data: x.visible_data,\n  entities: x.entities,\n  default_callback_urls: x.default_callback_urls,\n  authorization: x.authorization\n}, null, 2)}\n\nReturn ONLY valid JSON:\n{\n  \"workflow_key\": \"${x.workflow_key}\",\n  \"method\": \"POST\",\n  \"url_path\": \"workflow path\",\n  \"payload\": {},\n  \"missing_fields\": [],\n  \"expected_ui_effect\": \"short description\",\n  \"should_refresh_page\": true\n}`;\nreturn [{ json: { ...x, payload_prompt: prompt } }];\n"
+      },
+      "id": "64f7171b-2ff6-4ee6-99d3-40e3e945bbed",
+      "name": "Code - Build Workflow Payload Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3344,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.payload_prompt }}",
+        "options": {
+          "systemMessage": "You are a JSON-only workflow payload builder for n8n ATS automations. Return only valid JSON. No markdown.",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "cb77c4a2-e570-4ca9-995f-83422dd508a0",
+      "name": "AI Agent - Workflow Payload Architect",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -3088,
+        2336
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Code - Extract Copilot Request').first().json.session_id + '-workflow' }}"
+      },
+      "id": "108c032d-63b5-45bb-9c6f-41f86b1ae39e",
+      "name": "Simple Memory - Workflow Planning Session",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -2352,
+        2928
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction parseJSON(value){ if(typeof value==='object'&&value!==null)return value; let text=String(value||'').trim().replace(/^```json\\s*/i,'').replace(/^```\\s*/i,'').replace(/```$/i,'').trim(); const f=text.indexOf('{'); const l=text.lastIndexOf('}'); if(f>=0&&l>f) text=text.slice(f,l+1); return JSON.parse(text); }\nfunction isUuid(v){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v||'')); }\nfunction firstNonEmpty(...vals){ for (const v of vals) { if (v !== undefined && v !== null && String(v).trim() !== '') return v; } return null; }\nconst src = $('Code - Build Workflow Payload Prompt').first().json;\nlet agent = {};\ntry { agent = parseJSON($json.output || $json.text || $json.response || $json.message || $json); } catch(e) { agent = {}; }\nconst pc = src.page_context || {};\nconst se = src.selected_entity || {};\nconst ents = src.entities || {};\nconst workflowKey = src.workflow_key;\nconst paths = src.workflow_endpoints || {};\nconst defaultCallbacks = src.default_callback_urls || {};\nconst callback = src.callback_url || defaultCallbacks[workflowKey] || null;\nconst auth = src.authorization || src.auth_header || '';\nlet payload = agent.payload && typeof agent.payload === 'object' ? agent.payload : {};\nlet missing = Array.isArray(agent.missing_fields) ? [...agent.missing_fields] : [];\nlet expected = agent.expected_ui_effect || '';\n\nif (workflowKey === 'regenerate_job_opening') {\n  const rawId = firstNonEmpty(pc.job_opening_uuid, se.job_opening_uuid, pc.id, se.id, pc.job_opening_id, se.job_opening_id, src.entity_id);\n  const uuid = isUuid(rawId) ? rawId : firstNonEmpty(pc.job_opening_uuid, se.job_opening_uuid, pc.id, se.id);\n  const externalId = !isUuid(rawId) ? rawId : firstNonEmpty(pc.job_opening_id, se.job_opening_id);\n  payload = {\n    automation_type: 'regenerate_job_opening',\n    request_id: `regen_${src.request_id}`,\n    mode: 'regenerate',\n    callback_url: callback,\n    authorization: auth,\n    auth_header: auth,\n    job_opening_uuid: uuid || null,\n    job_opening_id: externalId || null,\n    instruction: src.recruiter_instruction || src.message,\n    recruiter_instruction: src.recruiter_instruction || src.message,\n    ai_instruction: { instruction: src.recruiter_instruction || src.message },\n    job_details: pc.job_details || pc.job_opening || pc,\n    metadata: { copilot_request_id: src.request_id, current_page: src.current_page }\n  };\n  missing = [];\n  if (!payload.job_opening_uuid && !payload.job_opening_id) missing.push('job_opening_uuid or job_opening_id');\n  if (!payload.callback_url) missing.push('callback_url');\n  expected = 'Regenerate and update the selected job opening.';\n}\n\nif (workflowKey === 'extract_weighted_skills') {\n  const job = pc.job_opening || se.job_opening || pc;\n  payload = {\n    automation_type: 'extract_weighted_skills',\n    request_id: `skill_${src.request_id}`,\n    job_opening_id: firstNonEmpty(job.job_opening_id, job.id, pc.job_opening_id, pc.id, se.job_opening_id, se.id),\n    title: job.title || pc.title || se.title || '',\n    description: job.description || pc.description || se.description || '',\n    responsibilities: job.responsibilities || pc.responsibilities || [],\n    qualifications: job.qualifications || pc.qualifications || [],\n    keywords: job.keywords || pc.keywords || [],\n    salary_range: job.salary_range || pc.salary_range || '',\n    callback_url: callback,\n    authorization: auth,\n    auth_header: auth\n  };\n  missing=[];\n  ['job_opening_id','title','description','callback_url'].forEach(k=>{ if(!payload[k]) missing.push(k); });\n  expected = 'Generate weighted skills and store them for recruiter approval.';\n}\n\nif (workflowKey === 'score_candidates') {\n  const job = pc.job_opening || se.job_opening || {\n    job_opening_id: firstNonEmpty(pc.job_opening_id, pc.id, se.job_opening_id, se.id),\n    title: pc.title || se.title || '',\n    description: pc.description || se.description || '',\n    responsibilities: pc.responsibilities || [],\n    qualifications: pc.qualifications || [],\n    keywords: pc.keywords || []\n  };\n  const approvedSkills = pc.approved_skills || se.approved_skills || pc.skills || se.skills || ents.approved_skills || [];\n  payload = {\n    automation_type: 'score_candidates',\n    request_id: `score_${src.request_id}`,\n    callback_url: callback,\n    authorization: auth,\n    auth_header: auth,\n    job_opening: job,\n    approved_skills: approvedSkills,\n    match_threshold: Number(pc.match_threshold || src.match_threshold || 60),\n    limit: Number(pc.limit || src.limit || 100)\n  };\n  missing=[];\n  if (!payload.callback_url) missing.push('callback_url');\n  if (!payload.job_opening || !(payload.job_opening.job_opening_id || payload.job_opening.id)) missing.push('job_opening.job_opening_id');\n  if (!Array.isArray(payload.approved_skills) || payload.approved_skills.length === 0) missing.push('approved_skills');\n  expected = 'Scan candidate pool, score candidates, and insert shortlisted applications.';\n}\n\nif (workflowKey === 'screening_questions') {\n  const appId = firstNonEmpty(pc.application_id, pc.application?.id, se.application_id, se.id, src.entity_id);\n  payload = {\n    automation_type: 'screening_questions',\n    request_id: `question_${src.request_id}`,\n    mode: 'generate',\n    callback_url: callback,\n    authorization: auth,\n    auth_header: auth,\n    application_id: appId,\n    recruiter_instruction: src.recruiter_instruction || src.message,\n    existing_questions: pc.existing_questions || se.existing_questions || pc.screening_questions || [],\n    force_regenerate: Boolean(pc.force_regenerate || /regenerate|again|refresh/i.test(src.message))\n  };\n  missing=[];\n  if (!payload.application_id) missing.push('application_id');\n  if (!payload.callback_url) missing.push('callback_url');\n  expected = 'Generate candidate-specific screening questions.';\n}\n\nif (workflowKey === 'refine_screening_question') {\n  const appId = firstNonEmpty(pc.application_id, pc.application?.id, se.application_id, se.application?.id, src.entity_id);\n  const qId = firstNonEmpty(pc.question_id, pc.question?.id, se.question_id, se.question?.id);\n  payload = {\n    automation_type: 'refine_screening_question',\n    request_id: `refine_${src.request_id}`,\n    mode: 'generate',\n    callback_url: callback,\n    authorization: auth,\n    auth_header: auth,\n    application_id: appId,\n    question_id: qId,\n    instruction: src.recruiter_instruction || src.message,\n    refine_prompt: src.recruiter_instruction || src.message,\n    refining_prompt: src.recruiter_instruction || src.message,\n    prompt: src.recruiter_instruction || src.message,\n    existing_questions: pc.existing_questions || pc.screening_questions || [],\n    question_details: pc.question || se.question || {}\n  };\n  missing=[];\n  if (!payload.application_id) missing.push('application_id');\n  if (!payload.question_id) missing.push('question_id');\n  if (!payload.callback_url) missing.push('callback_url');\n  expected = 'Refine the selected screening question.';\n}\n\nif (workflowKey === 'generate_job_openings') {\n  const req = pc.requirement || se.requirement || ents.requirement || src.requirement || {};\n  payload = {\n    automation_type: 'generate_job_openings',\n    request_id: `jobgen_${src.request_id}`,\n    callback_url: callback,\n    authorization: auth,\n    auth_header: auth,\n    requirement: req,\n    ai_instruction: {\n      instruction: src.recruiter_instruction || src.message,\n      tone: pc.tone || 'professional',\n      output_language: pc.output_language || 'en',\n      must_include: pc.must_include || req.skills || [],\n      avoid: pc.avoid || ['casual wording']\n    },\n    metadata: { copilot_request_id: src.request_id }\n  };\n  missing=[];\n  if (!payload.requirement?.requirement_id) missing.push('requirement.requirement_id');\n  if (!payload.requirement?.title) missing.push('requirement.title');\n  if (!payload.requirement?.description) missing.push('requirement.description');\n  if (!payload.requirement?.num_posts_requested) missing.push('requirement.num_posts_requested');\n  if (!payload.callback_url) missing.push('callback_url');\n  expected = 'Generate one or more job openings from the requirement.';\n}\n\nconst urlPath = paths[workflowKey] || agent.url_path || null;\nreturn [{\n  json: {\n    ...src,\n    workflow_key: workflowKey,\n    method: 'POST',\n    url_path: urlPath,\n    workflow_url: urlPath ? `${src.n8n_base_url}${urlPath}` : null,\n    payload,\n    payload_missing_fields: missing,\n    workflow_payload_ready: missing.length === 0 && !!urlPath,\n    expected_ui_effect: expected,\n    should_refresh_page: true,\n    payload_architect_raw: agent\n  }\n}];\n"
+      },
+      "id": "2588c857-d805-43fd-9499-9c7a493c4ade",
+      "name": "Code - Parse Workflow Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2784,
+        2336
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "r",
+              "leftValue": "={{ $json.workflow_payload_ready === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b8f74964-b89d-4583-93a2-2be3474712e2",
+      "name": "IF - Workflow Payload Ready",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2576,
+        2320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.workflow_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.payload.authorization || $json.authorization || '' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "6455fd22-c778-4df5-a35c-9b909f43fa7a",
+      "name": "HTTP Request - Call Selected ATS Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2304,
+        2224
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst plan = $('Code - Parse Workflow Payload').first().json;\nconst response = $json;\nconst prompt = `You are KOZKER Recruiter AI Copilot. A workflow was called. Convert the workflow result into a helpful recruiter-facing chat response and structured frontend response.\n\nWorkflow plan:\n${JSON.stringify({\n  workflow_key: plan.workflow_key,\n  expected_ui_effect: plan.expected_ui_effect,\n  payload: plan.payload\n}, null, 2)}\n\nWorkflow HTTP response:\n${JSON.stringify(response, null, 2)}\n\nReturn ONLY valid JSON:\n{\n  \"message\": \"short recruiter-facing response\",\n  \"navigation\": {\"route\": null, \"page\": null, \"entity_id\": null, \"reason\": null},\n  \"ui_action\": {\"type\": \"toast\", \"payload\": {\"variant\": \"success\", \"text\": \"\"}},\n  \"data\": {},\n  \"should_refresh_page\": true,\n  \"confidence\": 0.0\n}`;\nreturn [{ json: { ...plan, workflow_http_response: response, final_response_prompt: prompt } }];\n"
+      },
+      "id": "ba8f2a21-7ff2-401a-a8f0-21257b035c06",
+      "name": "Code - Build Workflow Result Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2048,
+        2224
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.final_response_prompt }}",
+        "options": {
+          "systemMessage": "You are a JSON-only recruiter copilot response writer. Return only valid JSON. No markdown.",
+          "maxIterations": 3,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "5fc46dd9-b34f-4aca-a58e-ca4eb234a7a9",
+      "name": "AI Agent - Workflow Response Writer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -1792,
+        2224
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nfunction parseJSON(value){ if(typeof value==='object'&&value!==null)return value; let text=String(value||'').trim().replace(/^```json\\s*/i,'').replace(/^```\\s*/i,'').replace(/```$/i,'').trim(); const f=text.indexOf('{'); const l=text.lastIndexOf('}'); if(f>=0&&l>f) text=text.slice(f,l+1); return JSON.parse(text); }\nconst plan = $('Code - Build Workflow Result Prompt').first().json;\nlet p = {};\ntry { p = parseJSON($json.output || $json.text || $json.response || $json.message || $json); } catch(e) { p = {}; }\nconst statusCode = plan.workflow_http_response?.statusCode || plan.workflow_http_response?.status || 200;\nconst ok = Number(statusCode) < 400;\nlet msg = p.message || (ok ? `${plan.expected_ui_effect || 'Workflow completed.'}` : 'The workflow was called, but it returned an error.');\nreturn [{ json: {\n  status: ok ? 'success' : 'failed',\n  request_id: plan.request_id,\n  automation_type: 'ats_ai_copilot',\n  action_type: 'call_workflow',\n  intent: plan.intent,\n  workflow_called: true,\n  workflow_key: plan.workflow_key,\n  workflow_url: plan.workflow_url,\n  message: msg,\n  assistant_reply: msg,\n  navigation: p.navigation || { route: null, page: null, entity_id: plan.entity_id || null, reason: null },\n  ui_action: p.ui_action || { type: 'toast', payload: { variant: ok ? 'success' : 'error', text: msg } },\n  data: p.data || {},\n  workflow_response: plan.workflow_http_response,\n  missing_fields: [],\n  should_refresh_page: p.should_refresh_page !== undefined ? Boolean(p.should_refresh_page) : true,\n  confidence: Number(p.confidence || plan.confidence || 0.8),\n  completed_at: new Date().toISOString()\n}}];\n"
+      },
+      "id": "99b47992-11e2-452e-b378-f1b951956945",
+      "name": "Code - Build Automation Chat Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1536,
+        2224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst x = $json;\nconst fields = x.payload_missing_fields || x.missing_fields || [];\nconst message = `I cannot run ${x.workflow_key || 'the selected workflow'} yet. Missing: ${fields.join(', ')}.`;\nreturn [{ json: {\n  status: 'needs_input',\n  request_id: x.request_id,\n  automation_type: 'ats_ai_copilot',\n  action_type: 'clarification',\n  intent: x.intent,\n  workflow_called: false,\n  workflow_key: x.workflow_key,\n  message,\n  assistant_reply: message,\n  navigation: { route: null, page: x.current_page || null, entity_id: x.entity_id || null, reason: 'Missing workflow payload fields.' },\n  ui_action: { type: 'show_missing_fields', payload: { fields } },\n  missing_fields: fields,\n  should_refresh_page: false,\n  confidence: x.confidence || 0.7,\n  completed_at: new Date().toISOString()\n}}];\n"
+      },
+      "id": "2639a055-b263-4ef3-9c71-ead3b7643c4b",
+      "name": "Code - Build Workflow Missing Fields Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2304,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst plan = (() => { try { return $('Code - Parse Workflow Payload').first().json; } catch(e) { return $('Code - Parse Router Decision').first().json; } })();\nconst err = $json.error?.message || $json.message || 'Workflow call failed';\nconst message = `I tried to run ${plan.workflow_key || 'the workflow'}, but it failed: ${err}`;\nreturn [{ json: {\n  status: 'failed',\n  request_id: plan.request_id,\n  automation_type: 'ats_ai_copilot',\n  action_type: 'call_workflow',\n  intent: plan.intent,\n  workflow_called: true,\n  workflow_key: plan.workflow_key,\n  message,\n  assistant_reply: message,\n  navigation: { route: null, page: plan.current_page || null, entity_id: plan.entity_id || null, reason: 'Workflow error.' },\n  ui_action: { type: 'toast', payload: { variant: 'error', text: message } },\n  missing_fields: [],\n  should_refresh_page: false,\n  confidence: 0.3,\n  error: $json,\n  completed_at: new Date().toISOString()\n}}];\n"
+      },
+      "id": "7dd90251-0d3b-4a29-a5ed-d72bbecaa8de",
+      "name": "Code - Build Workflow Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2048,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst x = $('Code - Extract Copilot Request').first().json;\nreturn [{ json: {\n  status: 'validation_error',\n  request_id: x.request_id || null,\n  automation_type: 'ats_ai_copilot',\n  action_type: 'clarification',\n  message: 'Please send a non-empty message and session_id/recruiter_id.',\n  missing_fields: ['message'],\n  received: x\n}}];\n"
+      },
+      "id": "cba289f6-844c-4ad4-a568-3188bc180be6",
+      "name": "Code - Build Validation Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4464,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "1a61df5c-0800-4a6d-921f-1e7f9538b348",
+      "name": "Respond to Webhook - Validation Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -4208,
+        2768
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "517a2b0d-fab5-45c8-a3e4-adb765bb1a23",
+      "name": "Respond to Webhook - Copilot Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1248,
+        2448
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - ATS AI Copilot": {
+      "main": [
+        [
+          {
+            "node": "Code - Extract Copilot Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Extract Copilot Request": {
+      "main": [
+        [
+          {
+            "node": "IF - Validate Required Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Validate Required Fields": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Router Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Router Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Copilot Intent Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Copilot Intent Router": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse Router Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Workflow Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model - Copilot": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Copilot Intent Router",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI Agent - Page Guide and Navigation",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI Agent - Workflow Payload Architect",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI Agent - Workflow Response Writer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory - Copilot Session": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent - Copilot Intent Router",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "AI Agent - Page Guide and Navigation",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse Router Decision": {
+      "main": [
+        [
+          {
+            "node": "IF - Should Call Automation Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Workflow Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Should Call Automation Workflow": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Workflow Payload Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Direct Help Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Direct Help Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Page Guide and Navigation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Page Guide and Navigation": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Direct Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Workflow Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Direct Chat Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Copilot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Workflow Payload Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Workflow Payload Architect",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Workflow Payload Architect": {
+      "main": [
+        [
+          {
+            "node": "Code - Parse Workflow Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Workflow Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory - Workflow Planning Session": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent - Workflow Payload Architect",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "AI Agent - Workflow Response Writer",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Parse Workflow Payload": {
+      "main": [
+        [
+          {
+            "node": "IF - Workflow Payload Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Workflow Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Workflow Payload Ready": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Call Selected ATS Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Workflow Missing Fields Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Call Selected ATS Workflow": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Workflow Result Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Workflow Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Workflow Result Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Workflow Response Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Workflow Response Writer": {
+      "main": [
+        [
+          {
+            "node": "Code - Build Automation Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Build Workflow Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Automation Chat Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Copilot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Workflow Missing Fields Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Copilot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Workflow Error Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Copilot Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Build Validation Error": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Webhook - ATS AI Copilot": [
+      {
+        "headers": {
+          "host": "n8n.srv832341.hstgr.cloud",
+          "user-agent": "python-httpx/0.28.1",
+          "content-length": "54931",
+          "accept": "*/*",
+          "accept-encoding": "gzip, deflate",
+          "content-type": "application/json",
+          "x-forwarded-for": "223.181.14.246",
+          "x-forwarded-host": "n8n.srv832341.hstgr.cloud",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+          "x-forwarded-server": "63b0f3269f63",
+          "x-real-ip": "223.181.14.246"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "session_id": "copilot_f3dcea71-25c3-431b-8f51-7f8699421cfd_1782737972182",
+          "request_id": "copilot_req_1782737981218",
+          "recruiter_id": "f3dcea71-25c3-431b-8f51-7f8699421cfd",
+          "workspace_id": "default",
+          "current_page": "job_catalog",
+          "route": "/jobs",
+          "message": "go to sourcing pool",
+          "callback_base_url": "http://localhost:8000/api/v1/callbacks",
+          "authorization": "Bearer kozker_callback_secret_token",
+          "page_context": {
+            "page": "jobs",
+            "selected_job_opening": null,
+            "job_opening_uuid": null,
+            "job_opening_id": null,
+            "title": null,
+            "description": null,
+            "responsibilities": null,
+            "qualifications": null,
+            "keywords": null,
+            "salary_range": null,
+            "jobs": [
+              {
+                "id": "0f90722f-fffd-420e-8245-2faf2d5bb5b7",
+                "job_opening_uuid": "0f90722f-fffd-420e-8245-2faf2d5bb5b7",
+                "title": "Senior Somethingnew - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "ab222222-2222-2222-2222-222222222222",
+                "job_opening_uuid": "ab222222-2222-2222-2222-222222222222",
+                "title": "Staff Web Architect - Cloud Console Core",
+                "status": "published",
+                "processing_status": "error"
+              },
+              {
+                "id": "ab333333-3333-3333-3333-333333333333",
+                "job_opening_uuid": "ab333333-3333-3333-3333-333333333333",
+                "title": "Staff Systems Engineer - Distributed Transaction Ledger",
+                "status": "closed",
+                "processing_status": "idle"
+              },
+              {
+                "id": "567d20cb-8fb0-477b-a2ad-fc7e4cf79fb0",
+                "job_opening_uuid": "567d20cb-8fb0-477b-a2ad-fc7e4cf79fb0",
+                "title": "Senior A team of machine learning engineers for developin - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "06292900-c9bf-4252-bbe0-cf515463c083",
+                "job_opening_uuid": "06292900-c9bf-4252-bbe0-cf515463c083",
+                "title": "Lead A team of machine learning engineers for developin - Innovation & Delivery (Option 2)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "715b5556-adfc-43e1-b0ad-120a0bf4d62d",
+                "job_opening_uuid": "715b5556-adfc-43e1-b0ad-120a0bf4d62d",
+                "title": "Lead A team of machine learning engineers for developin - Innovation & Delivery (Option 3)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "169a877f-3f81-419c-a3ce-30ad9790650d",
+                "job_opening_uuid": "169a877f-3f81-419c-a3ce-30ad9790650d",
+                "title": "Senior Machine Learning Engineer",
+                "status": "closed",
+                "processing_status": "ready"
+              },
+              {
+                "id": "b60ffa52-8cd2-4514-b07f-78c817c44139",
+                "job_opening_uuid": "b60ffa52-8cd2-4514-b07f-78c817c44139",
+                "title": "Machine Learning Developer",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "348306b6-f6fd-4c97-9ab7-2d9879382740",
+                "job_opening_uuid": "348306b6-f6fd-4c97-9ab7-2d9879382740",
+                "title": "Lead A team of machine learning engineers for developin - Innovation & Delivery (Option 4)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "c88c7867-39da-429f-8da8-689835ffe801",
+                "job_opening_uuid": "c88c7867-39da-429f-8da8-689835ffe801",
+                "title": "Machine Learning Engineer - CI/CD Automation",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "5eca2f73-c831-4480-8bb5-835fa3e204ea",
+                "job_opening_uuid": "5eca2f73-c831-4480-8bb5-835fa3e204ea",
+                "title": "Lead Machine Learning Engineer - CI/CD Automation",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "994414bc-cb12-43bd-b4c7-748845aa52f9",
+                "job_opening_uuid": "994414bc-cb12-43bd-b4c7-748845aa52f9",
+                "title": "Machine Learning Engineer - Automation Specialist",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "68fe71f7-4b8d-40a0-ae72-86626bdb5016",
+                "job_opening_uuid": "68fe71f7-4b8d-40a0-ae72-86626bdb5016",
+                "title": "Senior Skills Agent Management - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "3ae322a0-9c0b-4fe0-b4f9-8fbd055aff00",
+                "job_opening_uuid": "3ae322a0-9c0b-4fe0-b4f9-8fbd055aff00",
+                "title": "Senior A team of machine learning engineers to automate t - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "b8ee48ff-aa3c-496d-82fa-fd602c7ba7e2",
+                "job_opening_uuid": "b8ee48ff-aa3c-496d-82fa-fd602c7ba7e2",
+                "title": "Lead Graphic Card Desginer - Innovation & Delivery (Option 2)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "f6981d46-ef80-4209-8b5e-1082519f6236",
+                "job_opening_uuid": "f6981d46-ef80-4209-8b5e-1082519f6236",
+                "title": "Lead Graphic Card Desginer - Innovation & Delivery (Option 3)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "34096c8c-9ca6-489c-9d50-2bb72627921a",
+                "job_opening_uuid": "34096c8c-9ca6-489c-9d50-2bb72627921a",
+                "title": "Senior Brewer - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "a72511df-560e-4282-8d9b-060199e68552",
+                "job_opening_uuid": "a72511df-560e-4282-8d9b-060199e68552",
+                "title": "Lead A team of machine learning engineers to automate t - Innovation & Delivery (Option 2)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "50799d12-56a3-4d04-b381-bb6d05276e13",
+                "job_opening_uuid": "50799d12-56a3-4d04-b381-bb6d05276e13",
+                "title": "Lead Delivery Patner - Innovation & Delivery (Option 2)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "db5a2947-e986-449c-aa96-001969695859",
+                "job_opening_uuid": "db5a2947-e986-449c-aa96-001969695859",
+                "title": "Lead A team of machine learning engineers to automate t - Innovation & Delivery (Option 3)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "d8660014-0cb6-4f63-9a10-758a35a912a8",
+                "job_opening_uuid": "d8660014-0cb6-4f63-9a10-758a35a912a8",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 5)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "a073da38-fbad-4aba-9bb4-38205f94e716",
+                "job_opening_uuid": "a073da38-fbad-4aba-9bb4-38205f94e716",
+                "title": "Senior A team of support staff for ensuring proper Custom - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "5704a244-0cd1-43c3-8f88-151be954ac2e",
+                "job_opening_uuid": "5704a244-0cd1-43c3-8f88-151be954ac2e",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 3)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "7df7b67c-007d-45e5-9853-bb37375de91e",
+                "job_opening_uuid": "7df7b67c-007d-45e5-9853-bb37375de91e",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 3)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "6d7d7b79-1527-4f82-9f99-1e2ca2b2aef1",
+                "job_opening_uuid": "6d7d7b79-1527-4f82-9f99-1e2ca2b2aef1",
+                "title": "Machine Learning Engineer",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "5cfcdecf-1e50-44ef-968b-5a6b4da0fb9d",
+                "job_opening_uuid": "5cfcdecf-1e50-44ef-968b-5a6b4da0fb9d",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 4)",
+                "status": "published",
+                "processing_status": "error"
+              },
+              {
+                "id": "997db15a-a006-4263-9127-23d3bb3ad597",
+                "job_opening_uuid": "997db15a-a006-4263-9127-23d3bb3ad597",
+                "title": "CEO - North India Operations",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "39a66245-6b20-4044-8df2-992f68afd931",
+                "job_opening_uuid": "39a66245-6b20-4044-8df2-992f68afd931",
+                "title": "Mid-Level Software Developer - Remote/Bangalore",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "f5907c0f-c776-4e4e-9b33-0bdb34c158ba",
+                "job_opening_uuid": "f5907c0f-c776-4e4e-9b33-0bdb34c158ba",
+                "title": "Senior A team of software developers to create a new and - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "a88d8e76-3c13-4adf-9571-ece18bf95b8b",
+                "job_opening_uuid": "a88d8e76-3c13-4adf-9571-ece18bf95b8b",
+                "title": "Mid-Level DevOps Engineer - CI/CD Focus",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "e110be77-95eb-4232-a3bc-177d768d7ec4",
+                "job_opening_uuid": "e110be77-95eb-4232-a3bc-177d768d7ec4",
+                "title": "DevOps Specialist - CI/CD Pipeline Development",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "7c126ae2-eb28-4fa3-81a6-3f67bcf894a0",
+                "job_opening_uuid": "7c126ae2-eb28-4fa3-81a6-3f67bcf894a0",
+                "title": "Lead Software Developer - AI Innovations",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "dc564925-9d9f-4dbc-a64a-d049c01133c3",
+                "job_opening_uuid": "dc564925-9d9f-4dbc-a64a-d049c01133c3",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 3)",
+                "status": "published",
+                "processing_status": "error"
+              },
+              {
+                "id": "cc5c8e75-deb4-4040-8cb2-6e8b60b87860",
+                "job_opening_uuid": "cc5c8e75-deb4-4040-8cb2-6e8b60b87860",
+                "title": "Software Developer - AI Solutions",
+                "status": "published",
+                "processing_status": "error"
+              },
+              {
+                "id": "c22b610f-4ba0-4751-96a1-ced5de8aba1a",
+                "job_opening_uuid": "c22b610f-4ba0-4751-96a1-ced5de8aba1a",
+                "title": "Senior Graphic Card Desginer - Strategy & Execution (Option 1)",
+                "status": "published",
+                "processing_status": "error"
+              },
+              {
+                "id": "7a28fc0a-d332-48c0-86df-39b070a6fb7e",
+                "job_opening_uuid": "7a28fc0a-d332-48c0-86df-39b070a6fb7e",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 4)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "62e7b351-8c21-4119-935d-259c294a0a89",
+                "job_opening_uuid": "62e7b351-8c21-4119-935d-259c294a0a89",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 2)",
+                "status": "published",
+                "processing_status": "error"
+              },
+              {
+                "id": "3b2ba7d1-74bf-4c18-9c42-27bb62717cab",
+                "job_opening_uuid": "3b2ba7d1-74bf-4c18-9c42-27bb62717cab",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 2)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "7fac015a-cd4a-4da5-95a0-89330c89c4c6",
+                "job_opening_uuid": "7fac015a-cd4a-4da5-95a0-89330c89c4c6",
+                "title": "Lead A team of engineers to manage client relations and - Innovation & Delivery (Option 2)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "18e4abc6-ac62-45f0-a0b5-35f608ebd882",
+                "job_opening_uuid": "18e4abc6-ac62-45f0-a0b5-35f608ebd882",
+                "title": "Mid-Level Software Developer - AI Projects",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "372bf59d-17fb-4ccd-9e61-6543589ecedd",
+                "job_opening_uuid": "372bf59d-17fb-4ccd-9e61-6543589ecedd",
+                "title": "Lead Delivery Patner - Innovation & Delivery (Option 3)",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "06fb7e0c-2c5f-483f-8968-77abc140cd94",
+                "job_opening_uuid": "06fb7e0c-2c5f-483f-8968-77abc140cd94",
+                "title": "DevOps Engineer for Client Management",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "31a6858c-33cf-4625-87be-727400845241",
+                "job_opening_uuid": "31a6858c-33cf-4625-87be-727400845241",
+                "title": "Senior A team of engineers to manage client relations and - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "01916179-d0c1-4641-9ca0-8d82edeacaba",
+                "job_opening_uuid": "01916179-d0c1-4641-9ca0-8d82edeacaba",
+                "title": "Lead A team of engineers to manage client relations and - Innovation & Delivery (Option 2)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "bcd12b70-8695-4907-b040-1422d7fd588e",
+                "job_opening_uuid": "bcd12b70-8695-4907-b040-1422d7fd588e",
+                "title": "Lead Brewer Manager - Innovation & Delivery (Option 2)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "e5dabd86-0319-4d52-9b57-760a68dba11c",
+                "job_opening_uuid": "e5dabd86-0319-4d52-9b57-760a68dba11c",
+                "title": "Client Relations Engineer",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "418b2ec7-d34b-4e9f-ac1e-5a6ed491ae59",
+                "job_opening_uuid": "418b2ec7-d34b-4e9f-ac1e-5a6ed491ae59",
+                "title": "Senior Brewer Manager - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "6bd332bc-c187-4854-adbd-f1e614fb1267",
+                "job_opening_uuid": "6bd332bc-c187-4854-adbd-f1e614fb1267",
+                "title": "Senior Call Center Ghurkha - Strategy & Execution (Option 1) (Regenerated)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "be666452-74c2-4936-bbf4-3c75bf67471c",
+                "job_opening_uuid": "be666452-74c2-4936-bbf4-3c75bf67471c",
+                "title": "Lead AI Engineer - Innovation & Delivery (Option 2)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "44ee505b-265c-41ce-aca5-dda9cbd4ee3e",
+                "job_opening_uuid": "44ee505b-265c-41ce-aca5-dda9cbd4ee3e",
+                "title": "Senior Cab Driver - Strategy & Execution (Option 1)",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "f5cc8824-07fa-4f2e-a1e8-4c10d8276568",
+                "job_opening_uuid": "f5cc8824-07fa-4f2e-a1e8-4c10d8276568",
+                "title": "Senior A team of support staff for ensuring proper Custom - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "d9108eda-f2f3-425c-ad79-04665325f05a",
+                "job_opening_uuid": "d9108eda-f2f3-425c-ad79-04665325f05a",
+                "title": "Lead DevOps Engineer - CI/CD Optimization",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "85427eed-3cf9-4b53-b5c9-81ae666964e8",
+                "job_opening_uuid": "85427eed-3cf9-4b53-b5c9-81ae666964e8",
+                "title": "Senior A team of software developers to create a new and - Strategy & Execution (Option 1)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "15f103c6-8ab7-42cd-82ff-a972616c4055",
+                "job_opening_uuid": "15f103c6-8ab7-42cd-82ff-a972616c4055",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 2)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "36c2b80e-3f27-41d5-98e0-23477b92f260",
+                "job_opening_uuid": "36c2b80e-3f27-41d5-98e0-23477b92f260",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 4)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "0aceace6-31da-4a9a-8c76-fa69cc74ffa5",
+                "job_opening_uuid": "0aceace6-31da-4a9a-8c76-fa69cc74ffa5",
+                "title": "Machine Learning Engineer (Remote)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "18a84cfd-ff99-4f84-b87e-84d30ed498cd",
+                "job_opening_uuid": "18a84cfd-ff99-4f84-b87e-84d30ed498cd",
+                "title": "Senior A team of engineers to manage client relations and - Strategy & Execution (Option 1)",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "e681e619-eea7-48fe-bb89-514871fc7062",
+                "job_opening_uuid": "e681e619-eea7-48fe-bb89-514871fc7062",
+                "title": "Lead AI Engineer - Innovation & Delivery (Option 3)",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "ff3e5bdb-9943-43e3-9285-acd357ffc8aa",
+                "job_opening_uuid": "ff3e5bdb-9943-43e3-9285-acd357ffc8aa",
+                "title": "Senior AI Engineer - Strategy & Execution (Option 1)",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "df8e4b95-0865-4204-8e0a-507df9c2a800",
+                "job_opening_uuid": "df8e4b95-0865-4204-8e0a-507df9c2a800",
+                "title": "Junior Machine Learning Engineer",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "74b06d76-a841-489a-b266-81d1ff6cb390",
+                "job_opening_uuid": "74b06d76-a841-489a-b266-81d1ff6cb390",
+                "title": "Machine Learning Engineer Team Lead",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "f1b56429-2414-4903-9208-b5c79bcc8799",
+                "job_opening_uuid": "f1b56429-2414-4903-9208-b5c79bcc8799",
+                "title": "Regional CEO - South India",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "eff74870-5a98-463c-8324-bf34ce5bdd7c",
+                "job_opening_uuid": "eff74870-5a98-463c-8324-bf34ce5bdd7c",
+                "title": "Software Engineer Team Lead (Regenerated)",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "e21dc7e1-acdb-4117-94d8-529a2012cbe5",
+                "job_opening_uuid": "e21dc7e1-acdb-4117-94d8-529a2012cbe5",
+                "title": "CEO - West India Division",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "b8c2c496-3394-4967-b0a5-50b1bd984399",
+                "job_opening_uuid": "b8c2c496-3394-4967-b0a5-50b1bd984399",
+                "title": "Regulatory Compliance Engineer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "437ee267-a242-47b7-9ac4-15057af0b23b",
+                "job_opening_uuid": "437ee267-a242-47b7-9ac4-15057af0b23b",
+                "title": "Lead Regulatory Compliance Engineer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "8a187413-fa43-4a28-936c-b2385e322e34",
+                "job_opening_uuid": "8a187413-fa43-4a28-936c-b2385e322e34",
+                "title": "Regulatory Compliance Specialist",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "438192b5-ddde-44d4-bcd3-a5fea873d5a7",
+                "job_opening_uuid": "438192b5-ddde-44d4-bcd3-a5fea873d5a7",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 2)",
+                "status": "closed",
+                "processing_status": "error"
+              },
+              {
+                "id": "674b4e23-6a52-4aa6-bd89-d7a3bb68423b",
+                "job_opening_uuid": "674b4e23-6a52-4aa6-bd89-d7a3bb68423b",
+                "title": "Call Center Ghurka with Physical Security Experience",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "42935e6d-e55d-434f-9770-5bfc9d8945ef",
+                "job_opening_uuid": "42935e6d-e55d-434f-9770-5bfc9d8945ef",
+                "title": "Lead Android App Developer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "1982d98c-f749-4fe9-8e7f-0234ff1a59b5",
+                "job_opening_uuid": "1982d98c-f749-4fe9-8e7f-0234ff1a59b5",
+                "title": "Software Developer - Development Pipeline",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "06d6cdad-203d-4671-889b-b05b2a27afdc",
+                "job_opening_uuid": "06d6cdad-203d-4671-889b-b05b2a27afdc",
+                "title": "Senior Delivery Patner - Strategy & Execution (Option 1) (Regenerated)",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "4bcc0fdd-d8dd-4e20-878b-8c3c64b34265",
+                "job_opening_uuid": "4bcc0fdd-d8dd-4e20-878b-8c3c64b34265",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 3)",
+                "status": "closed",
+                "processing_status": "ready"
+              },
+              {
+                "id": "af3db90f-ad3d-4597-97d1-ceb3461bbc2f",
+                "job_opening_uuid": "af3db90f-ad3d-4597-97d1-ceb3461bbc2f",
+                "title": "Android App Developer - Remote",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "0321145b-890c-4399-a074-5b2961f87410",
+                "job_opening_uuid": "0321145b-890c-4399-a074-5b2961f87410",
+                "title": "Lead Software Developer - Project Development",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "ab111111-1111-1111-1111-111111111111",
+                "job_opening_uuid": "ab111111-1111-1111-1111-111111111111",
+                "title": "Senior UI/Frontend Developer - Cloud Platform",
+                "status": "closed",
+                "processing_status": "ready"
+              },
+              {
+                "id": "6ad60b14-4d04-41ba-b758-fd1eca1f04a8",
+                "job_opening_uuid": "6ad60b14-4d04-41ba-b758-fd1eca1f04a8",
+                "title": "Network Management Agent",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "d150530a-5efd-4f1e-8713-d35261090939",
+                "job_opening_uuid": "d150530a-5efd-4f1e-8713-d35261090939",
+                "title": "Delivery Partner",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "e10489d8-f66c-4f64-aaa4-594f3fc13747",
+                "job_opening_uuid": "e10489d8-f66c-4f64-aaa4-594f3fc13747",
+                "title": "Lead Software Developer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "d874b14b-77ff-4366-81e0-7e7d7533b393",
+                "job_opening_uuid": "d874b14b-77ff-4366-81e0-7e7d7533b393",
+                "title": "Social Media Specialist",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "d118dbf2-00ac-40e3-91c6-d7bf2096adf0",
+                "job_opening_uuid": "d118dbf2-00ac-40e3-91c6-d7bf2096adf0",
+                "title": "Social Media Manager",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "2c509864-ccf5-4ed7-9ada-903c7396c2ab",
+                "job_opening_uuid": "2c509864-ccf5-4ed7-9ada-903c7396c2ab",
+                "title": "A military expert in arms and vehicles",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "5d3cff8b-54e2-4377-a001-df5ee698f379",
+                "job_opening_uuid": "5d3cff8b-54e2-4377-a001-df5ee698f379",
+                "title": "Cab Driver",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "0f0a80ac-9a47-49ee-8cb5-c7dbb23977dc",
+                "job_opening_uuid": "0f0a80ac-9a47-49ee-8cb5-c7dbb23977dc",
+                "title": "Senior Software Developer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "6f2891c5-ff2c-4944-9730-b53a08e78e82",
+                "job_opening_uuid": "6f2891c5-ff2c-4944-9730-b53a08e78e82",
+                "title": "Lead Software Engineer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "3a05e316-d181-4957-a48a-a45ad50da9aa",
+                "job_opening_uuid": "3a05e316-d181-4957-a48a-a45ad50da9aa",
+                "title": "Software Developer (Remote)",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "7848e8a7-18d0-41c5-92b1-3c3c0549a0ac",
+                "job_opening_uuid": "7848e8a7-18d0-41c5-92b1-3c3c0549a0ac",
+                "title": "Software Developer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "9eeda0d8-7912-4ce8-92e8-579845c30015",
+                "job_opening_uuid": "9eeda0d8-7912-4ce8-92e8-579845c30015",
+                "title": "Lead CI/CD Engineer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "5e423fc2-d12d-4a21-b2d3-65a45a4c286c",
+                "job_opening_uuid": "5e423fc2-d12d-4a21-b2d3-65a45a4c286c",
+                "title": "Mid-Level CI/CD Engineer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "effa4c27-31d7-42a5-9546-5bf49f4b1b33",
+                "job_opening_uuid": "effa4c27-31d7-42a5-9546-5bf49f4b1b33",
+                "title": "CI/CD Workflow Engineer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "cd7c9d77-1783-4dde-8a52-cb9a2407271e",
+                "job_opening_uuid": "cd7c9d77-1783-4dde-8a52-cb9a2407271e",
+                "title": "AI Engineer - Mid Level",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "c5ce721d-7c08-47e2-a419-017cad209288",
+                "job_opening_uuid": "c5ce721d-7c08-47e2-a419-017cad209288",
+                "title": "Lead AI Engineer",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "ac6d615d-7fb0-4267-abf0-f4142302b760",
+                "job_opening_uuid": "ac6d615d-7fb0-4267-abf0-f4142302b760",
+                "title": "Mid-Level AI Developer",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "83dfa4e8-da00-4d77-937b-5ae344d833d1",
+                "job_opening_uuid": "83dfa4e8-da00-4d77-937b-5ae344d833d1",
+                "title": "Senior AI Engineer - Game Engine Innovations",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "94873550-4dcd-4493-bac7-4cdc24a7e04f",
+                "job_opening_uuid": "94873550-4dcd-4493-bac7-4cdc24a7e04f",
+                "title": "AI Engineer - Game Engine Development",
+                "status": "published",
+                "processing_status": "ready"
+              },
+              {
+                "id": "9eca7f40-fb5d-4c37-be7e-3b601c9336d1",
+                "job_opening_uuid": "9eca7f40-fb5d-4c37-be7e-3b601c9336d1",
+                "title": "Technical Lead - System Design",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "9b952cdb-ccdd-46fd-94b1-44d502ecf708",
+                "job_opening_uuid": "9b952cdb-ccdd-46fd-94b1-44d502ecf708",
+                "title": "Mid-Level System Design Engineer",
+                "status": "draft",
+                "processing_status": "ready"
+              },
+              {
+                "id": "467277e8-5f03-4bf3-b0ed-bb34a8565341",
+                "job_opening_uuid": "467277e8-5f03-4bf3-b0ed-bb34a8565341",
+                "title": "System Design Engineer - Web Applications",
+                "status": "draft",
+                "processing_status": "ready"
+              }
+            ],
+            "filters": {
+              "client": "all",
+              "status": "all",
+              "search": ""
+            },
+            "selected_entity": null,
+            "visible_rows": [
+              {
+                "id": "0f90722f-fffd-420e-8245-2faf2d5bb5b7",
+                "title": "Senior Somethingnew - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "ab222222-2222-2222-2222-222222222222",
+                "title": "Staff Web Architect - Cloud Console Core",
+                "status": "published"
+              },
+              {
+                "id": "ab333333-3333-3333-3333-333333333333",
+                "title": "Staff Systems Engineer - Distributed Transaction Ledger",
+                "status": "closed"
+              },
+              {
+                "id": "567d20cb-8fb0-477b-a2ad-fc7e4cf79fb0",
+                "title": "Senior A team of machine learning engineers for developin - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "06292900-c9bf-4252-bbe0-cf515463c083",
+                "title": "Lead A team of machine learning engineers for developin - Innovation & Delivery (Option 2)",
+                "status": "draft"
+              },
+              {
+                "id": "715b5556-adfc-43e1-b0ad-120a0bf4d62d",
+                "title": "Lead A team of machine learning engineers for developin - Innovation & Delivery (Option 3)",
+                "status": "draft"
+              },
+              {
+                "id": "169a877f-3f81-419c-a3ce-30ad9790650d",
+                "title": "Senior Machine Learning Engineer",
+                "status": "closed"
+              },
+              {
+                "id": "b60ffa52-8cd2-4514-b07f-78c817c44139",
+                "title": "Machine Learning Developer",
+                "status": "published"
+              },
+              {
+                "id": "348306b6-f6fd-4c97-9ab7-2d9879382740",
+                "title": "Lead A team of machine learning engineers for developin - Innovation & Delivery (Option 4)",
+                "status": "draft"
+              },
+              {
+                "id": "c88c7867-39da-429f-8da8-689835ffe801",
+                "title": "Machine Learning Engineer - CI/CD Automation",
+                "status": "draft"
+              },
+              {
+                "id": "5eca2f73-c831-4480-8bb5-835fa3e204ea",
+                "title": "Lead Machine Learning Engineer - CI/CD Automation",
+                "status": "draft"
+              },
+              {
+                "id": "994414bc-cb12-43bd-b4c7-748845aa52f9",
+                "title": "Machine Learning Engineer - Automation Specialist",
+                "status": "draft"
+              },
+              {
+                "id": "68fe71f7-4b8d-40a0-ae72-86626bdb5016",
+                "title": "Senior Skills Agent Management - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "3ae322a0-9c0b-4fe0-b4f9-8fbd055aff00",
+                "title": "Senior A team of machine learning engineers to automate t - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "b8ee48ff-aa3c-496d-82fa-fd602c7ba7e2",
+                "title": "Lead Graphic Card Desginer - Innovation & Delivery (Option 2)",
+                "status": "draft"
+              },
+              {
+                "id": "f6981d46-ef80-4209-8b5e-1082519f6236",
+                "title": "Lead Graphic Card Desginer - Innovation & Delivery (Option 3)",
+                "status": "draft"
+              },
+              {
+                "id": "34096c8c-9ca6-489c-9d50-2bb72627921a",
+                "title": "Senior Brewer - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "a72511df-560e-4282-8d9b-060199e68552",
+                "title": "Lead A team of machine learning engineers to automate t - Innovation & Delivery (Option 2)",
+                "status": "draft"
+              },
+              {
+                "id": "50799d12-56a3-4d04-b381-bb6d05276e13",
+                "title": "Lead Delivery Patner - Innovation & Delivery (Option 2)",
+                "status": "draft"
+              },
+              {
+                "id": "db5a2947-e986-449c-aa96-001969695859",
+                "title": "Lead A team of machine learning engineers to automate t - Innovation & Delivery (Option 3)",
+                "status": "draft"
+              },
+              {
+                "id": "d8660014-0cb6-4f63-9a10-758a35a912a8",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 5)",
+                "status": "draft"
+              },
+              {
+                "id": "a073da38-fbad-4aba-9bb4-38205f94e716",
+                "title": "Senior A team of support staff for ensuring proper Custom - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "5704a244-0cd1-43c3-8f88-151be954ac2e",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 3)",
+                "status": "draft"
+              },
+              {
+                "id": "7df7b67c-007d-45e5-9853-bb37375de91e",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 3)",
+                "status": "draft"
+              },
+              {
+                "id": "6d7d7b79-1527-4f82-9f99-1e2ca2b2aef1",
+                "title": "Machine Learning Engineer",
+                "status": "published"
+              },
+              {
+                "id": "5cfcdecf-1e50-44ef-968b-5a6b4da0fb9d",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 4)",
+                "status": "published"
+              },
+              {
+                "id": "997db15a-a006-4263-9127-23d3bb3ad597",
+                "title": "CEO - North India Operations",
+                "status": "draft"
+              },
+              {
+                "id": "39a66245-6b20-4044-8df2-992f68afd931",
+                "title": "Mid-Level Software Developer - Remote/Bangalore",
+                "status": "draft"
+              },
+              {
+                "id": "f5907c0f-c776-4e4e-9b33-0bdb34c158ba",
+                "title": "Senior A team of software developers to create a new and - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "a88d8e76-3c13-4adf-9571-ece18bf95b8b",
+                "title": "Mid-Level DevOps Engineer - CI/CD Focus",
+                "status": "draft"
+              },
+              {
+                "id": "e110be77-95eb-4232-a3bc-177d768d7ec4",
+                "title": "DevOps Specialist - CI/CD Pipeline Development",
+                "status": "published"
+              },
+              {
+                "id": "7c126ae2-eb28-4fa3-81a6-3f67bcf894a0",
+                "title": "Lead Software Developer - AI Innovations",
+                "status": "published"
+              },
+              {
+                "id": "dc564925-9d9f-4dbc-a64a-d049c01133c3",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 3)",
+                "status": "published"
+              },
+              {
+                "id": "cc5c8e75-deb4-4040-8cb2-6e8b60b87860",
+                "title": "Software Developer - AI Solutions",
+                "status": "published"
+              },
+              {
+                "id": "c22b610f-4ba0-4751-96a1-ced5de8aba1a",
+                "title": "Senior Graphic Card Desginer - Strategy & Execution (Option 1)",
+                "status": "published"
+              },
+              {
+                "id": "7a28fc0a-d332-48c0-86df-39b070a6fb7e",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 4)",
+                "status": "draft"
+              },
+              {
+                "id": "62e7b351-8c21-4119-935d-259c294a0a89",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 2)",
+                "status": "published"
+              },
+              {
+                "id": "3b2ba7d1-74bf-4c18-9c42-27bb62717cab",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 2)",
+                "status": "draft"
+              },
+              {
+                "id": "7fac015a-cd4a-4da5-95a0-89330c89c4c6",
+                "title": "Lead A team of engineers to manage client relations and - Innovation & Delivery (Option 2)",
+                "status": "draft"
+              },
+              {
+                "id": "18e4abc6-ac62-45f0-a0b5-35f608ebd882",
+                "title": "Mid-Level Software Developer - AI Projects",
+                "status": "published"
+              },
+              {
+                "id": "372bf59d-17fb-4ccd-9e61-6543589ecedd",
+                "title": "Lead Delivery Patner - Innovation & Delivery (Option 3)",
+                "status": "published"
+              },
+              {
+                "id": "06fb7e0c-2c5f-483f-8968-77abc140cd94",
+                "title": "DevOps Engineer for Client Management",
+                "status": "draft"
+              },
+              {
+                "id": "31a6858c-33cf-4625-87be-727400845241",
+                "title": "Senior A team of engineers to manage client relations and - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "01916179-d0c1-4641-9ca0-8d82edeacaba",
+                "title": "Lead A team of engineers to manage client relations and - Innovation & Delivery (Option 2)",
+                "status": "draft"
+              },
+              {
+                "id": "bcd12b70-8695-4907-b040-1422d7fd588e",
+                "title": "Lead Brewer Manager - Innovation & Delivery (Option 2)",
+                "status": "draft"
+              },
+              {
+                "id": "e5dabd86-0319-4d52-9b57-760a68dba11c",
+                "title": "Client Relations Engineer",
+                "status": "published"
+              },
+              {
+                "id": "418b2ec7-d34b-4e9f-ac1e-5a6ed491ae59",
+                "title": "Senior Brewer Manager - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "6bd332bc-c187-4854-adbd-f1e614fb1267",
+                "title": "Senior Call Center Ghurkha - Strategy & Execution (Option 1) (Regenerated)",
+                "status": "draft"
+              },
+              {
+                "id": "be666452-74c2-4936-bbf4-3c75bf67471c",
+                "title": "Lead AI Engineer - Innovation & Delivery (Option 2)",
+                "status": "draft"
+              },
+              {
+                "id": "44ee505b-265c-41ce-aca5-dda9cbd4ee3e",
+                "title": "Senior Cab Driver - Strategy & Execution (Option 1)",
+                "status": "published"
+              },
+              {
+                "id": "f5cc8824-07fa-4f2e-a1e8-4c10d8276568",
+                "title": "Senior A team of support staff for ensuring proper Custom - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "d9108eda-f2f3-425c-ad79-04665325f05a",
+                "title": "Lead DevOps Engineer - CI/CD Optimization",
+                "status": "published"
+              },
+              {
+                "id": "85427eed-3cf9-4b53-b5c9-81ae666964e8",
+                "title": "Senior A team of software developers to create a new and - Strategy & Execution (Option 1)",
+                "status": "draft"
+              },
+              {
+                "id": "15f103c6-8ab7-42cd-82ff-a972616c4055",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 2)",
+                "status": "draft"
+              },
+              {
+                "id": "36c2b80e-3f27-41d5-98e0-23477b92f260",
+                "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 4)",
+                "status": "draft"
+              },
+              {
+                "id": "0aceace6-31da-4a9a-8c76-fa69cc74ffa5",
+                "title": "Machine Learning Engineer (Remote)",
+                "status": "draft"
+              },
+              {
+                "id": "18a84cfd-ff99-4f84-b87e-84d30ed498cd",
+                "title": "Senior A team of engineers to manage client relations and - Strategy & Execution (Option 1)",
+                "status": "published"
+              },
+              {
+                "id": "e681e619-eea7-48fe-bb89-514871fc7062",
+                "title": "Lead AI Engineer - Innovation & Delivery (Option 3)",
+                "status": "published"
+              },
+              {
+                "id": "ff3e5bdb-9943-43e3-9285-acd357ffc8aa",
+                "title": "Senior AI Engineer - Strategy & Execution (Option 1)",
+                "status": "published"
+              },
+              {
+                "id": "df8e4b95-0865-4204-8e0a-507df9c2a800",
+                "title": "Junior Machine Learning Engineer",
+                "status": "published"
+              },
+              {
+                "id": "74b06d76-a841-489a-b266-81d1ff6cb390",
+                "title": "Machine Learning Engineer Team Lead",
+                "status": "published"
+              },
+              {
+                "id": "f1b56429-2414-4903-9208-b5c79bcc8799",
+                "title": "Regional CEO - South India",
+                "status": "draft"
+              },
+              {
+                "id": "eff74870-5a98-463c-8324-bf34ce5bdd7c",
+                "title": "Software Engineer Team Lead (Regenerated)",
+                "status": "published"
+              },
+              {
+                "id": "e21dc7e1-acdb-4117-94d8-529a2012cbe5",
+                "title": "CEO - West India Division",
+                "status": "draft"
+              },
+              {
+                "id": "b8c2c496-3394-4967-b0a5-50b1bd984399",
+                "title": "Regulatory Compliance Engineer",
+                "status": "draft"
+              },
+              {
+                "id": "437ee267-a242-47b7-9ac4-15057af0b23b",
+                "title": "Lead Regulatory Compliance Engineer",
+                "status": "draft"
+              },
+              {
+                "id": "8a187413-fa43-4a28-936c-b2385e322e34",
+                "title": "Regulatory Compliance Specialist",
+                "status": "draft"
+              },
+              {
+                "id": "438192b5-ddde-44d4-bcd3-a5fea873d5a7",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 2)",
+                "status": "closed"
+              },
+              {
+                "id": "674b4e23-6a52-4aa6-bd89-d7a3bb68423b",
+                "title": "Call Center Ghurka with Physical Security Experience",
+                "status": "draft"
+              },
+              {
+                "id": "42935e6d-e55d-434f-9770-5bfc9d8945ef",
+                "title": "Lead Android App Developer",
+                "status": "draft"
+              },
+              {
+                "id": "1982d98c-f749-4fe9-8e7f-0234ff1a59b5",
+                "title": "Software Developer - Development Pipeline",
+                "status": "published"
+              },
+              {
+                "id": "06d6cdad-203d-4671-889b-b05b2a27afdc",
+                "title": "Senior Delivery Patner - Strategy & Execution (Option 1) (Regenerated)",
+                "status": "published"
+              },
+              {
+                "id": "4bcc0fdd-d8dd-4e20-878b-8c3c64b34265",
+                "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 3)",
+                "status": "closed"
+              },
+              {
+                "id": "af3db90f-ad3d-4597-97d1-ceb3461bbc2f",
+                "title": "Android App Developer - Remote",
+                "status": "published"
+              },
+              {
+                "id": "0321145b-890c-4399-a074-5b2961f87410",
+                "title": "Lead Software Developer - Project Development",
+                "status": "published"
+              },
+              {
+                "id": "ab111111-1111-1111-1111-111111111111",
+                "title": "Senior UI/Frontend Developer - Cloud Platform",
+                "status": "closed"
+              },
+              {
+                "id": "6ad60b14-4d04-41ba-b758-fd1eca1f04a8",
+                "title": "Network Management Agent",
+                "status": "draft"
+              },
+              {
+                "id": "d150530a-5efd-4f1e-8713-d35261090939",
+                "title": "Delivery Partner",
+                "status": "draft"
+              },
+              {
+                "id": "e10489d8-f66c-4f64-aaa4-594f3fc13747",
+                "title": "Lead Software Developer",
+                "status": "draft"
+              },
+              {
+                "id": "d874b14b-77ff-4366-81e0-7e7d7533b393",
+                "title": "Social Media Specialist",
+                "status": "draft"
+              },
+              {
+                "id": "d118dbf2-00ac-40e3-91c6-d7bf2096adf0",
+                "title": "Social Media Manager",
+                "status": "draft"
+              },
+              {
+                "id": "2c509864-ccf5-4ed7-9ada-903c7396c2ab",
+                "title": "A military expert in arms and vehicles",
+                "status": "draft"
+              },
+              {
+                "id": "5d3cff8b-54e2-4377-a001-df5ee698f379",
+                "title": "Cab Driver",
+                "status": "draft"
+              },
+              {
+                "id": "0f0a80ac-9a47-49ee-8cb5-c7dbb23977dc",
+                "title": "Senior Software Developer",
+                "status": "draft"
+              },
+              {
+                "id": "6f2891c5-ff2c-4944-9730-b53a08e78e82",
+                "title": "Lead Software Engineer",
+                "status": "draft"
+              },
+              {
+                "id": "3a05e316-d181-4957-a48a-a45ad50da9aa",
+                "title": "Software Developer (Remote)",
+                "status": "draft"
+              },
+              {
+                "id": "7848e8a7-18d0-41c5-92b1-3c3c0549a0ac",
+                "title": "Software Developer",
+                "status": "draft"
+              },
+              {
+                "id": "9eeda0d8-7912-4ce8-92e8-579845c30015",
+                "title": "Lead CI/CD Engineer",
+                "status": "draft"
+              },
+              {
+                "id": "5e423fc2-d12d-4a21-b2d3-65a45a4c286c",
+                "title": "Mid-Level CI/CD Engineer",
+                "status": "draft"
+              },
+              {
+                "id": "effa4c27-31d7-42a5-9546-5bf49f4b1b33",
+                "title": "CI/CD Workflow Engineer",
+                "status": "draft"
+              },
+              {
+                "id": "cd7c9d77-1783-4dde-8a52-cb9a2407271e",
+                "title": "AI Engineer - Mid Level",
+                "status": "draft"
+              },
+              {
+                "id": "c5ce721d-7c08-47e2-a419-017cad209288",
+                "title": "Lead AI Engineer",
+                "status": "published"
+              },
+              {
+                "id": "ac6d615d-7fb0-4267-abf0-f4142302b760",
+                "title": "Mid-Level AI Developer",
+                "status": "published"
+              },
+              {
+                "id": "83dfa4e8-da00-4d77-937b-5ae344d833d1",
+                "title": "Senior AI Engineer - Game Engine Innovations",
+                "status": "draft"
+              },
+              {
+                "id": "94873550-4dcd-4493-bac7-4cdc24a7e04f",
+                "title": "AI Engineer - Game Engine Development",
+                "status": "published"
+              },
+              {
+                "id": "9eca7f40-fb5d-4c37-be7e-3b601c9336d1",
+                "title": "Technical Lead - System Design",
+                "status": "draft"
+              },
+              {
+                "id": "9b952cdb-ccdd-46fd-94b1-44d502ecf708",
+                "title": "Mid-Level System Design Engineer",
+                "status": "draft"
+              },
+              {
+                "id": "467277e8-5f03-4bf3-b0ed-bb34a8565341",
+                "title": "System Design Engineer - Web Applications",
+                "status": "draft"
+              }
+            ],
+            "visible_data": {
+              "total_jobs": 98,
+              "active_tab": "jd",
+              "local_skills_count": 0
+            },
+            "entities": {
+              "job_ids": [
+                "0f90722f-fffd-420e-8245-2faf2d5bb5b7",
+                "ab222222-2222-2222-2222-222222222222",
+                "ab333333-3333-3333-3333-333333333333",
+                "567d20cb-8fb0-477b-a2ad-fc7e4cf79fb0",
+                "06292900-c9bf-4252-bbe0-cf515463c083",
+                "715b5556-adfc-43e1-b0ad-120a0bf4d62d",
+                "169a877f-3f81-419c-a3ce-30ad9790650d",
+                "b60ffa52-8cd2-4514-b07f-78c817c44139",
+                "348306b6-f6fd-4c97-9ab7-2d9879382740",
+                "c88c7867-39da-429f-8da8-689835ffe801",
+                "5eca2f73-c831-4480-8bb5-835fa3e204ea",
+                "994414bc-cb12-43bd-b4c7-748845aa52f9",
+                "68fe71f7-4b8d-40a0-ae72-86626bdb5016",
+                "3ae322a0-9c0b-4fe0-b4f9-8fbd055aff00",
+                "b8ee48ff-aa3c-496d-82fa-fd602c7ba7e2",
+                "f6981d46-ef80-4209-8b5e-1082519f6236",
+                "34096c8c-9ca6-489c-9d50-2bb72627921a",
+                "a72511df-560e-4282-8d9b-060199e68552",
+                "50799d12-56a3-4d04-b381-bb6d05276e13",
+                "db5a2947-e986-449c-aa96-001969695859",
+                "d8660014-0cb6-4f63-9a10-758a35a912a8",
+                "a073da38-fbad-4aba-9bb4-38205f94e716",
+                "5704a244-0cd1-43c3-8f88-151be954ac2e",
+                "7df7b67c-007d-45e5-9853-bb37375de91e",
+                "6d7d7b79-1527-4f82-9f99-1e2ca2b2aef1",
+                "5cfcdecf-1e50-44ef-968b-5a6b4da0fb9d",
+                "997db15a-a006-4263-9127-23d3bb3ad597",
+                "39a66245-6b20-4044-8df2-992f68afd931",
+                "f5907c0f-c776-4e4e-9b33-0bdb34c158ba",
+                "a88d8e76-3c13-4adf-9571-ece18bf95b8b",
+                "e110be77-95eb-4232-a3bc-177d768d7ec4",
+                "7c126ae2-eb28-4fa3-81a6-3f67bcf894a0",
+                "dc564925-9d9f-4dbc-a64a-d049c01133c3",
+                "cc5c8e75-deb4-4040-8cb2-6e8b60b87860",
+                "c22b610f-4ba0-4751-96a1-ced5de8aba1a",
+                "7a28fc0a-d332-48c0-86df-39b070a6fb7e",
+                "62e7b351-8c21-4119-935d-259c294a0a89",
+                "3b2ba7d1-74bf-4c18-9c42-27bb62717cab",
+                "7fac015a-cd4a-4da5-95a0-89330c89c4c6",
+                "18e4abc6-ac62-45f0-a0b5-35f608ebd882",
+                "372bf59d-17fb-4ccd-9e61-6543589ecedd",
+                "06fb7e0c-2c5f-483f-8968-77abc140cd94",
+                "31a6858c-33cf-4625-87be-727400845241",
+                "01916179-d0c1-4641-9ca0-8d82edeacaba",
+                "bcd12b70-8695-4907-b040-1422d7fd588e",
+                "e5dabd86-0319-4d52-9b57-760a68dba11c",
+                "418b2ec7-d34b-4e9f-ac1e-5a6ed491ae59",
+                "6bd332bc-c187-4854-adbd-f1e614fb1267",
+                "be666452-74c2-4936-bbf4-3c75bf67471c",
+                "44ee505b-265c-41ce-aca5-dda9cbd4ee3e",
+                "f5cc8824-07fa-4f2e-a1e8-4c10d8276568",
+                "d9108eda-f2f3-425c-ad79-04665325f05a",
+                "85427eed-3cf9-4b53-b5c9-81ae666964e8",
+                "15f103c6-8ab7-42cd-82ff-a972616c4055",
+                "36c2b80e-3f27-41d5-98e0-23477b92f260",
+                "0aceace6-31da-4a9a-8c76-fa69cc74ffa5",
+                "18a84cfd-ff99-4f84-b87e-84d30ed498cd",
+                "e681e619-eea7-48fe-bb89-514871fc7062",
+                "ff3e5bdb-9943-43e3-9285-acd357ffc8aa",
+                "df8e4b95-0865-4204-8e0a-507df9c2a800",
+                "74b06d76-a841-489a-b266-81d1ff6cb390",
+                "f1b56429-2414-4903-9208-b5c79bcc8799",
+                "eff74870-5a98-463c-8324-bf34ce5bdd7c",
+                "e21dc7e1-acdb-4117-94d8-529a2012cbe5",
+                "b8c2c496-3394-4967-b0a5-50b1bd984399",
+                "437ee267-a242-47b7-9ac4-15057af0b23b",
+                "8a187413-fa43-4a28-936c-b2385e322e34",
+                "438192b5-ddde-44d4-bcd3-a5fea873d5a7",
+                "674b4e23-6a52-4aa6-bd89-d7a3bb68423b",
+                "42935e6d-e55d-434f-9770-5bfc9d8945ef",
+                "1982d98c-f749-4fe9-8e7f-0234ff1a59b5",
+                "06d6cdad-203d-4671-889b-b05b2a27afdc",
+                "4bcc0fdd-d8dd-4e20-878b-8c3c64b34265",
+                "af3db90f-ad3d-4597-97d1-ceb3461bbc2f",
+                "0321145b-890c-4399-a074-5b2961f87410",
+                "ab111111-1111-1111-1111-111111111111",
+                "6ad60b14-4d04-41ba-b758-fd1eca1f04a8",
+                "d150530a-5efd-4f1e-8713-d35261090939",
+                "e10489d8-f66c-4f64-aaa4-594f3fc13747",
+                "d874b14b-77ff-4366-81e0-7e7d7533b393",
+                "d118dbf2-00ac-40e3-91c6-d7bf2096adf0",
+                "2c509864-ccf5-4ed7-9ada-903c7396c2ab",
+                "5d3cff8b-54e2-4377-a001-df5ee698f379",
+                "0f0a80ac-9a47-49ee-8cb5-c7dbb23977dc",
+                "6f2891c5-ff2c-4944-9730-b53a08e78e82",
+                "3a05e316-d181-4957-a48a-a45ad50da9aa",
+                "7848e8a7-18d0-41c5-92b1-3c3c0549a0ac",
+                "9eeda0d8-7912-4ce8-92e8-579845c30015",
+                "5e423fc2-d12d-4a21-b2d3-65a45a4c286c",
+                "effa4c27-31d7-42a5-9546-5bf49f4b1b33",
+                "cd7c9d77-1783-4dde-8a52-cb9a2407271e",
+                "c5ce721d-7c08-47e2-a419-017cad209288",
+                "ac6d615d-7fb0-4267-abf0-f4142302b760",
+                "83dfa4e8-da00-4d77-937b-5ae344d833d1",
+                "94873550-4dcd-4493-bac7-4cdc24a7e04f",
+                "9eca7f40-fb5d-4c37-be7e-3b601c9336d1",
+                "9b952cdb-ccdd-46fd-94b1-44d502ecf708",
+                "467277e8-5f03-4bf3-b0ed-bb34a8565341"
+              ]
+            },
+            "db_clients_count": 23,
+            "db_requirements_count": 36,
+            "db_candidates_count": 10,
+            "db_jobs_count": 98
+          },
+          "selected_entity": null,
+          "visible_rows": [
+            {
+              "id": "0f90722f-fffd-420e-8245-2faf2d5bb5b7",
+              "title": "Senior Somethingnew - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "ab222222-2222-2222-2222-222222222222",
+              "title": "Staff Web Architect - Cloud Console Core",
+              "status": "published"
+            },
+            {
+              "id": "ab333333-3333-3333-3333-333333333333",
+              "title": "Staff Systems Engineer - Distributed Transaction Ledger",
+              "status": "closed"
+            },
+            {
+              "id": "567d20cb-8fb0-477b-a2ad-fc7e4cf79fb0",
+              "title": "Senior A team of machine learning engineers for developin - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "06292900-c9bf-4252-bbe0-cf515463c083",
+              "title": "Lead A team of machine learning engineers for developin - Innovation & Delivery (Option 2)",
+              "status": "draft"
+            },
+            {
+              "id": "715b5556-adfc-43e1-b0ad-120a0bf4d62d",
+              "title": "Lead A team of machine learning engineers for developin - Innovation & Delivery (Option 3)",
+              "status": "draft"
+            },
+            {
+              "id": "169a877f-3f81-419c-a3ce-30ad9790650d",
+              "title": "Senior Machine Learning Engineer",
+              "status": "closed"
+            },
+            {
+              "id": "b60ffa52-8cd2-4514-b07f-78c817c44139",
+              "title": "Machine Learning Developer",
+              "status": "published"
+            },
+            {
+              "id": "348306b6-f6fd-4c97-9ab7-2d9879382740",
+              "title": "Lead A team of machine learning engineers for developin - Innovation & Delivery (Option 4)",
+              "status": "draft"
+            },
+            {
+              "id": "c88c7867-39da-429f-8da8-689835ffe801",
+              "title": "Machine Learning Engineer - CI/CD Automation",
+              "status": "draft"
+            },
+            {
+              "id": "5eca2f73-c831-4480-8bb5-835fa3e204ea",
+              "title": "Lead Machine Learning Engineer - CI/CD Automation",
+              "status": "draft"
+            },
+            {
+              "id": "994414bc-cb12-43bd-b4c7-748845aa52f9",
+              "title": "Machine Learning Engineer - Automation Specialist",
+              "status": "draft"
+            },
+            {
+              "id": "68fe71f7-4b8d-40a0-ae72-86626bdb5016",
+              "title": "Senior Skills Agent Management - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "3ae322a0-9c0b-4fe0-b4f9-8fbd055aff00",
+              "title": "Senior A team of machine learning engineers to automate t - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "b8ee48ff-aa3c-496d-82fa-fd602c7ba7e2",
+              "title": "Lead Graphic Card Desginer - Innovation & Delivery (Option 2)",
+              "status": "draft"
+            },
+            {
+              "id": "f6981d46-ef80-4209-8b5e-1082519f6236",
+              "title": "Lead Graphic Card Desginer - Innovation & Delivery (Option 3)",
+              "status": "draft"
+            },
+            {
+              "id": "34096c8c-9ca6-489c-9d50-2bb72627921a",
+              "title": "Senior Brewer - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "a72511df-560e-4282-8d9b-060199e68552",
+              "title": "Lead A team of machine learning engineers to automate t - Innovation & Delivery (Option 2)",
+              "status": "draft"
+            },
+            {
+              "id": "50799d12-56a3-4d04-b381-bb6d05276e13",
+              "title": "Lead Delivery Patner - Innovation & Delivery (Option 2)",
+              "status": "draft"
+            },
+            {
+              "id": "db5a2947-e986-449c-aa96-001969695859",
+              "title": "Lead A team of machine learning engineers to automate t - Innovation & Delivery (Option 3)",
+              "status": "draft"
+            },
+            {
+              "id": "d8660014-0cb6-4f63-9a10-758a35a912a8",
+              "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 5)",
+              "status": "draft"
+            },
+            {
+              "id": "a073da38-fbad-4aba-9bb4-38205f94e716",
+              "title": "Senior A team of support staff for ensuring proper Custom - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "5704a244-0cd1-43c3-8f88-151be954ac2e",
+              "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 3)",
+              "status": "draft"
+            },
+            {
+              "id": "7df7b67c-007d-45e5-9853-bb37375de91e",
+              "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 3)",
+              "status": "draft"
+            },
+            {
+              "id": "6d7d7b79-1527-4f82-9f99-1e2ca2b2aef1",
+              "title": "Machine Learning Engineer",
+              "status": "published"
+            },
+            {
+              "id": "5cfcdecf-1e50-44ef-968b-5a6b4da0fb9d",
+              "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 4)",
+              "status": "published"
+            },
+            {
+              "id": "997db15a-a006-4263-9127-23d3bb3ad597",
+              "title": "CEO - North India Operations",
+              "status": "draft"
+            },
+            {
+              "id": "39a66245-6b20-4044-8df2-992f68afd931",
+              "title": "Mid-Level Software Developer - Remote/Bangalore",
+              "status": "draft"
+            },
+            {
+              "id": "f5907c0f-c776-4e4e-9b33-0bdb34c158ba",
+              "title": "Senior A team of software developers to create a new and - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "a88d8e76-3c13-4adf-9571-ece18bf95b8b",
+              "title": "Mid-Level DevOps Engineer - CI/CD Focus",
+              "status": "draft"
+            },
+            {
+              "id": "e110be77-95eb-4232-a3bc-177d768d7ec4",
+              "title": "DevOps Specialist - CI/CD Pipeline Development",
+              "status": "published"
+            },
+            {
+              "id": "7c126ae2-eb28-4fa3-81a6-3f67bcf894a0",
+              "title": "Lead Software Developer - AI Innovations",
+              "status": "published"
+            },
+            {
+              "id": "dc564925-9d9f-4dbc-a64a-d049c01133c3",
+              "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 3)",
+              "status": "published"
+            },
+            {
+              "id": "cc5c8e75-deb4-4040-8cb2-6e8b60b87860",
+              "title": "Software Developer - AI Solutions",
+              "status": "published"
+            },
+            {
+              "id": "c22b610f-4ba0-4751-96a1-ced5de8aba1a",
+              "title": "Senior Graphic Card Desginer - Strategy & Execution (Option 1)",
+              "status": "published"
+            },
+            {
+              "id": "7a28fc0a-d332-48c0-86df-39b070a6fb7e",
+              "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 4)",
+              "status": "draft"
+            },
+            {
+              "id": "62e7b351-8c21-4119-935d-259c294a0a89",
+              "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 2)",
+              "status": "published"
+            },
+            {
+              "id": "3b2ba7d1-74bf-4c18-9c42-27bb62717cab",
+              "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 2)",
+              "status": "draft"
+            },
+            {
+              "id": "7fac015a-cd4a-4da5-95a0-89330c89c4c6",
+              "title": "Lead A team of engineers to manage client relations and - Innovation & Delivery (Option 2)",
+              "status": "draft"
+            },
+            {
+              "id": "18e4abc6-ac62-45f0-a0b5-35f608ebd882",
+              "title": "Mid-Level Software Developer - AI Projects",
+              "status": "published"
+            },
+            {
+              "id": "372bf59d-17fb-4ccd-9e61-6543589ecedd",
+              "title": "Lead Delivery Patner - Innovation & Delivery (Option 3)",
+              "status": "published"
+            },
+            {
+              "id": "06fb7e0c-2c5f-483f-8968-77abc140cd94",
+              "title": "DevOps Engineer for Client Management",
+              "status": "draft"
+            },
+            {
+              "id": "31a6858c-33cf-4625-87be-727400845241",
+              "title": "Senior A team of engineers to manage client relations and - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "01916179-d0c1-4641-9ca0-8d82edeacaba",
+              "title": "Lead A team of engineers to manage client relations and - Innovation & Delivery (Option 2)",
+              "status": "draft"
+            },
+            {
+              "id": "bcd12b70-8695-4907-b040-1422d7fd588e",
+              "title": "Lead Brewer Manager - Innovation & Delivery (Option 2)",
+              "status": "draft"
+            },
+            {
+              "id": "e5dabd86-0319-4d52-9b57-760a68dba11c",
+              "title": "Client Relations Engineer",
+              "status": "published"
+            },
+            {
+              "id": "418b2ec7-d34b-4e9f-ac1e-5a6ed491ae59",
+              "title": "Senior Brewer Manager - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "6bd332bc-c187-4854-adbd-f1e614fb1267",
+              "title": "Senior Call Center Ghurkha - Strategy & Execution (Option 1) (Regenerated)",
+              "status": "draft"
+            },
+            {
+              "id": "be666452-74c2-4936-bbf4-3c75bf67471c",
+              "title": "Lead AI Engineer - Innovation & Delivery (Option 2)",
+              "status": "draft"
+            },
+            {
+              "id": "44ee505b-265c-41ce-aca5-dda9cbd4ee3e",
+              "title": "Senior Cab Driver - Strategy & Execution (Option 1)",
+              "status": "published"
+            },
+            {
+              "id": "f5cc8824-07fa-4f2e-a1e8-4c10d8276568",
+              "title": "Senior A team of support staff for ensuring proper Custom - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "d9108eda-f2f3-425c-ad79-04665325f05a",
+              "title": "Lead DevOps Engineer - CI/CD Optimization",
+              "status": "published"
+            },
+            {
+              "id": "85427eed-3cf9-4b53-b5c9-81ae666964e8",
+              "title": "Senior A team of software developers to create a new and - Strategy & Execution (Option 1)",
+              "status": "draft"
+            },
+            {
+              "id": "15f103c6-8ab7-42cd-82ff-a972616c4055",
+              "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 2)",
+              "status": "draft"
+            },
+            {
+              "id": "36c2b80e-3f27-41d5-98e0-23477b92f260",
+              "title": "Lead A team of software developers to create a new and - Innovation & Delivery (Option 4)",
+              "status": "draft"
+            },
+            {
+              "id": "0aceace6-31da-4a9a-8c76-fa69cc74ffa5",
+              "title": "Machine Learning Engineer (Remote)",
+              "status": "draft"
+            },
+            {
+              "id": "18a84cfd-ff99-4f84-b87e-84d30ed498cd",
+              "title": "Senior A team of engineers to manage client relations and - Strategy & Execution (Option 1)",
+              "status": "published"
+            },
+            {
+              "id": "e681e619-eea7-48fe-bb89-514871fc7062",
+              "title": "Lead AI Engineer - Innovation & Delivery (Option 3)",
+              "status": "published"
+            },
+            {
+              "id": "ff3e5bdb-9943-43e3-9285-acd357ffc8aa",
+              "title": "Senior AI Engineer - Strategy & Execution (Option 1)",
+              "status": "published"
+            },
+            {
+              "id": "df8e4b95-0865-4204-8e0a-507df9c2a800",
+              "title": "Junior Machine Learning Engineer",
+              "status": "published"
+            },
+            {
+              "id": "74b06d76-a841-489a-b266-81d1ff6cb390",
+              "title": "Machine Learning Engineer Team Lead",
+              "status": "published"
+            },
+            {
+              "id": "f1b56429-2414-4903-9208-b5c79bcc8799",
+              "title": "Regional CEO - South India",
+              "status": "draft"
+            },
+            {
+              "id": "eff74870-5a98-463c-8324-bf34ce5bdd7c",
+              "title": "Software Engineer Team Lead (Regenerated)",
+              "status": "published"
+            },
+            {
+              "id": "e21dc7e1-acdb-4117-94d8-529a2012cbe5",
+              "title": "CEO - West India Division",
+              "status": "draft"
+            },
+            {
+              "id": "b8c2c496-3394-4967-b0a5-50b1bd984399",
+              "title": "Regulatory Compliance Engineer",
+              "status": "draft"
+            },
+            {
+              "id": "437ee267-a242-47b7-9ac4-15057af0b23b",
+              "title": "Lead Regulatory Compliance Engineer",
+              "status": "draft"
+            },
+            {
+              "id": "8a187413-fa43-4a28-936c-b2385e322e34",
+              "title": "Regulatory Compliance Specialist",
+              "status": "draft"
+            },
+            {
+              "id": "438192b5-ddde-44d4-bcd3-a5fea873d5a7",
+              "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 2)",
+              "status": "closed"
+            },
+            {
+              "id": "674b4e23-6a52-4aa6-bd89-d7a3bb68423b",
+              "title": "Call Center Ghurka with Physical Security Experience",
+              "status": "draft"
+            },
+            {
+              "id": "42935e6d-e55d-434f-9770-5bfc9d8945ef",
+              "title": "Lead Android App Developer",
+              "status": "draft"
+            },
+            {
+              "id": "1982d98c-f749-4fe9-8e7f-0234ff1a59b5",
+              "title": "Software Developer - Development Pipeline",
+              "status": "published"
+            },
+            {
+              "id": "06d6cdad-203d-4671-889b-b05b2a27afdc",
+              "title": "Senior Delivery Patner - Strategy & Execution (Option 1) (Regenerated)",
+              "status": "published"
+            },
+            {
+              "id": "4bcc0fdd-d8dd-4e20-878b-8c3c64b34265",
+              "title": "Lead A team of support staff for ensuring proper Custom - Innovation & Delivery (Option 3)",
+              "status": "closed"
+            },
+            {
+              "id": "af3db90f-ad3d-4597-97d1-ceb3461bbc2f",
+              "title": "Android App Developer - Remote",
+              "status": "published"
+            },
+            {
+              "id": "0321145b-890c-4399-a074-5b2961f87410",
+              "title": "Lead Software Developer - Project Development",
+              "status": "published"
+            },
+            {
+              "id": "ab111111-1111-1111-1111-111111111111",
+              "title": "Senior UI/Frontend Developer - Cloud Platform",
+              "status": "closed"
+            },
+            {
+              "id": "6ad60b14-4d04-41ba-b758-fd1eca1f04a8",
+              "title": "Network Management Agent",
+              "status": "draft"
+            },
+            {
+              "id": "d150530a-5efd-4f1e-8713-d35261090939",
+              "title": "Delivery Partner",
+              "status": "draft"
+            },
+            {
+              "id": "e10489d8-f66c-4f64-aaa4-594f3fc13747",
+              "title": "Lead Software Developer",
+              "status": "draft"
+            },
+            {
+              "id": "d874b14b-77ff-4366-81e0-7e7d7533b393",
+              "title": "Social Media Specialist",
+              "status": "draft"
+            },
+            {
+              "id": "d118dbf2-00ac-40e3-91c6-d7bf2096adf0",
+              "title": "Social Media Manager",
+              "status": "draft"
+            },
+            {
+              "id": "2c509864-ccf5-4ed7-9ada-903c7396c2ab",
+              "title": "A military expert in arms and vehicles",
+              "status": "draft"
+            },
+            {
+              "id": "5d3cff8b-54e2-4377-a001-df5ee698f379",
+              "title": "Cab Driver",
+              "status": "draft"
+            },
+            {
+              "id": "0f0a80ac-9a47-49ee-8cb5-c7dbb23977dc",
+              "title": "Senior Software Developer",
+              "status": "draft"
+            },
+            {
+              "id": "6f2891c5-ff2c-4944-9730-b53a08e78e82",
+              "title": "Lead Software Engineer",
+              "status": "draft"
+            },
+            {
+              "id": "3a05e316-d181-4957-a48a-a45ad50da9aa",
+              "title": "Software Developer (Remote)",
+              "status": "draft"
+            },
+            {
+              "id": "7848e8a7-18d0-41c5-92b1-3c3c0549a0ac",
+              "title": "Software Developer",
+              "status": "draft"
+            },
+            {
+              "id": "9eeda0d8-7912-4ce8-92e8-579845c30015",
+              "title": "Lead CI/CD Engineer",
+              "status": "draft"
+            },
+            {
+              "id": "5e423fc2-d12d-4a21-b2d3-65a45a4c286c",
+              "title": "Mid-Level CI/CD Engineer",
+              "status": "draft"
+            },
+            {
+              "id": "effa4c27-31d7-42a5-9546-5bf49f4b1b33",
+              "title": "CI/CD Workflow Engineer",
+              "status": "draft"
+            },
+            {
+              "id": "cd7c9d77-1783-4dde-8a52-cb9a2407271e",
+              "title": "AI Engineer - Mid Level",
+              "status": "draft"
+            },
+            {
+              "id": "c5ce721d-7c08-47e2-a419-017cad209288",
+              "title": "Lead AI Engineer",
+              "status": "published"
+            },
+            {
+              "id": "ac6d615d-7fb0-4267-abf0-f4142302b760",
+              "title": "Mid-Level AI Developer",
+              "status": "published"
+            },
+            {
+              "id": "83dfa4e8-da00-4d77-937b-5ae344d833d1",
+              "title": "Senior AI Engineer - Game Engine Innovations",
+              "status": "draft"
+            },
+            {
+              "id": "94873550-4dcd-4493-bac7-4cdc24a7e04f",
+              "title": "AI Engineer - Game Engine Development",
+              "status": "published"
+            },
+            {
+              "id": "9eca7f40-fb5d-4c37-be7e-3b601c9336d1",
+              "title": "Technical Lead - System Design",
+              "status": "draft"
+            },
+            {
+              "id": "9b952cdb-ccdd-46fd-94b1-44d502ecf708",
+              "title": "Mid-Level System Design Engineer",
+              "status": "draft"
+            },
+            {
+              "id": "467277e8-5f03-4bf3-b0ed-bb34a8565341",
+              "title": "System Design Engineer - Web Applications",
+              "status": "draft"
+            }
+          ],
+          "visible_data": {
+            "total_jobs": 98,
+            "active_tab": "jd",
+            "local_skills_count": 0
+          },
+          "entities": {
+            "job_ids": [
+              "0f90722f-fffd-420e-8245-2faf2d5bb5b7",
+              "ab222222-2222-2222-2222-222222222222",
+              "ab333333-3333-3333-3333-333333333333",
+              "567d20cb-8fb0-477b-a2ad-fc7e4cf79fb0",
+              "06292900-c9bf-4252-bbe0-cf515463c083",
+              "715b5556-adfc-43e1-b0ad-120a0bf4d62d",
+              "169a877f-3f81-419c-a3ce-30ad9790650d",
+              "b60ffa52-8cd2-4514-b07f-78c817c44139",
+              "348306b6-f6fd-4c97-9ab7-2d9879382740",
+              "c88c7867-39da-429f-8da8-689835ffe801",
+              "5eca2f73-c831-4480-8bb5-835fa3e204ea",
+              "994414bc-cb12-43bd-b4c7-748845aa52f9",
+              "68fe71f7-4b8d-40a0-ae72-86626bdb5016",
+              "3ae322a0-9c0b-4fe0-b4f9-8fbd055aff00",
+              "b8ee48ff-aa3c-496d-82fa-fd602c7ba7e2",
+              "f6981d46-ef80-4209-8b5e-1082519f6236",
+              "34096c8c-9ca6-489c-9d50-2bb72627921a",
+              "a72511df-560e-4282-8d9b-060199e68552",
+              "50799d12-56a3-4d04-b381-bb6d05276e13",
+              "db5a2947-e986-449c-aa96-001969695859",
+              "d8660014-0cb6-4f63-9a10-758a35a912a8",
+              "a073da38-fbad-4aba-9bb4-38205f94e716",
+              "5704a244-0cd1-43c3-8f88-151be954ac2e",
+              "7df7b67c-007d-45e5-9853-bb37375de91e",
+              "6d7d7b79-1527-4f82-9f99-1e2ca2b2aef1",
+              "5cfcdecf-1e50-44ef-968b-5a6b4da0fb9d",
+              "997db15a-a006-4263-9127-23d3bb3ad597",
+              "39a66245-6b20-4044-8df2-992f68afd931",
+              "f5907c0f-c776-4e4e-9b33-0bdb34c158ba",
+              "a88d8e76-3c13-4adf-9571-ece18bf95b8b",
+              "e110be77-95eb-4232-a3bc-177d768d7ec4",
+              "7c126ae2-eb28-4fa3-81a6-3f67bcf894a0",
+              "dc564925-9d9f-4dbc-a64a-d049c01133c3",
+              "cc5c8e75-deb4-4040-8cb2-6e8b60b87860",
+              "c22b610f-4ba0-4751-96a1-ced5de8aba1a",
+              "7a28fc0a-d332-48c0-86df-39b070a6fb7e",
+              "62e7b351-8c21-4119-935d-259c294a0a89",
+              "3b2ba7d1-74bf-4c18-9c42-27bb62717cab",
+              "7fac015a-cd4a-4da5-95a0-89330c89c4c6",
+              "18e4abc6-ac62-45f0-a0b5-35f608ebd882",
+              "372bf59d-17fb-4ccd-9e61-6543589ecedd",
+              "06fb7e0c-2c5f-483f-8968-77abc140cd94",
+              "31a6858c-33cf-4625-87be-727400845241",
+              "01916179-d0c1-4641-9ca0-8d82edeacaba",
+              "bcd12b70-8695-4907-b040-1422d7fd588e",
+              "e5dabd86-0319-4d52-9b57-760a68dba11c",
+              "418b2ec7-d34b-4e9f-ac1e-5a6ed491ae59",
+              "6bd332bc-c187-4854-adbd-f1e614fb1267",
+              "be666452-74c2-4936-bbf4-3c75bf67471c",
+              "44ee505b-265c-41ce-aca5-dda9cbd4ee3e",
+              "f5cc8824-07fa-4f2e-a1e8-4c10d8276568",
+              "d9108eda-f2f3-425c-ad79-04665325f05a",
+              "85427eed-3cf9-4b53-b5c9-81ae666964e8",
+              "15f103c6-8ab7-42cd-82ff-a972616c4055",
+              "36c2b80e-3f27-41d5-98e0-23477b92f260",
+              "0aceace6-31da-4a9a-8c76-fa69cc74ffa5",
+              "18a84cfd-ff99-4f84-b87e-84d30ed498cd",
+              "e681e619-eea7-48fe-bb89-514871fc7062",
+              "ff3e5bdb-9943-43e3-9285-acd357ffc8aa",
+              "df8e4b95-0865-4204-8e0a-507df9c2a800",
+              "74b06d76-a841-489a-b266-81d1ff6cb390",
+              "f1b56429-2414-4903-9208-b5c79bcc8799",
+              "eff74870-5a98-463c-8324-bf34ce5bdd7c",
+              "e21dc7e1-acdb-4117-94d8-529a2012cbe5",
+              "b8c2c496-3394-4967-b0a5-50b1bd984399",
+              "437ee267-a242-47b7-9ac4-15057af0b23b",
+              "8a187413-fa43-4a28-936c-b2385e322e34",
+              "438192b5-ddde-44d4-bcd3-a5fea873d5a7",
+              "674b4e23-6a52-4aa6-bd89-d7a3bb68423b",
+              "42935e6d-e55d-434f-9770-5bfc9d8945ef",
+              "1982d98c-f749-4fe9-8e7f-0234ff1a59b5",
+              "06d6cdad-203d-4671-889b-b05b2a27afdc",
+              "4bcc0fdd-d8dd-4e20-878b-8c3c64b34265",
+              "af3db90f-ad3d-4597-97d1-ceb3461bbc2f",
+              "0321145b-890c-4399-a074-5b2961f87410",
+              "ab111111-1111-1111-1111-111111111111",
+              "6ad60b14-4d04-41ba-b758-fd1eca1f04a8",
+              "d150530a-5efd-4f1e-8713-d35261090939",
+              "e10489d8-f66c-4f64-aaa4-594f3fc13747",
+              "d874b14b-77ff-4366-81e0-7e7d7533b393",
+              "d118dbf2-00ac-40e3-91c6-d7bf2096adf0",
+              "2c509864-ccf5-4ed7-9ada-903c7396c2ab",
+              "5d3cff8b-54e2-4377-a001-df5ee698f379",
+              "0f0a80ac-9a47-49ee-8cb5-c7dbb23977dc",
+              "6f2891c5-ff2c-4944-9730-b53a08e78e82",
+              "3a05e316-d181-4957-a48a-a45ad50da9aa",
+              "7848e8a7-18d0-41c5-92b1-3c3c0549a0ac",
+              "9eeda0d8-7912-4ce8-92e8-579845c30015",
+              "5e423fc2-d12d-4a21-b2d3-65a45a4c286c",
+              "effa4c27-31d7-42a5-9546-5bf49f4b1b33",
+              "cd7c9d77-1783-4dde-8a52-cb9a2407271e",
+              "c5ce721d-7c08-47e2-a419-017cad209288",
+              "ac6d615d-7fb0-4267-abf0-f4142302b760",
+              "83dfa4e8-da00-4d77-937b-5ae344d833d1",
+              "94873550-4dcd-4493-bac7-4cdc24a7e04f",
+              "9eca7f40-fb5d-4c37-be7e-3b601c9336d1",
+              "9b952cdb-ccdd-46fd-94b1-44d502ecf708",
+              "467277e8-5f03-4bf3-b0ed-bb34a8565341"
+            ]
+          },
+          "frontend_capabilities": {
+            "navigation": true,
+            "refresh_page": true,
+            "show_toast": true,
+            "open_drawer": true,
+            "update_local_state": true
+          },
+          "metadata": {
+            "source": "frontend_ai_copilot",
+            "timestamp": "2026-06-29T12:59:41.218Z",
+            "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:152.0) Gecko/20100101 Firefox/152.0",
+            "frontend_version": "1.0.0"
+          }
+        },
+        "webhookUrl": "https://n8n.srv832341.hstgr.cloud/webhook/ats-ai-copilot",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "instanceId": "2699c31bf46f1254e44a3fc07872ed7884890827d6a26afa9647feac8ff83d44"
+  },
+  "id": "78396d9f-72d1-47",
+  "name": "Chatbot"
+}

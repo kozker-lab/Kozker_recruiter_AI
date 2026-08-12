@@ -4,10 +4,12 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: kozker_backend
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     env_file:
-      - .env
+      - .env.local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: always
 
   frontend:
@@ -20,10 +22,42 @@ services:
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     container_name: kozker_frontend
-    expose:
-      - "3000"
+    ports:
+      - "3000:3000"
     env_file:
-      - .env
+      - .env.local
     restart: always
     depends_on:
       - backend
+
+  admin-console:
+    build:
+      context: ./admin-console
+      dockerfile: Dockerfile
+    container_name: kozker_admin_console
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env.local
+    restart: always
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=UTC
+    volumes:
+      - n8n_data:/home/node/.n8n
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: always
+
+volumes:
+  n8n_data:

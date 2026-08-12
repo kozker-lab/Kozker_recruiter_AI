@@ -17,46 +17,37 @@ export function useProfile() {
   return useQuery({
     queryKey: ['profile', user?.id],
     queryFn: async () => {
-      if (!user) return null;
+      if (!user || !user.email) return null;
       
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', user.id)
-        .single();
+        .or(`id.eq.${user.id},email.ilike.${user.email}`)
+        .maybeSingle();
         
-      if (error) {
-        if (error.code === 'PGRST116') {
-          console.log('Profile not found in public.profiles, attempting auto-creation for:', user.id);
-          const { data: newData, error: insertError } = await supabase
-            .from('profiles')
-            .insert({
-              id: user.id,
-              email: user.email || '',
-              full_name: user.user_metadata?.full_name || '',
-              role: 'recruiter',
-              is_onboarded: false
-            })
-            .select()
-            .single();
-            
-          if (insertError) {
-            console.error('Error auto-creating profile in public.profiles:', insertError);
-            return null;
-          }
-          
-          const profile = newData as Profile;
-          setProfile(profile);
-          return profile;
-        }
-
-        console.error('Error fetching profile:', error);
-        return null;
+      if (data) {
+        const profile = data as Profile;
+        setProfile(profile);
+        return profile;
       }
-      
-      const profile = data as Profile;
-      setProfile(profile);
-      return profile;
+
+      // Fallback to public.members record
+      const { data: member } = await supabase
+        .from('members')
+        .select('*')
+        .ilike('email', user.email)
+        .maybeSingle();
+
+      const syntheticProfile: Profile = {
+        id: member?.id || user.id,
+        email: user.email,
+        full_name: member?.name || user.email.split('@')[0],
+        role: 'recruiter',
+        is_onboarded: true
+      };
+
+      setProfile(syntheticProfile);
+      return syntheticProfile;
     },
     enabled: !!user,
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -90,19 +81,46 @@ export function useUpdateProfile() {
   });
 }
 
+export function handleGlobalLogout() {
+  if (typeof window !== "undefined") {
+    try {
+      // Purge all cookies on domain
+      document.cookie.split(";").forEach((c) => {
+        const cookieName = c.split("=")[0].trim();
+        document.cookie = `${cookieName}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+      });
+    } catch (e) {}
+
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {}
+    
+    // Attempt best-effort Supabase signout
+    try {
+      supabase.auth.signOut().catch(() => {});
+    } catch (e) {}
+
+    // Force instant page redirect to login with logout flag
+    window.location.replace('/auth/login?logout=true');
+  }
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   const resetAuth = useAuthStore((state) => state.reset);
 
   return useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      handleGlobalLogout();
     },
     onSuccess: () => {
       resetAuth();
       queryClient.clear();
-      window.location.href = '/auth/login';
+      window.location.replace('/auth/login');
     },
+    onError: () => {
+      handleGlobalLogout();
+    }
   });
 }

@@ -3,15 +3,17 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCurrentUser, useProfile, useLogout, useUpdateProfile } from "@/lib/hooks/useAuth";
+import { useCurrentUser, useProfile, useLogout, useUpdateProfile, handleGlobalLogout } from "@/lib/hooks/useAuth";
+import { useAuthStore } from "@/lib/store/auth";
 import ChatbotPanel from "@/components/ChatbotPanel";
 import UserAvatar from "@/components/UserAvatar";
 import { Logo } from "@/components/Logo";
 
+import { isRecruiterSectionVisible, type UserPermissions } from "@/lib/permissions";
 import {
   LayoutDashboard, Building2, Briefcase, Users, LogOut,
   Sparkles, Menu, Shield, User, ChevronRight, MessageSquare, Settings, Upload,
-  X, AlertCircle, Layers, Bell, Clock, Check, Trash2, Sun, Moon, HelpCircle
+  X, AlertCircle, Layers, Bell, Clock, Check, Trash2, Sun, Moon, HelpCircle, ChevronDown, ExternalLink, Terminal, GitPullRequest, Calendar
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
@@ -163,7 +165,8 @@ const formatActivityLog = (act: ActivityLog): DisplayItem => {
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const user = useCurrentUser();
-  const { data: profile, isLoading } = useProfile();
+  const isAuthLoading = useAuthStore((state) => state.loading);
+  const { data: profile, isLoading: isProfileLoading } = useProfile();
   const updateProfile = useUpdateProfile();
   const { mutate: logout } = useLogout();
 
@@ -172,6 +175,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   // Keep track of last visited sub-paths for sidebar navigation
   const [lastVisitedUrls, setLastVisitedUrls] = useState<Record<string, string>>({});
+  const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -251,7 +255,122 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const [customAlert, setCustomAlert] = useState<{ message: string; isOpen: boolean } | null>(null);
 
   const [subdomain, setSubdomain] = useState("default");
-  const [agencyName, setAgencyName] = useState("Enterprise recruiter");
+  const [agencyName, setAgencyName] = useState("");
+
+  const [accessibleOrgs, setAccessibleOrgs] = useState<any[]>([]);
+  const [activeOrgId, setActiveOrgId] = useState<string>("");
+  const [activeOrgName, setActiveOrgName] = useState<string>("");
+  const [activeRoleName, setActiveRoleName] = useState<string>("");
+  const [recruiterName, setRecruiterName] = useState<string>("");
+  const [userPermissions, setUserPermissions] = useState<any>(null);
+  const [isPrimaryAdmin, setIsPrimaryAdmin] = useState(false);
+  const [switchingModal, setSwitchingModal] = useState<{ isOpen: boolean; targetOrgName: string }>({ isOpen: false, targetOrgName: "" });
+
+  const fetchUserData = React.useCallback(async (targetOrgId?: string) => {
+    try {
+      const savedOrgId = targetOrgId !== undefined 
+        ? targetOrgId 
+        : (typeof window !== "undefined" ? localStorage.getItem("kozker_selected_org") || "" : "");
+      
+      let storedEmail = user?.email || profile?.email || "";
+      if (!storedEmail && typeof document !== "undefined") {
+        const match = document.cookie.match(/kozker_user_email=([^;]+)/);
+        if (match) storedEmail = decodeURIComponent(match[1]).trim().toLowerCase();
+      }
+      if (!storedEmail && typeof window !== "undefined") {
+        storedEmail = localStorage.getItem("kozker_user_email") || "";
+      }
+
+      const storedToken = typeof window !== "undefined" ? (localStorage.getItem("kozker_sso_token") || localStorage.getItem("token") || "") : "";
+
+      const headers: Record<string, string> = {};
+      if (storedEmail) headers["X-User-Email"] = storedEmail;
+      if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+
+      const res = await fetch(`/api/user/me?org_id=${savedOrgId}`, { headers, cache: "no-store" });
+      const data = await res.json();
+      if (data.authenticated) {
+        let orgsList: any[] = Array.isArray(data.organizations) ? [...data.organizations] : [];
+        if (data.active_organization && !orgsList.some((o: any) => o.id === data.active_organization.id)) {
+          orgsList = [data.active_organization, ...orgsList];
+        }
+        if (orgsList.length === 0 && data.active_organization) {
+          orgsList = [data.active_organization];
+        }
+        setAccessibleOrgs(orgsList);
+
+        if (data.active_organization) {
+          setActiveOrgId(data.active_organization.id);
+          setActiveOrgName(data.active_organization.name);
+        }
+        if (data.active_role) {
+          setActiveRoleName(data.active_role.name);
+        }
+        if (data.permissions) {
+          setUserPermissions(data.permissions);
+        }
+        if (data.user) {
+          setIsPrimaryAdmin(data.user.is_primary_admin === true);
+          if (data.user.name) {
+            setRecruiterName(data.user.name);
+          }
+        }
+      }
+    } catch {
+      // Fallback gracefully
+    }
+  }, [user?.email, profile?.email]);
+
+  React.useEffect(() => {
+    fetchUserData();
+  }, [fetchUserData]);
+
+  const getDisplayName = () => {
+    const emailPrefix = (user?.email || profile?.email || "").split('@')[0];
+    if (recruiterName && recruiterName.toLowerCase() !== emailPrefix.toLowerCase()) {
+      return recruiterName;
+    }
+    if (profile?.full_name && profile.full_name.toLowerCase() !== emailPrefix.toLowerCase()) {
+      return profile.full_name;
+    }
+    if (recruiterName) {
+      return recruiterName;
+    }
+    if (profile?.full_name) {
+      return profile.full_name;
+    }
+    return user?.email || "Recruiter";
+  };
+
+  const displayName = getDisplayName();
+
+  // Auto-complete onboarding since profile details come from Admin Console / DB
+  React.useEffect(() => {
+    if (profile && !profile.is_onboarded) {
+      updateProfile.mutate({
+        full_name: profile.full_name || profile.email?.split('@')[0] || "Recruiter",
+        is_onboarded: true,
+      });
+    }
+  }, [profile]);
+
+  const handleOrganizationSwitch = async (orgId: string) => {
+    const targetOrg = accessibleOrgs.find((o: any) => o.id === orgId);
+    if (!targetOrg) return;
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("kozker_selected_org", orgId);
+      document.cookie = `kozker_selected_org=${encodeURIComponent(orgId)}; path=/; max-age=86400; SameSite=Lax`;
+    }
+    setActiveOrgId(orgId);
+    setSwitchingModal({ isOpen: true, targetOrgName: targetOrg.name });
+
+    await fetchUserData(orgId);
+
+    setTimeout(() => {
+      setSwitchingModal({ isOpen: false, targetOrgName: "" });
+    }, 600);
+  };
 
   React.useEffect(() => {
     const savedMode = localStorage.getItem("kozker_pref_mode") as "light" | "dark" | null;
@@ -1010,126 +1129,58 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
 
   const navItems = [
     { id: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "team", href: "/team", label: "Team Operations", icon: Users },
     { id: "clients", href: "/clients", label: "Clients & Mandates", icon: Building2 },
     { id: "jobs", href: "/jobs", label: "Job Catalog", icon: Briefcase },
     { id: "pool", href: "/pool", label: "Sourcing Pool", icon: Users },
     { id: "rounds", href: "/rounds", label: "Stages", icon: Layers },
+    { id: "pipelines", href: "/approvals", label: "Approval Workflows", icon: GitPullRequest },
+    { id: "interviews", href: "/interviews", label: "Interview Workspace", icon: Calendar },
     { id: "qna", href: "/qna", label: "Candidate Q&A", icon: MessageSquare },
     { id: "notifications", href: "/notifications", label: "Notifications", icon: Bell },
     { id: "help", href: "/help", label: "Help", icon: HelpCircle },
     { id: "settings", href: "/profile", label: "Settings", icon: Settings },
   ];
 
-  if (isLoading || !profile) {
+  const navItemPermMap: Record<string, keyof UserPermissions> = {
+    dashboard: "recruiter_dashboard",
+    team: "team_monitoring",
+    clients: "recruiter_mandates",
+    jobs: "recruiter_jobs",
+    pool: "recruiter_sourcing",
+    rounds: "recruiter_stages",
+    pipelines: "approval_workflow_view",
+    interviews: "interviewer_workspace",
+    qna: "recruiter_qna",
+  };
+
+  const visibleNavItems = navItems.filter((item: any) => {
+    if (item.id === "pipelines") {
+      if (isPrimaryAdmin) return true;
+      if (!userPermissions) return false;
+      return (
+        userPermissions.approval_workflow_view === true ||
+        userPermissions.approval_workflow_edit === true ||
+        userPermissions.recruiter_pipelines === true
+      );
+    }
+    const permKey = navItemPermMap[item.id];
+    if (!permKey) return true;
+    if (isPrimaryAdmin) return true;
+    return userPermissions ? userPermissions[permKey] === true : false;
+  });
+
+  React.useEffect(() => {
+    if (!isAuthLoading && !isProfileLoading && !user && !profile) {
+      router.replace("/auth/login");
+    }
+  }, [isAuthLoading, isProfileLoading, user, profile, router]);
+
+  if (isAuthLoading || isProfileLoading || (user && !profile)) {
     return (
       <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-neutral-200">
         <Logo className="w-14 h-14 text-primary animate-pulse mb-6" />
         <p className="font-tight text-[10px] tracking-widest text-neutral-500 uppercase font-semibold">LOADING KOZKER RECRUITER AI...</p>
-      </div>
-    );
-  }
-
-  // Onboarding Gate
-  if (!profile.is_onboarded) {
-    return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-6 text-neutral-200">
-        <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 p-8 rounded-sm space-y-6">
-          <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 bg-primary rounded-sm"></span>
-              <span className="font-tight font-bold tracking-wider text-xs text-neutral-white">RECRUITER ONBOARDING</span>
-            </div>
-            <span className="font-mono text-xs text-neutral-500">Step {onboardStep} of 2</span>
-          </div>
-
-          {onboardStep === 1 && (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-lg font-tight font-semibold text-neutral-white">Personal Profile Setup</h3>
-                <p className="text-neutral-400 text-xs">Specify your recruiter name for client audit logging.</p>
-              </div>
-
-              <div className="space-y-1.5 pt-2">
-                <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Full Name</label>
-                <input
-                  type="text"
-                  placeholder="Alex Mercer"
-                  value={onboardName}
-                  onChange={(e) => setOnboardName(e.target.value)}
-                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-sm text-neutral-white placeholder:text-neutral-600 transition-all text-xs"
-                />
-              </div>
-
-              <button
-                disabled={!onboardName}
-                onClick={() => setOnboardStep(2)}
-                className="w-full py-2 bg-primary disabled:opacity-50 hover:bg-primary/95 text-neutral-white font-medium text-xs tracking-wider uppercase transition-colors rounded-sm cursor-pointer mt-2"
-              >
-                Continue Setup
-              </button>
-            </div>
-          )}
-
-          {onboardStep === 2 && (
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-lg font-tight font-semibold text-neutral-white">Recruitment Workspace</h3>
-                <p className="text-neutral-400 text-xs">Configure your organization and workspace subdomains.</p>
-              </div>
-
-              <div className="space-y-3 pt-2">
-                <div className="space-y-1.5">
-                  <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Agency / Organization Name</label>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-2.5 h-4 w-4 text-neutral-600" />
-                    <input
-                      type="text"
-                      placeholder="Kozker Talent Hub"
-                      value={onboardAgency}
-                      onChange={(e) => setOnboardAgency(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 bg-neutral-950 border border-neutral-800 rounded-sm text-neutral-white placeholder:text-neutral-600 transition-all text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-neutral-400 text-xs font-semibold uppercase tracking-wider block">Subdomain Mapping</label>
-                  <div className="flex rounded-sm overflow-hidden border border-neutral-800">
-                    <input
-                      type="text"
-                      placeholder="kozker-agency"
-                      value={onboardDomain}
-                      onChange={(e) => setOnboardDomain(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-neutral-950 text-neutral-white placeholder:text-neutral-600 transition-all text-xs border-r border-neutral-800"
-                    />
-                    <span className="bg-neutral-850 px-3 py-2 text-xs text-neutral-500 font-mono flex items-center">.kozker.ai</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setOnboardStep(1)}
-                  className="flex-1 py-2 border border-neutral-800 hover:bg-neutral-850 text-neutral-400 text-xs tracking-wider uppercase transition-colors rounded-sm cursor-pointer"
-                >
-                  Back
-                </button>
-                <button
-                  disabled={!onboardAgency || !onboardDomain || updateProfile.isPending}
-                  onClick={handleOnboard}
-                  className="flex-1 py-2 bg-primary hover:bg-primary/95 disabled:opacity-50 text-neutral-white text-xs tracking-wider uppercase transition-colors rounded-sm cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {updateProfile.isPending ? "Finishing..." : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Complete Onboarding
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
     );
   }
@@ -1152,14 +1203,52 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
             </span>
           </div>
 
-          <div className="active-workspace-panel mx-4 mt-4 p-3 bg-neutral-50 border border-neutral-150 rounded-sm font-mono text-[10px]">
-            <p className="text-neutral-400 font-semibold uppercase tracking-wider">Active Workspace</p>
-            <p className="font-bold text-neutral-800 mt-0.5 truncate">{agencyName}</p>
-            <p className="text-primary font-bold mt-1 text-[9px]">@{subdomain}.kozker.ai</p>
+          {/* Active Organization Switcher Card & Dropdown */}
+          <div className="relative mx-4 mt-4">
+            <button
+              type="button"
+              onClick={() => setIsOrgDropdownOpen(!isOrgDropdownOpen)}
+              className="w-full p-3 bg-neutral-50 hover:bg-neutral-100/90 border border-neutral-200 rounded-sm font-mono text-[10px] text-left flex items-center justify-between transition-colors cursor-pointer group shadow-2xs"
+            >
+              <div className="overflow-hidden pr-2">
+                <p className="text-neutral-400 font-semibold uppercase tracking-wider text-[8px]">Active Organization</p>
+                <p className="font-bold text-neutral-900 mt-0.5 truncate text-xs">{activeOrgName || agencyName || "Select Organization"}</p>
+                <p className="text-primary font-bold mt-0.5 text-[9px] truncate">Role: {activeRoleName || "Unassigned Member"}</p>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-neutral-400 group-hover:text-neutral-700 transition-transform shrink-0 ${isOrgDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {/* Organization Switcher Dropdown List */}
+            {isOrgDropdownOpen && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-sm shadow-xl z-50 py-1 text-xs font-sans divide-y divide-neutral-100 max-h-60 overflow-y-auto">
+                <div className="px-3 py-1.5 bg-neutral-50 text-[9px] font-mono font-bold text-neutral-400 uppercase tracking-wider">
+                  Select Organization Workspace ({accessibleOrgs.length})
+                </div>
+                {accessibleOrgs.map((org: any) => {
+                  const isSelected = org.id === activeOrgId;
+                  return (
+                    <button
+                      key={org.id}
+                      type="button"
+                      onClick={() => {
+                        setIsOrgDropdownOpen(false);
+                        handleOrganizationSwitch(org.id);
+                      }}
+                      className={`w-full px-3 py-2.5 text-left hover:bg-neutral-50 flex items-center justify-between transition-colors cursor-pointer ${
+                        isSelected ? "bg-primary/5 text-primary font-bold" : "text-neutral-800 font-medium"
+                      }`}
+                    >
+                      <span className="truncate">{org.name}</span>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-2" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <nav className="mt-6 px-3 space-y-1 text-xs">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname.startsWith(item.href);
               const showSeparator = item.id === "rounds" || item.id === "notifications";
@@ -1192,14 +1281,14 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         <div className="profile-footer-panel p-4 border-t border-neutral-200 bg-neutral-50/50 space-y-3">
           <Link href="/profile" className="flex items-center gap-2.5 hover:bg-neutral-100 p-1.5 rounded-sm transition-all cursor-pointer group">
             <UserAvatar 
-              avatarUrl={profile.avatar_url} 
-              fullName={profile.full_name} 
+              avatarUrl={profile?.avatar_url} 
+              fullName={displayName} 
               email={user?.email} 
               className="w-7 h-7"
             />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold text-neutral-800 truncate group-hover:text-primary transition-colors">{profile.full_name || user?.email}</p>
-              <p className="text-[9px] text-neutral-400 font-mono uppercase">{profile.role || "RECRUITER"}</p>
+              <p className="text-[11px] font-semibold text-neutral-800 truncate group-hover:text-primary transition-colors">{displayName}</p>
+              <p className="text-[9px] text-neutral-400 font-mono uppercase">{activeRoleName || profile?.role || "RECRUITER"}</p>
             </div>
           </Link>
           <div className="flex gap-2">
@@ -1505,7 +1594,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
                 type="button"
                 onClick={() => {
                   setIsExitConfirmOpen(false);
-                  logout();
+                  handleGlobalLogout();
                 }}
                 className="px-4 py-1.5 bg-error text-neutral-white font-medium hover:bg-error/95 rounded-sm cursor-pointer flex items-center gap-1.5 text-[10px] tracking-wider uppercase"
               >
@@ -1620,45 +1709,45 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none select-none">
         {toasts.map((toast) => {
           let ToastIcon = Bell;
-          let iconColor = "text-neutral-500 bg-neutral-100 border-neutral-200";
+          let iconColor = "text-neutral-300 bg-neutral-800 border-neutral-700";
           if (toast.type === "job_generation") {
             ToastIcon = Briefcase;
-            iconColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
+            iconColor = "text-primary bg-primary/10 border-primary/20";
           } else if (toast.type === "candidate_matching") {
             ToastIcon = Sparkles;
-            iconColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
+            iconColor = "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
           } else if (toast.type === "upload") {
             ToastIcon = Upload;
-            iconColor = "text-blue-600 bg-blue-50 border-blue-100";
+            iconColor = "text-blue-400 bg-blue-500/10 border-blue-500/20";
           } else if (toast.type === "error") {
             ToastIcon = AlertCircle;
-            iconColor = "text-rose-600 bg-rose-50 border-rose-100";
+            iconColor = "text-red-400 bg-red-500/10 border-red-500/20";
           } else if (toast.type === "screening_questions") {
             ToastIcon = Layers;
-            iconColor = "text-amber-600 bg-amber-50 border-amber-100";
+            iconColor = "text-amber-400 bg-amber-500/10 border-amber-500/20";
           }
 
           return (
             <div
               key={toast.id}
               onClick={() => handleToastClick(toast)}
-              className="pointer-events-auto cursor-pointer bg-white/90 backdrop-blur-md border border-neutral-200 shadow-md rounded-sm p-3.5 flex gap-3 text-xs text-neutral-800 transition-all duration-300 hover:bg-neutral-50 hover:shadow-lg animate-slide-in relative font-sans group"
+              className="pointer-events-auto cursor-pointer bg-neutral-900/95 backdrop-blur-md border border-neutral-800 shadow-2xl rounded-sm p-3.5 flex gap-3 text-xs text-neutral-200 transition-all duration-300 hover:border-neutral-700 animate-slide-in relative font-sans group"
             >
               <div className={`w-8 h-8 rounded-sm border flex items-center justify-center shrink-0 ${iconColor}`}>
                 <ToastIcon className="w-4 h-4" />
               </div>
               <div className="flex-1 space-y-0.5 pr-4">
-                <p className="font-bold text-[11px] leading-tight text-neutral-900 group-hover:text-primary transition-colors flex items-center gap-1.5">
+                <p className="font-bold text-[11px] leading-tight text-neutral-white group-hover:text-primary transition-colors flex items-center gap-1.5">
                   {toast.title}
                 </p>
-                <p className="text-neutral-500 text-[10px] leading-snug">{toast.message}</p>
+                <p className="text-neutral-400 text-[10px] leading-snug">{toast.message}</p>
               </div>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setToasts(prev => prev.filter(t => t.id !== toast.id));
                 }}
-                className="absolute right-2 top-2 text-neutral-450 hover:text-neutral-700 cursor-pointer p-0.5 rounded-xs hover:bg-neutral-100 transition-colors"
+                className="absolute right-2 top-2 text-neutral-500 hover:text-neutral-200 cursor-pointer p-0.5 rounded-xs hover:bg-neutral-800 transition-colors"
                 title="Dismiss alert"
                 aria-label="Dismiss alert"
               >
@@ -1717,6 +1806,27 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
               >
                 OK
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Organization Switching Notification Modal */}
+      {switchingModal.isOpen && (
+        <div className="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in font-sans">
+          <div className="bg-neutral-900 border border-neutral-800 max-w-sm w-full p-6 rounded-md shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto border border-primary/30 animate-pulse">
+              <Building2 className="w-6 h-6 text-primary" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-neutral-white">Switching Organization Workspace</h3>
+              <p className="text-xs text-primary font-mono font-semibold">{switchingModal.targetOrgName}</p>
+            </div>
+            <p className="text-xs text-neutral-400 leading-relaxed font-mono">
+              Reloading interface configuration and adaptive panel visibilities based on your assigned role permissions...
+            </p>
+            <div className="w-full bg-neutral-950 h-1.5 rounded-full overflow-hidden border border-neutral-800">
+              <div className="bg-primary h-full w-full animate-pulse"></div>
             </div>
           </div>
         </div>
