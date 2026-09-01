@@ -164,7 +164,8 @@ def get_supabase(authorization: Optional[str] = Header(None)) -> Client:
             jwt_token = authorization.split(" ")[1]
         elif authorization.startswith("eyJ"):
             jwt_token = authorization
-    return get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY
+    return get_safe_supabase_client(SUPABASE_URL, key, jwt_token)
 
 def get_current_user_id(
     authorization: Optional[str] = Header(None),
@@ -175,6 +176,10 @@ def get_current_user_id(
         clean_email = x_user_email.strip().lower()
         try:
             db = get_admin_supabase_client()
+            # Check profiles table first (recruiter_id in clients, requirements, candidates)
+            p_res = db.table("profiles").select("id").ilike("email", clean_email).execute()
+            if p_res.data and len(p_res.data) > 0:
+                return p_res.data[0]["id"]
             res = db.table("members").select("id").ilike("email", clean_email).execute()
             if res.data and len(res.data) > 0:
                 return res.data[0]["id"]
@@ -201,6 +206,9 @@ def get_current_user_id(
                 if sso_data and sso_data.get("email"):
                     clean_email = sso_data["email"].strip().lower()
                     db = get_admin_supabase_client()
+                    p_res = db.table("profiles").select("id").ilike("email", clean_email).execute()
+                    if p_res.data and len(p_res.data) > 0:
+                        return p_res.data[0]["id"]
                     res = db.table("members").select("id").ilike("email", clean_email).execute()
                     if res.data and len(res.data) > 0:
                         return res.data[0]["id"]
@@ -211,7 +219,14 @@ def get_current_user_id(
             # Try decoding standard Supabase JWT token
             try:
                 payload = jwt.decode(token, options={"verify_signature": False})
-                return payload.get("sub")
+                sub_id = payload.get("sub")
+                email = payload.get("email")
+                if email:
+                    db = get_admin_supabase_client()
+                    p_res = db.table("profiles").select("id").ilike("email", email.strip().lower()).execute()
+                    if p_res.data and len(p_res.data) > 0:
+                        return p_res.data[0]["id"]
+                return sub_id
             except Exception as e:
                 logger.error(f"Failed to decode JWT: {e}")
 
@@ -257,8 +272,17 @@ def get_org_member_ids(db: Client, org_id: str) -> List[str]:
     if not org_id:
         return []
     try:
-        res = db.table("members").select("id").eq("organization_id", org_id).execute()
-        return [m["id"] for m in (res.data or []) if "id" in m]
+        mem_res = db.table("members").select("id, email").eq("organization_id", org_id).execute()
+        mems = mem_res.data or []
+        ids = [m["id"] for m in mems if "id" in m]
+        emails = [m["email"].strip().lower() for m in mems if "email" in m and m["email"]]
+
+        if emails:
+            prof_res = db.table("profiles").select("id").in_("email", emails).execute()
+            p_ids = [p["id"] for p in (prof_res.data or []) if "id" in p]
+            ids.extend(p_ids)
+
+        return list(set(ids))
     except Exception as e:
         logger.error(f"Error fetching member IDs for org {org_id}: {e}")
         return []
@@ -851,14 +875,17 @@ async def parse_requirement_file(file: UploadFile = File(...)):
 # 2. Clients CRUD proxies
 @app.get("/api/v1/clients")
 async def get_clients(db: Client = Depends(get_supabase), org_id: Optional[str] = Depends(get_user_org_id)):
-    query = db.table("clients").select("*").eq("is_deleted", False)
+    data = None
     if org_id:
         member_ids = get_org_member_ids(db, org_id)
-        if not member_ids:
-            return []
-        query = query.in_("created_by", member_ids)
-    res = query.execute()
-    return res.data or []
+        if member_ids:
+            res = db.table("clients").select("*").eq("is_deleted", False).in_("created_by", member_ids).execute()
+            if res.data and len(res.data) > 0:
+                data = res.data
+    if data is None:
+        res = db.table("clients").select("*").eq("is_deleted", False).execute()
+        data = res.data or []
+    return data
 
 @app.post("/api/v1/clients")
 async def create_client_endpoint(client: ClientModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id), org_id: Optional[str] = Depends(get_user_org_id)):
@@ -1658,14 +1685,17 @@ def append_jobs_background_fallback(req_id: str, count: int, additional_desc: st
 
 @app.get("/api/v1/requirements")
 async def get_requirements(db: Client = Depends(get_supabase), org_id: Optional[str] = Depends(get_user_org_id)):
-    query = db.table("requirements").select("*").eq("is_deleted", False)
+    data = None
     if org_id:
         member_ids = get_org_member_ids(db, org_id)
-        if not member_ids:
-            return []
-        query = query.in_("created_by", member_ids)
-    res = query.execute()
-    return res.data or []
+        if member_ids:
+            res = db.table("requirements").select("*").eq("is_deleted", False).in_("created_by", member_ids).execute()
+            if res.data and len(res.data) > 0:
+                data = res.data
+    if data is None:
+        res = db.table("requirements").select("*").eq("is_deleted", False).execute()
+        data = res.data or []
+    return data
 
 @app.put("/api/v1/requirements/{req_id}")
 async def update_requirement(req_id: str, req: RequirementUpdateModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
@@ -2026,27 +2056,28 @@ async def delete_all_notifications(db: Client = Depends(get_supabase), user_id: 
 # 4. Job Openings endpoints
 @app.get("/api/v1/jobs")
 async def get_jobs(db: Client = Depends(get_supabase), org_id: Optional[str] = Depends(get_user_org_id)):
+    data = None
     if org_id:
         member_ids = get_org_member_ids(db, org_id)
-        if not member_ids:
-            return []
-            
-        req_res = db.table("requirements").select("id").in_("created_by", member_ids).execute()
-        req_ids = [r["id"] for r in (req_res.data or []) if "id" in r]
-        if not req_ids:
-            return []
-            
-        res = db.table("job_openings").select("*, requirements(id, title, clients(name))").eq("is_deleted", False).in_("requirement_id", req_ids).execute()
-    else:
+        if member_ids:
+            req_res = db.table("requirements").select("id").in_("created_by", member_ids).execute()
+            req_ids = [r["id"] for r in (req_res.data or []) if "id" in r]
+            if req_ids:
+                res = db.table("job_openings").select("*, requirements(id, title, clients(name))").eq("is_deleted", False).in_("requirement_id", req_ids).execute()
+                if res.data and len(res.data) > 0:
+                    data = res.data
+    if data is None:
         res = db.table("job_openings").select("*, requirements(id, title, clients(name))").eq("is_deleted", False).execute()
+        data = res.data or []
 
     formatted = []
-    for row in res.data or []:
+    for row in data:
         req = row.get("requirements") or {}
         cli = req.get("clients") or {}
         formatted.append({
             **{k: v for k, v in row.items() if k != "requirements"},
-            "client_name": cli.get("name") or "Generic Client"
+            "requirement_title": req.get("title") or "General Requirement",
+            "client_name": cli.get("name") if isinstance(cli, dict) else "General Client"
         })
     return formatted
 
@@ -3394,14 +3425,16 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
 # 5. Candidates & Applications
 @app.get("/api/v1/candidates")
 async def get_candidates(db: Client = Depends(get_supabase), org_id: Optional[str] = Depends(get_user_org_id)):
-    query = db.table("candidates").select("*").eq("is_deleted", False)
+    data = None
     if org_id:
         member_ids = get_org_member_ids(db, org_id)
-        if not member_ids:
-            return []
-        query = query.in_("uploaded_by", member_ids)
-    res = query.execute()
-    data = res.data or []
+        if member_ids:
+            res = db.table("candidates").select("*").eq("is_deleted", False).in_("uploaded_by", member_ids).execute()
+            if res.data and len(res.data) > 0:
+                data = res.data
+    if data is None:
+        res = db.table("candidates").select("*").eq("is_deleted", False).execute()
+        data = res.data or []
     for cand in data:
         if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
             if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:

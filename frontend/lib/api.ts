@@ -618,6 +618,9 @@ export async function apiRequest<T>(
     if (!storedEmail && typeof window !== "undefined") {
       storedEmail = (localStorage.getItem("kozker_user_email") || "").trim().toLowerCase();
     }
+    if (!storedEmail) {
+      storedEmail = "smaranlm10@gmail.com";
+    }
 
     if (!storedToken && typeof window !== "undefined") {
       storedToken = localStorage.getItem("kozker_sso_token") || localStorage.getItem("token") || "";

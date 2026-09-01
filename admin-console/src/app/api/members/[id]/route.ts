@@ -1,21 +1,10 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { verifyJwtToken } from '@/lib/auth';
-
-function getUserFromReq(request: Request) {
-  const authHeader = request.headers.get('authorization') || '';
-  const cookieHeader = request.headers.get('cookie') || '';
-  let token = authHeader.replace('Bearer ', '');
-  if (!token && cookieHeader) {
-    const match = cookieHeader.match(/kozker_sso_token=([^;]+)/);
-    if (match) token = match[1];
-  }
-  return verifyJwtToken(token);
-}
+import { getAuthenticatedUser } from '@/lib/auth';
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
-    const user = getUserFromReq(request);
+    const user = await getAuthenticatedUser(request);
     if (!user || !user.organization_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

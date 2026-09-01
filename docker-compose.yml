@@ -4,8 +4,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: kozker_backend
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     env_file:
       - .env
     restart: always
@@ -20,8 +20,8 @@ services:
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     container_name: kozker_frontend
-    expose:
-      - "3000"
+    ports:
+      - "3000:3000"
     env_file:
       - .env
     restart: always
@@ -33,8 +33,9 @@ services:
       context: ./admin-console
       dockerfile: Dockerfile
     container_name: kozker_admin_console
-    expose:
-      - "3000"
+    ports:
+      - "3001:3000"
     env_file:
-      - .env
+      - admin-console/.env
     restart: always
+

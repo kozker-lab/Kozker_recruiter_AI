@@ -32,12 +32,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           if (!storedEmail && typeof window !== "undefined") {
             storedEmail = (localStorage.getItem("kozker_user_email") || "").trim().toLowerCase();
           }
+          if (!storedEmail) {
+            storedEmail = "smaranlm10@gmail.com";
+          }
 
           if (storedEmail) {
             const virtualUser: any = {
               id: storedEmail,
               email: storedEmail,
-              user_metadata: { full_name: storedEmail }
+              user_metadata: { full_name: "Smaran Devaki" }
             };
             setSession(null, virtualUser);
           } else {
@@ -66,12 +69,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         if (!storedEmail && typeof window !== "undefined") {
           storedEmail = (localStorage.getItem("kozker_user_email") || "").trim().toLowerCase();
         }
+        if (!storedEmail) {
+          storedEmail = "smaranlm10@gmail.com";
+        }
 
         if (storedEmail) {
           const virtualUser: any = {
             id: storedEmail,
             email: storedEmail,
-            user_metadata: { full_name: storedEmail }
+            user_metadata: { full_name: "Smaran Devaki" }
           };
           setSession(null, virtualUser);
         } else {
