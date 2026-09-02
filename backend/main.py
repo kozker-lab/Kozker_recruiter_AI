@@ -30,8 +30,34 @@ if os.path.exists(env_file_root):
     load_dotenv(dotenv_path=env_file_root, override=True)
 load_dotenv(override=True)
 
-logging.basicConfig(level=logging.INFO)
+from contextvars import ContextVar
+
+# Context variables for tracking requests & users across execution context
+correlation_id_ctx: ContextVar[str] = ContextVar("correlation_id", default="")
+user_email_ctx: ContextVar[str] = ContextVar("user_email", default="anonymous")
+
+# Structured JSON Log Formatter
+class JSONLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        log_object = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "correlation_id": correlation_id_ctx.get(),
+            "user_email": user_email_ctx.get(),
+            "message": record.getMessage()
+        }
+        if record.exc_info:
+            log_object["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_object)
+
 logger = logging.getLogger("backend")
+logger.setLevel(logging.INFO)
+for h in logger.handlers[:]:
+    logger.removeHandler(h)
+handler = logging.StreamHandler()
+handler.setFormatter(JSONLogFormatter())
+logger.addHandler(handler)
 
 # Read config
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -63,6 +89,44 @@ password_otps: Dict[str, Dict[str, Any]] = {}
 
 # Initialize FastAPI
 app = FastAPI(title="Kozker Recruiter AI Backend", version="1.0.0")
+
+# Correlation ID & Observability Middleware
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    corr_id = request.headers.get("x-correlation-id") or request.headers.get("x-request-id") or f"corr_{uuid.uuid4().hex[:12]}"
+    user_email = request.headers.get("x-user-email") or "anonymous"
+
+    token_corr = correlation_id_ctx.set(corr_id)
+    token_user = user_email_ctx.set(user_email)
+
+    start_time = time.time()
+    try:
+        response = await call_next(request)
+        duration_ms = round((time.time() - start_time) * 1000, 2)
+        
+        logger.info(json.dumps({
+            "event": "http_request_complete",
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": duration_ms
+        }))
+        
+        response.headers["X-Correlation-ID"] = corr_id
+        return response
+    except Exception as exc:
+        duration_ms = round((time.time() - start_time) * 1000, 2)
+        logger.error(json.dumps({
+            "event": "http_request_error",
+            "method": request.method,
+            "path": request.url.path,
+            "duration_ms": duration_ms,
+            "error_detail": str(exc)
+        }), exc_info=True)
+        raise exc
+    finally:
+        correlation_id_ctx.reset(token_corr)
+        user_email_ctx.reset(token_user)
 
 # CORS setup
 app.add_middleware(
@@ -154,7 +218,27 @@ def get_safe_supabase_client(url: str, key: str, jwt_token: str = None) -> Clien
 def get_admin_supabase_client() -> Client:
     # Bypasses RLS for system/callback tasks
     key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY
+    if not key:
+        raise HTTPException(status_code=500, detail="Supabase key not configured on server")
     return get_safe_supabase_client(SUPABASE_URL, key)
+
+class TelemetryEventModel(BaseModel):
+    event_name: str
+    timestamp: Optional[str] = None
+    url: Optional[str] = None
+    metadata: Optional[dict] = None
+    correlation_id: Optional[str] = None
+
+@app.post("/api/v1/telemetry/event")
+async def ingest_telemetry_event(event: TelemetryEventModel, request: Request):
+    logger.info(json.dumps({
+        "event": "frontend_telemetry",
+        "telemetry_event_name": event.event_name,
+        "page_url": event.url,
+        "client_metadata": event.metadata,
+        "client_correlation_id": event.correlation_id or correlation_id_ctx.get()
+    }))
+    return {"status": "recorded"}
 
 # Helper: Get Supabase client authenticated as the user
 def get_supabase(authorization: Optional[str] = Header(None)) -> Client:

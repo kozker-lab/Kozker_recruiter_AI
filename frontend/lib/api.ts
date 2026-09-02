@@ -632,6 +632,14 @@ export async function apiRequest<T>(
     if (storedToken) {
       headers["Authorization"] = `Bearer ${storedToken}`;
     }
+    if (typeof window !== "undefined") {
+      let corrId = sessionStorage.getItem("kozker_correlation_id");
+      if (!corrId) {
+        corrId = "corr_" + Math.random().toString(36).substring(2, 11) + "_" + Date.now();
+        sessionStorage.setItem("kozker_correlation_id", corrId);
+      }
+      headers["X-Correlation-ID"] = corrId;
+    }
   } catch (tokenErr) {
     console.warn("Could not retrieve authentication headers for API request", tokenErr);
   }
