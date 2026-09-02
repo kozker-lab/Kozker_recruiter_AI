@@ -6,10 +6,13 @@ import Link from "next/link";
 interface AuditLogItem {
   id: string;
   created_at: string;
-  actor_email: string;
+  actor_email?: string;
+  actor_name?: string;
   action_type: string;
-  target_entity_type: string;
-  target_entity_id: string;
+  action_description?: string;
+  target_entity_type?: string;
+  target_entity_id?: string;
+  target_name?: string;
   old_state: any;
   new_state: any;
   correlation_id?: string;
@@ -35,13 +38,19 @@ export default function AuditLogsPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  const filteredLogs = logs.filter(
-    (l) =>
-      (l.actor_email || "").toLowerCase().includes(search.toLowerCase()) ||
-      (l.action_type || "").toLowerCase().includes(search.toLowerCase()) ||
-      (l.target_entity_type || "").toLowerCase().includes(search.toLowerCase()) ||
-      (l.correlation_id || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredLogs = logs.filter((l) => {
+    if (!search.trim()) return true;
+    const term = search.toLowerCase();
+    return (
+      (l.actor_email || "").toLowerCase().includes(term) ||
+      (l.actor_name || "").toLowerCase().includes(term) ||
+      (l.action_type || "").toLowerCase().includes(term) ||
+      (l.action_description || "").toLowerCase().includes(term) ||
+      (l.target_entity_type || "").toLowerCase().includes(term) ||
+      (l.target_name || "").toLowerCase().includes(term) ||
+      (l.correlation_id || "").toLowerCase().includes(term)
+    );
+  });
 
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-100 font-sans p-8">
@@ -98,17 +107,25 @@ export default function AuditLogsPage() {
                       <td className="p-3.5 text-neutral-500 whitespace-nowrap">
                         {new Date(log.created_at).toLocaleString()}
                       </td>
-                      <td className="p-3.5 font-medium text-neutral-200">{log.actor_email || "system"}</td>
+                      <td className="p-3.5 font-medium text-neutral-200">
+                        {log.actor_name || log.actor_email || "system"}
+                        {log.actor_email && log.actor_name && (
+                          <span className="block text-[10px] text-neutral-500 font-normal">{log.actor_email}</span>
+                        )}
+                      </td>
                       <td className="p-3.5">
                         <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded text-[10px] font-bold uppercase tracking-wider">
                           {log.action_type}
                         </span>
                       </td>
                       <td className="p-3.5 text-neutral-400">
-                        {log.target_entity_type}{" "}
-                        {log.target_entity_id && (
-                          <span className="text-neutral-600">({log.target_entity_id.substring(0, 8)})</span>
-                        )}
+                        <div className="font-semibold text-neutral-300">
+                          {log.action_description || log.target_name || log.target_entity_type || "Resource Operation"}
+                        </div>
+                        <div className="text-[10px] text-neutral-500">
+                          {log.target_entity_type && <span className="uppercase">{log.target_entity_type}</span>}
+                          {log.target_entity_id && <span> ({log.target_entity_id.substring(0, 8)})</span>}
+                        </div>
                       </td>
                       <td className="p-3.5 text-right">
                         <button
