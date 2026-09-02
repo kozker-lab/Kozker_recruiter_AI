@@ -90,6 +90,9 @@ password_otps: Dict[str, Dict[str, Any]] = {}
 # Initialize FastAPI
 app = FastAPI(title="Kozker Recruiter AI Backend", version="1.0.0")
 
+# Noise filter for non-essential HTTP paths
+NOISY_PATHS = {"/docs", "/redoc", "/openapi.json", "/favicon.ico", "/health", "/metrics"}
+
 # Correlation ID & Observability Middleware
 @app.middleware("http")
 async def correlation_id_middleware(request: Request, call_next):
@@ -104,13 +107,16 @@ async def correlation_id_middleware(request: Request, call_next):
         response = await call_next(request)
         duration_ms = round((time.time() - start_time) * 1000, 2)
         
-        logger.info(json.dumps({
-            "event": "http_request_complete",
-            "method": request.method,
-            "path": request.url.path,
-            "status_code": response.status_code,
-            "duration_ms": duration_ms
-        }))
+        # Suppress log noise for OPTIONS preflight, docs, and health checks
+        is_noisy = request.method == "OPTIONS" or request.url.path in NOISY_PATHS
+        if not is_noisy:
+            logger.info(json.dumps({
+                "event": "http_request_complete",
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms
+            }))
         
         response.headers["X-Correlation-ID"] = corr_id
         return response
@@ -976,15 +982,19 @@ async def create_client_endpoint(client: ClientModel, db: Client = Depends(get_s
     payload = {"name": client.name}
     if user_id:
         payload["created_by"] = user_id
-    if org_id:
-        payload["organization_id"] = org_id
     try:
         res = db.table("clients").insert(payload).execute()
-    except APIError as e:
+    except Exception as e:
         logger.error(f"Error creating client: {e}")
-        if e.code == "23505":
+        err_msg = str(e)
+        if "23505" in err_msg:
             raise HTTPException(status_code=409, detail="A client with this name already exists for your account.")
-        raise HTTPException(status_code=500, detail=str(e))
+        if "column" in err_msg and "does not exist" in err_msg:
+            raise HTTPException(
+                status_code=500, 
+                detail="Database audit trigger error: Please run the updated Supabase SQL migration script to add missing audit columns."
+            )
+        raise HTTPException(status_code=500, detail=err_msg)
 
     if not res.data:
         raise HTTPException(status_code=400, detail="Failed to create client")
