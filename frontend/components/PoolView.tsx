@@ -112,7 +112,10 @@ export function parseResumeTextHeuristically(text: string) {
 
   // 6. Extract Experience
   const expMatch = text.match(/(\d+)\+?\s*years?\s+(?:of\s+)?experience/i) || text.match(/experience:\s*(\d+)/i);
-  const exp = expMatch ? parseInt(expMatch[1]) : 3;
+  const exp = expMatch ? parseInt(expMatch[1]) : 0;
+  
+  // 6.5. Extract working status
+  const isWorking = /(present|currently|till date|to date|ongoing)/i.test(text);
 
   // 7. Extract Education
   let education = "";
@@ -195,9 +198,10 @@ export function parseResumeTextHeuristically(text: string) {
     skills: skillsString,
     experience_years: exp,
     education,
-    academicDetails,
-    achievements,
-    summary
+    workingOrNot: isWorking,
+    academicDetails: academicDetails.trim(),
+    achievements: achievements.trim(),
+    summary: summary.trim()
   };
 }
 
@@ -775,6 +779,8 @@ export default function PoolView() {
   // Modal / drawer states
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isBulkCVUploadOpen, setIsBulkCVUploadOpen] = useState(false);
+  const [bulkCVProgress, setBulkCVProgress] = useState<{ total: number, current: number, status: string } | null>(null);
 
   // Filter count computation
   const activeFilterCount = 
@@ -968,6 +974,8 @@ export default function PoolView() {
         show: true
       });
       setIsUploadOpen(false);
+      setIsBulkCVUploadOpen(false);
+      setBulkCVProgress(null);
     }
   });
 
@@ -1039,6 +1047,71 @@ export default function PoolView() {
     });
   };
 
+  const handleBulkCVs = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    if (files.length > 50) {
+      showCustomAlert("Warning", "You can only upload up to 50 resumes at a time.");
+      return;
+    }
+    
+    setBulkCVProgress({ total: files.length, current: 0, status: "Extracting details..." });
+    
+    const mappedItems: any[] = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setBulkCVProgress(prev => prev ? { ...prev, current: i + 1, status: `Parsing ${file.name}...` } : null);
+      try {
+        let text = "";
+        if (file.type === "text/plain") {
+          const reader = new FileReader();
+          text = await new Promise<string>((resolve) => {
+            reader.onload = (evt) => resolve(evt.target?.result as string || "");
+            reader.readAsText(file);
+          });
+        } else {
+          const result = await apiUploadFile("/requirements/parse-file", file);
+          text = result.text || "";
+        }
+        
+        if (text) {
+          const parsed = parseResumeTextHeuristically(text);
+          const name = parsed.name || file.name.replace(/\.[^/.]+$/, "");
+          const email = parsed.email || `missing_${Date.now()}_${i}@example.com`;
+          
+          mappedItems.push({
+            full_name: name,
+            email: email,
+            phone: parsed.phone || null,
+            skills: parsed.skills || "",
+            experience_years: parsed.experience_years || 0,
+            education: parsed.education || "",
+            working_or_not: parsed.workingOrNot || false,
+            raw_text: text,
+            academic_details: parsed.academicDetails || null,
+            achievements: parsed.achievements || null,
+            resume_url: null,
+            summary: parsed.summary || null
+          });
+        }
+      } catch (err) {
+        console.error(`Failed to parse ${file.name}`, err);
+      }
+    }
+    
+    setBulkCVProgress(prev => prev ? { ...prev, status: "Uploading candidates to database..." } : null);
+    
+    if (mappedItems.length > 0) {
+      uploadCsvMutation.mutate(mappedItems);
+    } else {
+      setBulkCVProgress(null);
+      showCustomAlert("Error", "No CVs could be parsed successfully.");
+    }
+  };
+
+
   return (
     <div className="space-y-6 font-sans text-neutral-700 max-w-7xl mx-auto w-full select-none">
       
@@ -1084,6 +1157,13 @@ export default function PoolView() {
           >
             <Upload className="w-3.5 h-3.5 text-neutral-400" />
             Bulk Import CSV
+          </button>
+          <button
+            onClick={() => setIsBulkCVUploadOpen(true)}
+            className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm cursor-pointer flex items-center gap-1.5 text-neutral-600 font-semibold"
+          >
+            <FileText className="w-3.5 h-3.5 text-neutral-400" />
+            Bulk Import CVs
           </button>
           <button
             id="add-candidate-btn"
@@ -1619,7 +1699,8 @@ export default function PoolView() {
                             if (parsed.email) setEmail(parsed.email);
                             if (parsed.phone) setPhone(parsed.phone);
                             if (parsed.skills) setSkills(parsed.skills);
-                            if (parsed.experience_years) setExp(parsed.experience_years);
+                            if (parsed.experience_years !== undefined) setExp(parsed.experience_years);
+                            if (parsed.workingOrNot !== undefined) setWorkingOrNot(parsed.workingOrNot);
                             if (parsed.education) setEducation(parsed.education);
                             if (parsed.academicDetails) setAcademicDetails(parsed.academicDetails);
                             if (parsed.achievements) setAchievements(parsed.achievements);
@@ -1719,6 +1800,66 @@ export default function PoolView() {
                 type="button"
                 onClick={() => setIsUploadOpen(false)}
                 className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 cursor-pointer text-xs"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Bulk CV Import Dialog */}
+      {isBulkCVUploadOpen && (
+        <div className="fixed inset-0 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-neutral-white border border-neutral-200 rounded-sm w-full max-w-sm p-6 space-y-4 shadow-xl">
+            <div className="space-y-1">
+              <h3 className="font-tight font-bold text-sm text-neutral-800 uppercase tracking-wider">Bulk Import Resumes</h3>
+              <p className="text-neutral-400 text-xs">Upload multiple resumes (PDF, DOCX, TXT) at once. The system will extract details and add them as individual candidates.</p>
+            </div>
+            
+            <div className="bg-neutral-50 border border-neutral-200 rounded-sm p-8 text-center space-y-3 relative">
+              <Upload className="w-8 h-8 text-neutral-450 mx-auto" />
+              <div className="font-mono font-bold text-xs text-neutral-700">Drop resumes here or click to browse</div>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.docx,.txt"
+                onChange={handleBulkCVs}
+                disabled={bulkCVProgress !== null}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                id="bulk-cv-uploader"
+              />
+              <label 
+                htmlFor="bulk-cv-uploader" 
+                className="px-4 py-2 border border-neutral-250 bg-neutral-white text-neutral-600 rounded-sm text-xs font-semibold cursor-pointer hover:bg-neutral-50 inline-block"
+              >
+                Choose Resume Files
+              </label>
+              {bulkCVProgress && (
+                <div className="mt-3 text-left">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-neutral-600 mb-1">
+                    <span>{bulkCVProgress.status}</span>
+                    <span>{bulkCVProgress.current} / {bulkCVProgress.total}</span>
+                  </div>
+                  <div className="w-full bg-neutral-200 rounded-full h-1.5">
+                    <div 
+                      className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${(bulkCVProgress.current / bulkCVProgress.total) * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!bulkCVProgress) {
+                    setIsBulkCVUploadOpen(false);
+                  }
+                }}
+                disabled={bulkCVProgress !== null}
+                className="px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 rounded-sm text-neutral-500 cursor-pointer text-xs disabled:opacity-50"
               >
                 Cancel
               </button>

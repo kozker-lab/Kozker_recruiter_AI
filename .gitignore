@@ -1,0 +1,25 @@
+# Secrets & Environment
+.env
+.env*.local
+
+# Logs
+*.log
+backend/requests.log
+requests.log
+
+# Node & Build artifacts
+node_modules/
+dist/
+.next/
+build/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+.venv/
+
+# System files
+.DS_Store
+Thumbs.db

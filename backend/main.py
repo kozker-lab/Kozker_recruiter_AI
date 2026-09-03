@@ -3660,12 +3660,14 @@ async def create_candidate(
 
     if exists.data:
         existing_cand = exists.data[0]
+        is_deleted = existing_cand.get("is_deleted", False)
+        
         # Merge skills (take union)
         existing_skills = existing_cand.get("skills") or []
         merged_skills = list(set(existing_skills + cand.skills))
         
-        # Merge experience (take max)
-        merged_exp = max(existing_cand.get("experience_years") or 0, cand.experience_years)
+        # Update experience and working status to the latest upload
+        merged_exp = cand.experience_years
         
         # Merge other text fields
         merged_education = cand.education if cand.education else existing_cand.get("education")
@@ -3683,7 +3685,8 @@ async def create_candidate(
         
         merged_raw = existing_raw
         if cand.raw_text and cand.raw_text not in existing_raw:
-            merged_raw = f"{existing_raw}\n\n[Updated Profile]:\n{cand.raw_text}" if existing_raw else cand.raw_text
+            prefix = "[Re-uploaded Profile]" if is_deleted else "[Updated Profile]"
+            merged_raw = f"{existing_raw}\n\n{prefix}:\n{cand.raw_text}" if existing_raw else cand.raw_text
         merged_summary = cand.summary if cand.summary else existing_summary
         
         incoming_parsed = cand.parsed_resume_json or {}
@@ -3861,12 +3864,21 @@ async def upload_csv_candidates(
         candidate_id = None
         
         if exists_res.data:
-            skipped += 1
             existing_cand = exists_res.data[0]
+            is_deleted = existing_cand.get("is_deleted", False)
             candidate_id = existing_cand["id"]
+            
+            if is_deleted:
+                inserted += 1
+            else:
+                skipped += 1
+                
             existing_skills = existing_cand.get("skills") or []
             merged_skills = list(set(existing_skills + skills_list))
-            merged_exp = max(existing_cand.get("experience_years") or 0, exp_years)
+            
+            # Use the newly parsed experience instead of taking max
+            merged_exp = exp_years
+            
             merged_education = education_val if education_val else existing_cand.get("education")
             merged_academic = academic_val if academic_val else existing_cand.get("academic_details")
             merged_achievements = achievements_val if achievements_val else existing_cand.get("achievements")
@@ -3874,7 +3886,9 @@ async def upload_csv_candidates(
             existing_raw = ""
             if "parsed_resume_json" in existing_cand and isinstance(existing_cand["parsed_resume_json"], dict):
                 existing_raw = existing_cand["parsed_resume_json"].get("raw_text") or ""
-            merged_raw = f"{existing_raw}\n\n[CSV Re-upload]: Parsed from CSV: {full_name}" if existing_raw else f"Parsed from CSV: {full_name}"
+                
+            prefix = "[Re-uploaded Deleted Profile from CSV]" if is_deleted else "[CSV Re-upload]"
+            merged_raw = f"{existing_raw}\n\n{prefix}: {full_name}" if existing_raw else f"Parsed from CSV: {full_name}"
             
             # If the resume URL is a Google Drive URL, set a placeholder while we fetch it in background
             parsed_resume_payload = {"raw_text": merged_raw}
