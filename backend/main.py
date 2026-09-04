@@ -155,10 +155,16 @@ def get_admin_supabase_client() -> Client:
     key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY
     return get_safe_supabase_client(SUPABASE_URL, key)
 
-# Helper: Get Supabase client authenticated for backend database queries
+# Helper: Get Supabase client authenticated as the user
 def get_supabase(authorization: Optional[str] = Header(None)) -> Client:
-    key = SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY
-    return get_safe_supabase_client(SUPABASE_URL, key)
+    jwt_token = None
+    if authorization:
+        if authorization.startswith("Bearer "):
+            jwt_token = authorization.split(" ")[1]
+        elif authorization.startswith("eyJ"):
+            jwt_token = authorization
+    key = SUPABASE_KEY
+    return get_safe_supabase_client(SUPABASE_URL, key, jwt_token)
 
 # Helper: Extract current user ID from Authorization header Bearer token
 def get_current_user_id(authorization: Optional[str] = Header(None)) -> Optional[str]:
