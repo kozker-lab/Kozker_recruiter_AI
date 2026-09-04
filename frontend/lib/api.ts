@@ -7,8 +7,9 @@ import { createClient } from "./supabase/client";
 
 // Base Configuration - Dynamic Browser/Server Resolving
 const isBrowser = typeof window !== "undefined";
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
-  || (isBrowser ? `${window.location.origin}/api/v1` : "http://backend:8000/api/v1");
+export const API_BASE_URL = isBrowser
+  ? (process.env.NEXT_PUBLIC_API_URL || "/api/v1")
+  : (process.env.BACKEND_URL ? `${process.env.BACKEND_URL}/api/v1` : "http://localhost:8000/api/v1");
 
 export function obfuscateId(uuidStr: string): string {
   if (!uuidStr) return "";
