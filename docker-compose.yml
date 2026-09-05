@@ -4,8 +4,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: kozker_backend
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     env_file:
       - .env
     restart: always
@@ -18,13 +18,13 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://covhcpsyliesrgkjxhai.supabase.co}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b}
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.recruiter.kozker.com}
         BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
     container_name: kozker_frontend
     environment:
       - BACKEND_URL=http://backend:8000
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     env_file:
       - .env
     restart: always
