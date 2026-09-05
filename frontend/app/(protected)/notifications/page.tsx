@@ -223,13 +223,13 @@ export default function NotificationsTimelinePage() {
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["notifications"],
     queryFn: () => apiRequest<Notification[]>("GET", "/notifications"),
-    refetchInterval: 4000,
+    refetchInterval: 1500,
   });
 
   const { data: activityLogs = [] } = useQuery<ActivityLog[]>({
     queryKey: ["activityLogs"],
     queryFn: () => apiRequest<ActivityLog[]>("GET", "/activity_log"),
-    refetchInterval: 4000,
+    refetchInterval: 1500,
   });
 
   const { data: clients = [] } = useQuery<Client[]>({

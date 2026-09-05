@@ -428,14 +428,14 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["notifications"],
     queryFn: () => apiRequest<Notification[]>("GET", "/notifications"),
-    refetchInterval: 4000, // Poll every 4 seconds for snappy real-time feedback
+    refetchInterval: 1500, // Poll every 1.5 seconds for snappy real-time feedback
     enabled: !!user, // Only run if user is logged in
   });
 
   const { data: activityLogs = [] } = useQuery<ActivityLog[]>({
     queryKey: ["activityLogs"],
     queryFn: () => apiRequest<ActivityLog[]>("GET", "/activity_log"),
-    refetchInterval: 4000,
+    refetchInterval: 1500,
     enabled: !!user,
   });
 

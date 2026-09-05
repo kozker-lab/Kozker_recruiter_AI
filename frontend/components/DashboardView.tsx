@@ -49,7 +49,7 @@ export default function DashboardView({ onNavigate }: DashboardViewProps) {
   const { data: logs = [], isLoading: loadingLogs } = useQuery<ActivityLog[]>({
     queryKey: ["activity_log"],
     queryFn: () => apiRequest<ActivityLog[]>("GET", "/activity_log"),
-    refetchInterval: 3000
+    refetchInterval: 1500 // Refetch every 1.5s for real-time live log stream
   });
 
   const { data: applications = [], isLoading: loadingApplications } = useQuery<ExtendedApplication[]>({
