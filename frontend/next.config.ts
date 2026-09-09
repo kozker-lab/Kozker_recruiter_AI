@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   /* config options here */
   allowedDevOrigins: [
     "plates-kinds-restoration-ranger.trycloudflare.com",
