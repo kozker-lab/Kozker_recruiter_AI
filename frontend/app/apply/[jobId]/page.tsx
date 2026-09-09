@@ -554,6 +554,10 @@ export default function PublicApplyPage() {
   const handleRePublishForm = async () => {
     try {
       setSubmitting(true);
+      localStorage.setItem(`form_config_${jobId}`, JSON.stringify(fields));
+      localStorage.setItem(`form_theme_${jobId}`, selectedTheme);
+      localStorage.setItem(`form_bg_mode_${jobId}`, bgMode);
+
       const payload = {
         status: "published",
         form_fields: fields,

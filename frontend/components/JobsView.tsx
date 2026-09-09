@@ -925,7 +925,11 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
 
   const stopMatchingMutation = useMutation({
     mutationFn: () => apiRequest<JobOpening>("PATCH", `/jobs/${selectedJobId}`, { processing_status: "ready" }),
-    onSuccess: () => {
+    onSuccess: (updatedJob) => {
+      queryClient.setQueryData(["jobs"], (oldData: JobOpening[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.map(j => j.id === selectedJobId ? { ...j, processing_status: "ready" } : j);
+      });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       showCustomAlert("Success", "AI Matching process stopped.");
     },
