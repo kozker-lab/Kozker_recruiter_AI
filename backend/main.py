@@ -4430,9 +4430,10 @@ async def update_application_stage(app_id: str, background_tasks: BackgroundTask
     else:
         valid_stages.extend(['technical', 'hr', 'final'])
 
-    if stage in valid_stages:
+    valid_stages_lower = [s.lower().strip() for s in valid_stages]
+    if stage and stage.lower().strip() in valid_stages_lower:
         existing = db.table("interview_stages").select("id").eq("application_id", app_id).execute()
-        order = len(existing.data) + 1
+        order = len(existing.data or []) + 1
         
         outcome = "pending"
         if stage_status == "passed":
@@ -4446,14 +4447,17 @@ async def update_application_stage(app_id: str, background_tasks: BackgroundTask
         if outcome == "failed" and not notes.strip():
             notes = "Stage failed."
             
-        db.table("interview_stages").insert({
-            "application_id": app_id,
-            "stage_name": stage,
-            "stage_order": order,
-            "status": "completed",
-            "outcome": outcome,
-            "notes": notes
-        }).execute()
+        try:
+            db.table("interview_stages").insert({
+                "application_id": app_id,
+                "stage_name": stage,
+                "stage_order": order,
+                "status": "completed",
+                "outcome": outcome,
+                "notes": notes
+            }).execute()
+        except Exception as stage_err:
+            logger.warning(f"Could not log to interview_stages (continuing application update): {stage_err}")
         
     # 3. Log activity
     db.table("activity_log").insert({

@@ -908,7 +908,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     },
     onError: (err: any) => {
       console.error("saveJobStagesMutation failed:", err);
-      showCustomAlert("Error", `Failed to save stages/settings: ${err.message || err}`);
+      const errMsg = typeof err === "string" ? err : err?.message || err?.detail || (typeof err === "object" ? JSON.stringify(err) : String(err));
+      showCustomAlert("Error", `Failed to save stages/settings: ${errMsg}`);
     }
   });
 
