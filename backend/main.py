@@ -255,6 +255,45 @@ def resolve_member_id_from_auth(authorization: Optional[str]) -> Optional[str]:
     return None
 
 
+def get_recruiter_owner_ids(authorization: Optional[str]) -> Tuple[Set[str], Optional[str]]:
+    """
+    Returns a tuple of (owner_ids, user_org_id) representing the logged-in recruiter.
+    Ensures resources (candidates, requirements, jobs, applications) created by Recruiter A
+    NEVER leak to Recruiter B.
+    """
+    if not authorization:
+        return set(), None
+        
+    admin_db = get_admin_supabase_client()
+    auth_user_id = get_current_user_id(authorization)
+    user_email = get_email_from_token(authorization)
+    
+    owner_ids = set()
+    if auth_user_id:
+        owner_ids.add(auth_user_id)
+        
+    user_org_id = None
+    
+    if user_email:
+        try:
+            profs = admin_db.table("profiles").select("id").ilike("email", user_email).execute().data or []
+            for p in profs:
+                owner_ids.add(p["id"])
+        except Exception as e:
+            logger.error(f"Error resolving profiles by email {user_email}: {e}")
+            
+        try:
+            mems = admin_db.table("members").select("id, organization_id").ilike("email", user_email).execute().data or []
+            for m in mems:
+                owner_ids.add(m["id"])
+                if not user_org_id and m.get("organization_id"):
+                    user_org_id = m.get("organization_id")
+        except Exception as e:
+            logger.error(f"Error resolving members by email {user_email}: {e}")
+            
+    return owner_ids, user_org_id
+
+
 def get_user_org_id(
     authorization: Optional[str] = Header(None),
     x_user_email: Optional[str] = Header(None)
@@ -967,22 +1006,18 @@ async def parse_requirement_file(file: UploadFile = File(...)):
 @app.get("/api/v1/clients")
 async def get_clients(
     db: Client = Depends(get_supabase), 
-    org_id: Optional[str] = Depends(get_user_org_id),
     authorization: Optional[str] = Header(None)
 ):
     admin_db = get_admin_supabase_client()
-    member_id = resolve_member_id_from_auth(authorization)
-    user_org_id = org_id
-    if member_id and not user_org_id:
-        mem_res = admin_db.table("members").select("organization_id").eq("id", member_id).execute().data or []
-        if mem_res:
-            user_org_id = mem_res[0].get("organization_id")
-
-    query = db.table("clients").select("*").eq("is_deleted", False)
-    if user_org_id:
-        query = query.or_(f"organization_id.eq.{user_org_id},organization_id.is.null")
-    res = query.execute()
-    return res.data
+    recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization)
+    
+    if recruiter_owner_ids:
+        user_reqs = admin_db.table("requirements").select("client_id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+        client_ids = set(r["client_id"] for r in user_reqs if r.get("client_id"))
+        
+        all_cls = admin_db.table("clients").select("*").eq("is_deleted", False).execute().data or []
+        return [c for c in all_cls if c["id"] in client_ids or c.get("created_by") in recruiter_owner_ids]
+    return []
 
 @app.post("/api/v1/clients")
 async def create_client_endpoint(client: ClientModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id), org_id: Optional[str] = Depends(get_user_org_id)):
@@ -1447,16 +1482,25 @@ async def auto_complete_matching_safety(job_id: str, delay_seconds: int = 20):
 
 async def handle_match_candidates_dispatch(job_id: str, jwt_token: str, matching_scope: str = "both"):
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    admin_db = get_admin_supabase_client()
     try:
         # Clear existing job_candidates for this job before starting matching process
         db.table("job_candidates").delete().eq("job_opening_id", job_id).execute()
         
-        # Fetch job title and tags
-        job_res = db.table("job_openings").select("title, category, sub_category").eq("id", job_id).execute()
+        # Resolve recruiter owner IDs
+        recruiter_owner_ids, _ = get_recruiter_owner_ids(jwt_token)
+        
+        # Fetch job title, category, sub_category, and requirement_id
+        job_res = db.table("job_openings").select("title, category, sub_category, requirement_id").eq("id", job_id).execute()
         job_data = job_res.data[0] if job_res.data else {}
         job_title = job_data.get("title", "")
         job_category = job_data.get("category")
         job_sub_category = job_data.get("sub_category")
+
+        if job_data.get("requirement_id"):
+            req_res = admin_db.table("requirements").select("created_by").eq("id", job_data["requirement_id"]).execute()
+            if req_res.data and req_res.data[0].get("created_by"):
+                recruiter_owner_ids.add(req_res.data[0]["created_by"])
 
         # Fetch approved skills
         skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
@@ -1466,17 +1510,39 @@ async def handle_match_candidates_dispatch(job_id: str, jwt_token: str, matching
         linked_apps_res = db.table("applications").select("candidate_id").eq("job_opening_id", job_id).execute()
         linked_cand_ids = [a["candidate_id"] for a in linked_apps_res.data or []]
         
-        # Fetch all active candidates
-        candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
-        all_candidates = candidates_res.data or []
+        # Resolve requirement & job IDs belonging to this recruiter
+        user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+        req_ids = [r["id"] for r in user_reqs]
+        
+        user_job_ids = set()
+        if req_ids:
+            user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
+            for j in user_jobs_by_req:
+                user_job_ids.add(j["id"])
+                
+        user_app_cands = set()
+        if user_job_ids:
+            user_apps = admin_db.table("applications").select("candidate_id").in_("job_opening_id", list(user_job_ids)).execute().data or []
+            for a in user_apps:
+                if a.get("candidate_id"):
+                    user_app_cands.add(a["candidate_id"])
+
+        # Fetch active candidates belonging strictly to THIS RECRUITER
+        all_candidates = admin_db.table("candidates").select("*").eq("is_deleted", False).execute().data or []
+        recruiter_cands = [
+            c for c in all_candidates
+            if (c.get("uploaded_by") in recruiter_owner_ids)
+            or (not c.get("uploaded_by") and c.get("id") in user_app_cands)
+            or (c.get("job_id") and c.get("job_id") in user_job_ids)
+        ]
         
         # Filter candidates based on matching_scope
         if matching_scope == "applied":
-            candidates = [c for c in all_candidates if c.get("job_id") == job_id]
+            candidates = [c for c in recruiter_cands if c.get("job_id") == job_id or c.get("id") in linked_cand_ids]
         elif matching_scope == "pool":
-            candidates = [c for c in all_candidates if c.get("job_id") != job_id]
+            candidates = [c for c in recruiter_cands if c.get("job_id") != job_id and c.get("id") not in linked_cand_ids]
         else: # both
-            candidates = all_candidates
+            candidates = recruiter_cands
         
         callback_url = f"{PUBLIC_BACKEND_URL}/api/v1/callbacks/candidate-matches"
         payload = {
@@ -1796,12 +1862,17 @@ def append_jobs_background_fallback(req_id: str, count: int, additional_desc: st
         )
 
 @app.get("/api/v1/requirements")
-async def get_requirements(db: Client = Depends(get_supabase), org_id: Optional[str] = Depends(get_user_org_id)):
-    query = db.table("requirements").select("*").eq("is_deleted", False)
-    if org_id:
-        query = query.eq("organization_id", org_id)
-    res = query.execute()
-    return res.data
+async def get_requirements(
+    db: Client = Depends(get_supabase),
+    authorization: Optional[str] = Header(None)
+):
+    admin_db = get_admin_supabase_client()
+    recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization)
+    
+    if recruiter_owner_ids:
+        res = admin_db.table("requirements").select("*").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute()
+        return res.data or []
+    return []
 
 @app.put("/api/v1/requirements/{req_id}")
 async def update_requirement(req_id: str, req: RequirementUpdateModel, background_tasks: BackgroundTasks, request: Request, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
@@ -2086,9 +2157,16 @@ async def create_requirement(req: RequirementModel, background_tasks: Background
 
 
 @app.get("/api/v1/activity_log")
-async def get_activity_log(db: Client = Depends(get_supabase)):
-    res = db.table("activity_log").select("*").order("created_at", desc=True).execute()
-    return res.data
+async def get_activity_log(
+    db: Client = Depends(get_supabase),
+    authorization: Optional[str] = Header(None)
+):
+    admin_db = get_admin_supabase_client()
+    recruiter_owner_ids, _ = get_recruiter_owner_ids(authorization)
+    if recruiter_owner_ids:
+        res = admin_db.table("activity_log").select("*").in_("actor_id", list(recruiter_owner_ids)).order("created_at", desc=True).execute()
+        return res.data or []
+    return []
 
 
 @app.delete("/api/v1/activity_log/{id}")
@@ -2178,27 +2256,55 @@ def enrich_job_with_form_config(row: dict) -> dict:
 
 # 4. Job Openings endpoints
 @app.get("/api/v1/jobs")
-async def get_jobs(db: Client = Depends(get_supabase)):
-    res = db.table("job_openings").select("*, requirements(id, title, clients(name))").eq("is_deleted", False).execute()
-    formatted = []
-    for row in res.data:
-        req = row.get("requirements") or {}
-        cli = req.get("clients") or {}
-        formatted.append(enrich_job_with_form_config({
-            **{k: v for k, v in row.items() if k != "requirements"},
-            "client_name": cli.get("name") or "Generic Client"
-        }))
-    return formatted
+async def get_jobs(
+    db: Client = Depends(get_supabase),
+    authorization: Optional[str] = Header(None)
+):
+    admin_db = get_admin_supabase_client()
+    recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization)
+    
+    if recruiter_owner_ids:
+        user_reqs = admin_db.table("requirements").select("id, title, client_id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+        req_map = {r["id"]: r for r in user_reqs}
+        req_ids = list(req_map.keys())
+        
+        if req_ids:
+            client_ids = [r["client_id"] for r in user_reqs if r.get("client_id")]
+            client_map = {}
+            if client_ids:
+                cli_data = admin_db.table("clients").select("id, name").in_("id", client_ids).execute().data or []
+                client_map = {c["id"]: c.get("name") for c in cli_data}
+                
+            jobs_data = admin_db.table("job_openings").select("*").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
+            formatted = []
+            for row in jobs_data:
+                req = req_map.get(row.get("requirement_id")) or {}
+                cli_name = client_map.get(req.get("client_id")) or "Generic Client"
+                formatted.append(enrich_job_with_form_config({
+                    **row,
+                    "client_name": cli_name
+                }))
+            return formatted
+    return []
 
 
 @app.get("/api/v1/jobs/{job_id}")
-async def get_job(job_id: str, db: Client = Depends(get_supabase)):
-    job_id = deobfuscate_id(job_id)
-    res = db.table("job_openings").select("*, requirements(id, title, clients(name))").eq("id", job_id).eq("is_deleted", False).execute()
+async def get_job(
+    job_id: str, 
+    db: Client = Depends(get_supabase),
+    authorization: Optional[str] = Header(None)
+):
+    admin_db = get_admin_supabase_client()
+    recruiter_owner_ids, _ = get_recruiter_owner_ids(authorization)
+    
+    clean_job_id = deobfuscate_id(job_id)
+    res = admin_db.table("job_openings").select("*, requirements(id, title, created_by, clients(name))").eq("id", clean_job_id).eq("is_deleted", False).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Job opening not found")
     row = res.data[0]
     req = row.get("requirements") or {}
+    if recruiter_owner_ids and req.get("created_by") and req.get("created_by") not in recruiter_owner_ids:
+        raise HTTPException(status_code=404, detail="Job opening not found")
     cli = req.get("clients") or {}
     return enrich_job_with_form_config({
         **{k: v for k, v in row.items() if k != "requirements"},
@@ -3304,27 +3410,58 @@ def evaluate_candidate_matching_with_history(db: Client, cand_id: str, job_id: s
 def match_candidates_background(job_id: str, jwt_token: str, matching_scope: str = "both"):
     logger.info(f"Starting background candidate matching for job {job_id} with scope {matching_scope}")
     db = get_safe_supabase_client(SUPABASE_URL, SUPABASE_KEY, jwt_token)
+    admin_db = get_admin_supabase_client()
     
     try:
+        # Resolve recruiter owner IDs
+        recruiter_owner_ids, _ = get_recruiter_owner_ids(jwt_token)
+        
         # Fetch job and approved skills
         job_res = db.table("job_openings").select("*").eq("id", job_id).execute()
+        if job_res.data and job_res.data[0].get("requirement_id"):
+            req_res = admin_db.table("requirements").select("created_by").eq("id", job_res.data[0]["requirement_id"]).execute()
+            if req_res.data and req_res.data[0].get("created_by"):
+                recruiter_owner_ids.add(req_res.data[0]["created_by"])
+                
         skills_res = db.table("job_opening_skills").select("skills").eq("job_opening_id", job_id).execute()
         
         # Get candidate IDs that are already linked to this job via applications
         linked_apps_res = db.table("applications").select("candidate_id").eq("job_opening_id", job_id).execute()
         linked_cand_ids = [a["candidate_id"] for a in linked_apps_res.data or []]
         
-        # Fetch all active candidates
-        candidates_res = db.table("candidates").select("*").eq("is_deleted", False).execute()
-        all_candidates = candidates_res.data or []
+        # Resolve user jobs & candidate IDs for recruiter owner IDs
+        user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+        req_ids = [r["id"] for r in user_reqs]
+        
+        user_job_ids = set()
+        if req_ids:
+            user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
+            for j in user_jobs_by_req:
+                user_job_ids.add(j["id"])
+                
+        user_app_cands = set()
+        if user_job_ids:
+            user_apps = admin_db.table("applications").select("candidate_id").in_("job_opening_id", list(user_job_ids)).execute().data or []
+            for a in user_apps:
+                if a.get("candidate_id"):
+                    user_app_cands.add(a["candidate_id"])
+
+        # Fetch active candidates belonging strictly to THIS RECRUITER
+        all_candidates = admin_db.table("candidates").select("*").eq("is_deleted", False).execute().data or []
+        recruiter_cands = [
+            c for c in all_candidates
+            if (c.get("uploaded_by") in recruiter_owner_ids)
+            or (not c.get("uploaded_by") and c.get("id") in user_app_cands)
+            or (c.get("job_id") and c.get("job_id") in user_job_ids)
+        ]
         
         # Filter candidates based on matching_scope
         if matching_scope == "applied":
-            candidates = [c for c in all_candidates if c.get("job_id") == job_id]
+            candidates = [c for c in recruiter_cands if c.get("job_id") == job_id or c.get("id") in linked_cand_ids]
         elif matching_scope == "pool":
-            candidates = [c for c in all_candidates if c.get("job_id") != job_id]
+            candidates = [c for c in recruiter_cands if c.get("job_id") != job_id and c.get("id") not in linked_cand_ids]
         else: # both
-            candidates = all_candidates
+            candidates = recruiter_cands
         
         if not job_res.data or not skills_res.data or not candidates:
             db.table("job_openings").update({"processing_status": "ready"}).eq("id", job_id).execute()
@@ -3482,9 +3619,26 @@ def match_candidates_background(job_id: str, jwt_token: str, matching_scope: str
         )
 
 @app.get("/api/v1/jobs/{job_id}/candidates")
-async def get_ranked_candidates(job_id: str, db: Client = Depends(get_supabase)):
-    job_id = deobfuscate_id(job_id)
-    res = db.table("job_candidates").select("*, candidates(*), applications(*)").eq("job_opening_id", job_id).order("created_at", desc=True).execute()
+async def get_ranked_candidates(
+    job_id: str, 
+    db: Client = Depends(get_supabase),
+    authorization: Optional[str] = Header(None)
+):
+    admin_db = get_admin_supabase_client()
+    recruiter_owner_ids, _ = get_recruiter_owner_ids(authorization)
+    clean_job_id = deobfuscate_id(job_id)
+    
+    # Verify job ownership
+    job_res = admin_db.table("job_openings").select("requirement_id").eq("id", clean_job_id).execute()
+    if not job_res.data:
+        raise HTTPException(status_code=404, detail="Job opening not found")
+    req_id = job_res.data[0].get("requirement_id")
+    if req_id and recruiter_owner_ids:
+        req_res = admin_db.table("requirements").select("created_by").eq("id", req_id).execute()
+        if req_res.data and req_res.data[0].get("created_by") not in recruiter_owner_ids:
+            return []
+
+    res = db.table("job_candidates").select("*, candidates(*), applications(*)").eq("job_opening_id", clean_job_id).order("created_at", desc=True).execute()
     # Format to match frontend expected JobCandidate layout
     formatted = []
     seen_candidate_ids = set()
@@ -3646,38 +3800,9 @@ async def get_candidates(
     authorization: Optional[str] = Header(None)
 ):
     admin_db = get_admin_supabase_client()
+    recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization)
     
-    # Resolve recruiter IDs & email from JWT authorization token
-    member_id = resolve_member_id_from_auth(authorization)
-    auth_user_id = get_current_user_id(authorization)
-    
-    recruiter_owner_ids = set()
-    if auth_user_id:
-        recruiter_owner_ids.add(auth_user_id)
-    if member_id:
-        recruiter_owner_ids.add(member_id)
-        
     if recruiter_owner_ids:
-        # Resolve profile or member email for complete ownership matching across UUID formats
-        user_email = None
-        if member_id:
-            mdata = admin_db.table("members").select("email").eq("id", member_id).execute().data
-            if mdata:
-                user_email = mdata[0].get("email")
-        if not user_email and auth_user_id:
-            pdata = admin_db.table("profiles").select("email").eq("id", auth_user_id).execute().data
-            if pdata:
-                user_email = pdata[0].get("email")
-                
-        if user_email:
-            all_profs = admin_db.table("profiles").select("id").ilike("email", user_email).execute().data or []
-            all_mems = admin_db.table("members").select("id").ilike("email", user_email).execute().data or []
-            for p in all_profs:
-                recruiter_owner_ids.add(p["id"])
-            for m in all_mems:
-                recruiter_owner_ids.add(m["id"])
-                
-        # Resolve requirements created by or assigned to this recruiter
         user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
         req_ids = [r["id"] for r in user_reqs]
         
@@ -3694,17 +3819,15 @@ async def get_candidates(
                 if a.get("candidate_id"):
                     user_app_cands.add(a["candidate_id"])
                     
-        # Filter candidates strictly to candidates belonging to THIS RECRUITER
         all_cands = admin_db.table("candidates").select("*").eq("is_deleted", False).execute().data or []
         data = [
             c for c in all_cands 
             if c.get("uploaded_by") in recruiter_owner_ids
-            or c.get("id") in user_app_cands
+            or (not c.get("uploaded_by") and c.get("id") in user_app_cands)
             or (c.get("job_id") and c.get("job_id") in user_job_ids)
         ]
-        logger.info(f"[get_candidates] auth_user_id={auth_user_id} member_id={member_id} total_cands={len(all_cands)} recruiter_cands={len(data)}")
+        logger.info(f"[get_candidates] recruiter_owner_ids={len(recruiter_owner_ids)} total_cands={len(all_cands)} recruiter_cands={len(data)}")
     else:
-        # Unauthenticated request returns empty list to prevent un-scoped leakage
         data = []
 
     for cand in data:
@@ -3714,11 +3837,43 @@ async def get_candidates(
     return data
 
 @app.get("/api/v1/candidates/{candidate_id}")
-async def get_candidate_details(candidate_id: str, db: Client = Depends(get_supabase)):
-    res = db.table("candidates").select("*").eq("id", candidate_id).execute()
+async def get_candidate_details(
+    candidate_id: str, 
+    db: Client = Depends(get_supabase),
+    authorization: Optional[str] = Header(None)
+):
+    admin_db = get_admin_supabase_client()
+    recruiter_owner_ids, _ = get_recruiter_owner_ids(authorization)
+    
+    res = admin_db.table("candidates").select("*").eq("id", candidate_id).eq("is_deleted", False).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Candidate not found")
     cand = res.data[0]
+    
+    if recruiter_owner_ids:
+        user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+        req_ids = [r["id"] for r in user_reqs]
+        user_job_ids = set()
+        if req_ids:
+            user_jobs = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
+            for j in user_jobs:
+                user_job_ids.add(j["id"])
+                
+        user_app_cands = set()
+        if user_job_ids:
+            user_apps = admin_db.table("applications").select("candidate_id").in_("job_opening_id", list(user_job_ids)).execute().data or []
+            for a in user_apps:
+                if a.get("candidate_id"):
+                    user_app_cands.add(a["candidate_id"])
+                    
+        is_owned = (
+            cand.get("uploaded_by") in recruiter_owner_ids or
+            (not cand.get("uploaded_by") and cand.get("id") in user_app_cands) or
+            (cand.get("job_id") and cand.get("job_id") in user_job_ids)
+        )
+        if not is_owned:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+
     if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
         if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
             cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
@@ -3892,45 +4047,37 @@ async def get_all_applications(
     authorization: Optional[str] = Header(None)
 ):
     admin_db = get_admin_supabase_client()
+    recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization)
     
+    if not recruiter_owner_ids:
+        return []
+        
     user_job_ids = set()
     user_cand_ids = set()
-    org_member_ids = set()
-    user_org_id = None
     
-    # Resolve actual member_id from JWT email (not raw JWT sub which is Supabase auth UUID)
-    member_id = resolve_member_id_from_auth(authorization)
+    user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+    req_ids = [r["id"] for r in user_reqs]
     
-    if member_id:
-        # Resolve organization_id and team members for the resolved member
-        mem_res = admin_db.table("members").select("organization_id").eq("id", member_id).execute().data or []
-        user_org_id = mem_res[0].get("organization_id") if mem_res else None
+    if req_ids:
+        user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
+        for j in user_jobs_by_req:
+            user_job_ids.add(j["id"])
+            
+    user_cands = admin_db.table("candidates").select("id").in_("uploaded_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+    for c in user_cands:
+        user_cand_ids.add(c["id"])
         
-        org_member_ids.add(member_id)
-        if user_org_id:
-            org_mems = admin_db.table("members").select("id").eq("organization_id", user_org_id).execute().data or []
-            for m in org_mems:
-                org_member_ids.add(m["id"])
-                
-        user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(org_member_ids)).eq("is_deleted", False).execute().data or []
-        req_ids = [r["id"] for r in user_reqs]
+    if not user_job_ids and not user_cand_ids:
+        return []
+
+    query = admin_db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(id, name)))")
+    if user_job_ids and user_cand_ids:
+        res = query.or_(f"job_opening_id.in.({','.join(user_job_ids)}),candidate_id.in.({','.join(user_cand_ids)})").execute()
+    elif user_job_ids:
+        res = query.in_("job_opening_id", list(user_job_ids)).execute()
+    else:
+        res = query.in_("candidate_id", list(user_cand_ids)).execute()
         
-        if req_ids:
-            user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
-            for j in user_jobs_by_req:
-                user_job_ids.add(j["id"])
-
-        if user_org_id:
-            user_jobs_by_org = admin_db.table("job_openings").select("id").eq("organization_id", user_org_id).eq("is_deleted", False).execute().data or []
-            for j in user_jobs_by_org:
-                user_job_ids.add(j["id"])
-                
-        user_cands = admin_db.table("candidates").select("id").in_("uploaded_by", list(org_member_ids)).eq("is_deleted", False).execute().data or []
-        for c in user_cands:
-            user_cand_ids.add(c["id"])
-        logger.info(f"[get_all_applications] member_id={member_id} org_id={user_org_id} job_ids={len(user_job_ids)} cand_ids={len(user_cand_ids)}")
-
-    res = admin_db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(id, name)))").execute()
     raw_data = res.data or []
     
     formatted = []
@@ -3938,23 +4085,9 @@ async def get_all_applications(
         job = app_rec.get("job_openings")
         cand = app_rec.get("candidates")
         
-        # Must have a valid non-deleted job opening AND a valid non-deleted candidate
         if not job or job.get("is_deleted") or not cand or cand.get("is_deleted"):
             continue
             
-        # Recruiter Scoping: if member resolved, filter to org/member scope
-        if member_id:
-            job_id = job.get("id")
-            cand_id = cand.get("id")
-            app_org = app_rec.get("organization_id") or job.get("organization_id") or cand.get("organization_id")
-            
-            is_member_job_or_cand = (job_id in user_job_ids) or (cand_id in user_cand_ids)
-            is_org_match = user_org_id and (app_org == user_org_id)
-            is_shared = not app_org and not job.get("organization_id")
-            
-            if not (is_member_job_or_cand or is_org_match or is_shared):
-                continue
-                
         if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
             if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
                 cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
@@ -4569,13 +4702,37 @@ def ensure_questions_have_ids(questions_list: list, app_id: str, db: Client) -> 
     return healed_list
 
 @app.get("/api/v1/applications/{app_id}")
-async def get_application(app_id: str, db: Client = Depends(get_supabase)):
-    res = db.table("applications").select("*, candidates(*)").eq("id", app_id).execute()
+async def get_application(
+    app_id: str, 
+    db: Client = Depends(get_supabase),
+    authorization: Optional[str] = Header(None)
+):
+    admin_db = get_admin_supabase_client()
+    recruiter_owner_ids, _ = get_recruiter_owner_ids(authorization)
+    
+    res = admin_db.table("applications").select("*, candidates(*), job_openings(requirement_id)").eq("id", app_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Application not found")
     
     app_record = res.data[0]
     cand = app_record.get("candidates") or {}
+    job = app_record.get("job_openings") or {}
+    
+    if recruiter_owner_ids:
+        req_id = job.get("requirement_id")
+        req_created_by = None
+        if req_id:
+            req_res = admin_db.table("requirements").select("created_by").eq("id", req_id).execute()
+            if req_res.data:
+                req_created_by = req_res.data[0].get("created_by")
+                
+        is_owned = (
+            (cand.get("uploaded_by") in recruiter_owner_ids) or
+            (req_created_by in recruiter_owner_ids)
+        )
+        if not is_owned:
+            raise HTTPException(status_code=404, detail="Application not found")
+
     if cand and "parsed_resume_json" in cand and cand["parsed_resume_json"]:
         if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
             cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
@@ -5173,10 +5330,18 @@ async def handle_chat_message(
 
     # Compile database stats to inject in context as fallback/enrichment
     try:
-        clients_count = len(db.table("clients").select("id").eq("is_deleted", False).execute().data or [])
-        reqs_count = len(db.table("requirements").select("id").eq("is_deleted", False).execute().data or [])
-        candidates_count = len(db.table("candidates").select("id").eq("is_deleted", False).execute().data or [])
-        jobs_count = len(db.table("job_openings").select("id").eq("is_deleted", False).execute().data or [])
+        auth_header = request.headers.get("Authorization", "")
+        recruiter_owner_ids, _ = get_recruiter_owner_ids(auth_header)
+        admin_db = get_admin_supabase_client()
+        if recruiter_owner_ids:
+            clients_count = len(admin_db.table("clients").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or [])
+            reqs_count = len(admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or [])
+            candidates_count = len(admin_db.table("candidates").select("id").in_("uploaded_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or [])
+            user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+            req_ids = [r["id"] for r in user_reqs]
+            jobs_count = len(admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []) if req_ids else 0
+        else:
+            clients_count = reqs_count = candidates_count = jobs_count = 0
     except Exception:
         clients_count = reqs_count = candidates_count = jobs_count = 0
 
