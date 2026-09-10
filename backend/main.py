@@ -4303,8 +4303,9 @@ async def upload_csv_candidates(
     authorization: Optional[str] = Header(None),
     user_id: Optional[str] = Depends(get_current_user_id)
 ):
-    # Resolve actual member_id from JWT email for correct uploaded_by attribution
-    resolved_uploader_id = resolve_member_id_from_auth(authorization) or user_id
+    # Candidates.uploaded_by references profiles.id (Supabase auth UUID)
+    auth_user_id = user_id or get_current_user_id(authorization)
+    resolved_uploader_id = auth_user_id
     csv_user_org_id = get_user_org_id(authorization)
     admin_db = get_admin_supabase_client()
     inserted = 0
