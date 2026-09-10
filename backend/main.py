@@ -177,6 +177,7 @@ def get_supabase(authorization: Optional[str] = Header(None)) -> Client:
 
 # Helper: Extract current user ID from Authorization header Bearer token
 def get_current_user_id(authorization: Optional[str] = Header(None)) -> Optional[str]:
+    """Extracts the Supabase auth UUID (sub) from the JWT Bearer token."""
     if authorization:
         token = None
         if authorization.startswith("Bearer "):
@@ -192,6 +193,107 @@ def get_current_user_id(authorization: Optional[str] = Header(None)) -> Optional
             except Exception as e:
                 logger.error(f"Failed to decode JWT: {e}")
     return None
+
+
+def get_email_from_token(authorization: Optional[str]) -> Optional[str]:
+    """Extracts the user email from the JWT Bearer token claims."""
+    if not authorization:
+        return None
+    token = None
+    if authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+    elif authorization.startswith("eyJ"):
+        token = authorization
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, options={"verify_signature": False})
+        # Supabase stores email in top-level 'email' claim
+        email = payload.get("email")
+        if not email:
+            # fallback: user_metadata.email
+            email = (payload.get("user_metadata") or {}).get("email")
+        return email.strip().lower() if email else None
+    except Exception as e:
+        logger.error(f"Failed to extract email from JWT: {e}")
+    return None
+
+
+def resolve_member_id_from_auth(authorization: Optional[str]) -> Optional[str]:
+    """
+    Resolves the actual members.id for the authenticated user.
+    
+    The JWT `sub` is the Supabase auth UUID, which differs from members.id.
+    We extract the email from the JWT and look up members.id by email.
+    Falls back to checking if the JWT sub itself exists as a member.id (legacy).
+    """
+    if not authorization:
+        return None
+    email = get_email_from_token(authorization)
+    if not email:
+        return None
+    try:
+        admin_db = get_admin_supabase_client()
+        member_res = admin_db.table("members").select("id").ilike("email", email).limit(1).execute()
+        if member_res.data:
+            return member_res.data[0]["id"]
+    except Exception as e:
+        logger.error(f"Failed to resolve member_id from email '{email}': {e}")
+    return None
+
+
+def get_user_org_id(
+    authorization: Optional[str] = Header(None),
+    x_user_email: Optional[str] = Header(None)
+) -> Optional[str]:
+    """
+    Resolves organization_id for the current user from auth token or x_user_email.
+    Returns None when unauthenticated, on empty headers, when member is missing,
+    or on DB errors. Never queries organizations table directly.
+    """
+    if not authorization and not x_user_email:
+        return None
+
+    email = None
+    if authorization:
+        email = get_email_from_token(authorization)
+    if not email and x_user_email and x_user_email.strip():
+        email = x_user_email.strip().lower()
+
+    if not email:
+        return None
+
+    try:
+        admin_db = get_admin_supabase_client()
+        mem_res = admin_db.table("members").select("organization_id").ilike("email", email).limit(1).execute()
+        if mem_res and mem_res.data:
+            return mem_res.data[0].get("organization_id")
+    except Exception as e:
+        logger.error(f"Error resolving org_id in get_user_org_id for email '{email}': {e}")
+        return None
+
+    return None
+
+
+def process_approval_action(db: Client, entity_type: str, entity_id: str, action: str = "approve"):
+    """
+    Process approval actions and synchronize status changes to domain entities.
+    """
+    if action == "approve":
+        if entity_type in ["job", "job_opening", "job_openings"]:
+            db.table("job_openings").update({
+                "status": "published",
+                "published_at": datetime.utcnow().isoformat()
+            }).eq("id", entity_id).execute()
+        elif entity_type in ["requirement", "mandate", "requirements"]:
+            db.table("requirements").update({
+                "status": "approved"
+            }).eq("id", entity_id).execute()
+        elif entity_type in ["application", "candidate_application", "applications"]:
+            db.table("applications").update({
+                "stage": "approved"
+            }).eq("id", entity_id).execute()
+
 
 def obfuscate_id(raw_id: str) -> str:
     if not raw_id:
@@ -850,12 +952,15 @@ async def parse_requirement_file(file: UploadFile = File(...)):
 
 # 2. Clients CRUD proxies
 @app.get("/api/v1/clients")
-async def get_clients(db: Client = Depends(get_supabase)):
-    res = db.table("clients").select("*").eq("is_deleted", False).execute()
+async def get_clients(db: Client = Depends(get_supabase), org_id: Optional[str] = Depends(get_user_org_id)):
+    query = db.table("clients").select("*").eq("is_deleted", False)
+    if org_id:
+        query = query.eq("organization_id", org_id)
+    res = query.execute()
     return res.data
 
 @app.post("/api/v1/clients")
-async def create_client_endpoint(client: ClientModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id)):
+async def create_client_endpoint(client: ClientModel, db: Client = Depends(get_supabase), user_id: Optional[str] = Depends(get_current_user_id), org_id: Optional[str] = Depends(get_user_org_id)):
     payload = {"name": client.name}
     if user_id:
         payload["created_by"] = user_id
@@ -1666,8 +1771,11 @@ def append_jobs_background_fallback(req_id: str, count: int, additional_desc: st
         )
 
 @app.get("/api/v1/requirements")
-async def get_requirements(db: Client = Depends(get_supabase)):
-    res = db.table("requirements").select("*").eq("is_deleted", False).execute()
+async def get_requirements(db: Client = Depends(get_supabase), org_id: Optional[str] = Depends(get_user_org_id)):
+    query = db.table("requirements").select("*").eq("is_deleted", False)
+    if org_id:
+        query = query.eq("organization_id", org_id)
+    res = query.execute()
     return res.data
 
 @app.put("/api/v1/requirements/{req_id}")
@@ -3510,37 +3618,61 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
 @app.get("/api/v1/candidates")
 async def get_candidates(
     db: Client = Depends(get_supabase),
-    user_id: Optional[str] = Depends(get_current_user_id)
+    authorization: Optional[str] = Header(None)
 ):
     admin_db = get_admin_supabase_client()
-    if user_id:
-        # Find candidate IDs linked to user's jobs or uploaded by user
-        user_reqs = admin_db.table("requirements").select("id").eq("created_by", user_id).eq("is_deleted", False).execute().data or []
+    
+    # Resolve the actual member_id via email from JWT (not JWT sub which is Supabase auth UUID)
+    member_id = resolve_member_id_from_auth(authorization)
+    
+    if member_id:
+        # Resolve organization_id and team member IDs for the resolved member
+        mem_res = admin_db.table("members").select("organization_id").eq("id", member_id).execute().data or []
+        user_org_id = mem_res[0].get("organization_id") if mem_res else None
+        
+        org_member_ids = {member_id}
+        if user_org_id:
+            org_mems = admin_db.table("members").select("id").eq("organization_id", user_org_id).execute().data or []
+            for m in org_mems:
+                org_member_ids.add(m["id"])
+                
+        user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(org_member_ids)).eq("is_deleted", False).execute().data or []
         req_ids = [r["id"] for r in user_reqs]
         
         user_job_ids = set()
-        user_jobs_by_creator = admin_db.table("job_openings").select("id").eq("created_by", user_id).eq("is_deleted", False).execute().data or []
-        for j in user_jobs_by_creator:
-            user_job_ids.add(j["id"])
-            
         if req_ids:
             user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
             for j in user_jobs_by_req:
+                user_job_ids.add(j["id"])
+
+        if user_org_id:
+            user_jobs_by_org = admin_db.table("job_openings").select("id").eq("organization_id", user_org_id).eq("is_deleted", False).execute().data or []
+            for j in user_jobs_by_org:
                 user_job_ids.add(j["id"])
                 
         user_app_cands = set()
         if user_job_ids:
             user_apps = admin_db.table("applications").select("candidate_id").in_("job_opening_id", list(user_job_ids)).execute().data or []
             for a in user_apps:
-                user_app_cands.add(a["candidate_id"])
+                if a.get("candidate_id"):
+                    user_app_cands.add(a["candidate_id"])
                 
-        # Query candidates uploaded by user OR linked to user's jobs
+        # Query all candidates and filter:
+        # - uploaded by any member of the same org, OR
+        # - linked to org's job openings via applications, OR
+        # - org_id matches (org-scoped candidates), OR
+        # - no uploaded_by and no org_id (legacy unscoped candidates visible to all)
         all_cands = admin_db.table("candidates").select("*").eq("is_deleted", False).execute().data or []
         data = [
             c for c in all_cands 
-            if c.get("uploaded_by") == user_id or c.get("id") in user_app_cands or not c.get("uploaded_by")
+            if c.get("uploaded_by") in org_member_ids
+            or c.get("id") in user_app_cands
+            or (user_org_id and c.get("organization_id") == user_org_id)
+            or (not c.get("uploaded_by") and not c.get("organization_id"))
         ]
+        logger.info(f"[get_candidates] member_id={member_id} org_id={user_org_id} org_members={len(org_member_ids)} total_cands={len(all_cands)} visible={len(data)}")
     else:
+        # No authenticated user - return all non-deleted candidates
         res = admin_db.table("candidates").select("*").eq("is_deleted", False).execute()
         data = res.data or []
 
@@ -3726,32 +3858,46 @@ async def get_candidate_history(candidate_id: str, db: Client = Depends(get_supa
 @app.get("/api/v1/applications")
 async def get_all_applications(
     db: Client = Depends(get_supabase),
-    user_id: Optional[str] = Depends(get_current_user_id)
+    authorization: Optional[str] = Header(None)
 ):
     admin_db = get_admin_supabase_client()
     
     user_job_ids = set()
     user_cand_ids = set()
+    org_member_ids = set()
+    user_org_id = None
     
-    if user_id:
-        # Requirements created by user
-        user_reqs = admin_db.table("requirements").select("id").eq("created_by", user_id).eq("is_deleted", False).execute().data or []
+    # Resolve actual member_id from JWT email (not raw JWT sub which is Supabase auth UUID)
+    member_id = resolve_member_id_from_auth(authorization)
+    
+    if member_id:
+        # Resolve organization_id and team members for the resolved member
+        mem_res = admin_db.table("members").select("organization_id").eq("id", member_id).execute().data or []
+        user_org_id = mem_res[0].get("organization_id") if mem_res else None
+        
+        org_member_ids.add(member_id)
+        if user_org_id:
+            org_mems = admin_db.table("members").select("id").eq("organization_id", user_org_id).execute().data or []
+            for m in org_mems:
+                org_member_ids.add(m["id"])
+                
+        user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(org_member_ids)).eq("is_deleted", False).execute().data or []
         req_ids = [r["id"] for r in user_reqs]
         
-        # Job openings created by user
-        user_jobs_by_creator = admin_db.table("job_openings").select("id").eq("created_by", user_id).eq("is_deleted", False).execute().data or []
-        for j in user_jobs_by_creator:
-            user_job_ids.add(j["id"])
-            
         if req_ids:
             user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
             for j in user_jobs_by_req:
                 user_job_ids.add(j["id"])
+
+        if user_org_id:
+            user_jobs_by_org = admin_db.table("job_openings").select("id").eq("organization_id", user_org_id).eq("is_deleted", False).execute().data or []
+            for j in user_jobs_by_org:
+                user_job_ids.add(j["id"])
                 
-        # Candidates uploaded by user
-        user_cands = admin_db.table("candidates").select("id").eq("uploaded_by", user_id).eq("is_deleted", False).execute().data or []
+        user_cands = admin_db.table("candidates").select("id").in_("uploaded_by", list(org_member_ids)).eq("is_deleted", False).execute().data or []
         for c in user_cands:
             user_cand_ids.add(c["id"])
+        logger.info(f"[get_all_applications] member_id={member_id} org_id={user_org_id} job_ids={len(user_job_ids)} cand_ids={len(user_cand_ids)}")
 
     res = admin_db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(id, name)))").execute()
     raw_data = res.data or []
@@ -3765,11 +3911,17 @@ async def get_all_applications(
         if not job or job.get("is_deleted") or not cand or cand.get("is_deleted"):
             continue
             
-        # Recruiter Scoping: if user_id is present, application must belong to user's job or user's uploaded candidate
-        if user_id:
+        # Recruiter Scoping: if member resolved, filter to org/member scope
+        if member_id:
             job_id = job.get("id")
             cand_id = cand.get("id")
-            if job_id not in user_job_ids and cand_id not in user_cand_ids:
+            app_org = app_rec.get("organization_id") or job.get("organization_id") or cand.get("organization_id")
+            
+            is_member_job_or_cand = (job_id in user_job_ids) or (cand_id in user_cand_ids)
+            is_org_match = user_org_id and (app_org == user_org_id)
+            is_shared = not app_org and not job.get("organization_id")
+            
+            if not (is_member_job_or_cand or is_org_match or is_shared):
                 continue
                 
         if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
@@ -3931,6 +4083,7 @@ async def create_candidate(
     cand: CandidateModel,
     background_tasks: BackgroundTasks,
     db: Client = Depends(get_supabase),
+    authorization: Optional[str] = Header(None),
     user_id: Optional[str] = Depends(get_current_user_id)
 ):
     db = get_admin_supabase_client()
@@ -3957,7 +4110,16 @@ async def create_candidate(
             req_data = job_res.data[0].get("requirements") or {}
             recruiter_id = req_data.get("created_by")
 
-    db_uploaded_by = user_id if user_id else (cand.uploaded_by if cand.uploaded_by else recruiter_id)
+    # Resolve the actual member_id (not raw JWT sub) for uploaded_by attribution
+    resolved_member_id = resolve_member_id_from_auth(authorization)
+    effective_uploader = resolved_member_id or (cand.uploaded_by if cand.uploaded_by else recruiter_id)
+    db_uploaded_by = effective_uploader
+    
+    user_org_id = get_user_org_id(authorization)
+    if not user_org_id and cand.job_id:
+        job_org_res = db.table("job_openings").select("organization_id").eq("id", cand.job_id).execute()
+        if job_org_res.data:
+            user_org_id = job_org_res.data[0].get("organization_id")
 
     if exists.data:
         existing_cand = exists.data[0]
@@ -3975,7 +4137,8 @@ async def create_candidate(
         merged_phone = cand.phone if cand.phone else existing_cand.get("phone")
         merged_academic = cand.academic_details if cand.academic_details else existing_cand.get("academic_details")
         merged_achievements = cand.achievements if cand.achievements else existing_cand.get("achievements")
-             # Merge raw text
+        
+        # Merge raw text
         existing_raw = ""
         existing_summary = ""
         existing_parsed = {}
@@ -4008,6 +4171,7 @@ async def create_candidate(
             "source": db_source,
             "job_id": cand.job_id if cand.job_id else existing_cand.get("job_id"),
             "uploaded_by": db_uploaded_by if db_uploaded_by else existing_cand.get("uploaded_by"),
+            "organization_id": user_org_id if user_org_id else existing_cand.get("organization_id"),
             "is_deleted": False  # Reactivate candidate if it was soft-deleted
         }).eq("id", existing_cand["id"]).execute()
         
@@ -4066,7 +4230,8 @@ async def create_candidate(
         "achievements": cand.achievements,
         "source": db_source,
         "job_id": cand.job_id,
-        "uploaded_by": db_uploaded_by
+        "uploaded_by": db_uploaded_by,
+        "organization_id": user_org_id
     }
     res = db.table("candidates").insert(payload).execute()
     
@@ -4114,6 +4279,9 @@ async def upload_csv_candidates(
     authorization: Optional[str] = Header(None),
     user_id: Optional[str] = Depends(get_current_user_id)
 ):
+    # Resolve actual member_id from JWT email for correct uploaded_by attribution
+    resolved_uploader_id = resolve_member_id_from_auth(authorization) or user_id
+    csv_user_org_id = get_user_org_id(authorization)
     admin_db = get_admin_supabase_client()
     inserted = 0
     skipped = 0
@@ -4165,6 +4333,12 @@ async def upload_csv_candidates(
         raw_text_val = item.get("raw_text")
         summary_val = item.get("summary")
         target_job_id = item.get("job_id") or payload.job_id
+        
+        item_org_id = csv_user_org_id
+        if not item_org_id and target_job_id:
+            job_org_res = admin_db.table("job_openings").select("organization_id").eq("id", target_job_id).execute()
+            if job_org_res.data:
+                item_org_id = job_org_res.data[0].get("organization_id")
         
         # Resolve working status boolean
         if isinstance(working_val, str):
@@ -4226,7 +4400,8 @@ async def upload_csv_candidates(
                 "resume_url": resume_url_val if resume_url_val else existing_cand.get("resume_url"),
                 "parsed_resume_json": parsed_resume_payload,
                 "source": item_source,
-                "uploaded_by": user_id or existing_cand.get("uploaded_by"),
+                "uploaded_by": resolved_uploader_id or existing_cand.get("uploaded_by"),
+                "organization_id": item_org_id if item_org_id else existing_cand.get("organization_id"),
                 "is_deleted": False  # Reactivate candidate if it was soft-deleted
             }).eq("email", email).execute()
         else:
@@ -4253,7 +4428,8 @@ async def upload_csv_candidates(
                 "academic_details": academic_val,
                 "achievements": achievements_val,
                 "source": item_source,
-                "uploaded_by": user_id,
+                "uploaded_by": resolved_uploader_id,
+                "organization_id": item_org_id,
                 "job_id": target_job_id
             }).execute()
             
