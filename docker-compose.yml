@@ -4,8 +4,6 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: kozker_backend
-    ports:
-      - "8000:8000"
     expose:
       - "8000"
     env_file:
@@ -33,8 +31,6 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
-    ports:
-      - "3000:3000"
     expose:
       - "3000"
     env_file:

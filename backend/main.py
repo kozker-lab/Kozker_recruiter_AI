@@ -3647,32 +3647,44 @@ async def get_candidates(
 ):
     admin_db = get_admin_supabase_client()
     
-    # Resolve the actual member_id via email from JWT (not JWT sub which is Supabase auth UUID)
+    # Resolve recruiter IDs & email from JWT authorization token
     member_id = resolve_member_id_from_auth(authorization)
+    auth_user_id = get_current_user_id(authorization)
     
+    recruiter_owner_ids = set()
+    if auth_user_id:
+        recruiter_owner_ids.add(auth_user_id)
     if member_id:
-        # Resolve organization_id and team member IDs for the resolved member
-        mem_res = admin_db.table("members").select("organization_id").eq("id", member_id).execute().data or []
-        user_org_id = mem_res[0].get("organization_id") if mem_res else None
+        recruiter_owner_ids.add(member_id)
         
-        org_member_ids = {member_id}
-        if user_org_id:
-            org_mems = admin_db.table("members").select("id").eq("organization_id", user_org_id).execute().data or []
-            for m in org_mems:
-                org_member_ids.add(m["id"])
+    if recruiter_owner_ids:
+        # Resolve profile or member email for complete ownership matching across UUID formats
+        user_email = None
+        if member_id:
+            mdata = admin_db.table("members").select("email").eq("id", member_id).execute().data
+            if mdata:
+                user_email = mdata[0].get("email")
+        if not user_email and auth_user_id:
+            pdata = admin_db.table("profiles").select("email").eq("id", auth_user_id).execute().data
+            if pdata:
+                user_email = pdata[0].get("email")
                 
-        user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(org_member_ids)).eq("is_deleted", False).execute().data or []
+        if user_email:
+            all_profs = admin_db.table("profiles").select("id").ilike("email", user_email).execute().data or []
+            all_mems = admin_db.table("members").select("id").ilike("email", user_email).execute().data or []
+            for p in all_profs:
+                recruiter_owner_ids.add(p["id"])
+            for m in all_mems:
+                recruiter_owner_ids.add(m["id"])
+                
+        # Resolve requirements created by or assigned to this recruiter
+        user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
         req_ids = [r["id"] for r in user_reqs]
         
         user_job_ids = set()
         if req_ids:
             user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
             for j in user_jobs_by_req:
-                user_job_ids.add(j["id"])
-
-        if user_org_id:
-            user_jobs_by_org = admin_db.table("job_openings").select("id").eq("organization_id", user_org_id).eq("is_deleted", False).execute().data or []
-            for j in user_jobs_by_org:
                 user_job_ids.add(j["id"])
                 
         user_app_cands = set()
@@ -3681,25 +3693,19 @@ async def get_candidates(
             for a in user_apps:
                 if a.get("candidate_id"):
                     user_app_cands.add(a["candidate_id"])
-                
-        # Query all candidates and filter:
-        # - uploaded by any member of the same org, OR
-        # - linked to org's job openings via applications, OR
-        # - org_id matches (org-scoped candidates), OR
-        # - no uploaded_by and no org_id (legacy unscoped candidates visible to all)
+                    
+        # Filter candidates strictly to candidates belonging to THIS RECRUITER
         all_cands = admin_db.table("candidates").select("*").eq("is_deleted", False).execute().data or []
         data = [
             c for c in all_cands 
-            if c.get("uploaded_by") in org_member_ids
+            if c.get("uploaded_by") in recruiter_owner_ids
             or c.get("id") in user_app_cands
-            or (user_org_id and c.get("organization_id") == user_org_id)
-            or (not c.get("uploaded_by") and not c.get("organization_id"))
+            or (c.get("job_id") and c.get("job_id") in user_job_ids)
         ]
-        logger.info(f"[get_candidates] member_id={member_id} org_id={user_org_id} org_members={len(org_member_ids)} total_cands={len(all_cands)} visible={len(data)}")
+        logger.info(f"[get_candidates] auth_user_id={auth_user_id} member_id={member_id} total_cands={len(all_cands)} recruiter_cands={len(data)}")
     else:
-        # No authenticated user - return all non-deleted candidates
-        res = admin_db.table("candidates").select("*").eq("is_deleted", False).execute()
-        data = res.data or []
+        # Unauthenticated request returns empty list to prevent un-scoped leakage
+        data = []
 
     for cand in data:
         if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
