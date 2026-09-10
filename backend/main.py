@@ -952,10 +952,22 @@ async def parse_requirement_file(file: UploadFile = File(...)):
 
 # 2. Clients CRUD proxies
 @app.get("/api/v1/clients")
-async def get_clients(db: Client = Depends(get_supabase), org_id: Optional[str] = Depends(get_user_org_id)):
+async def get_clients(
+    db: Client = Depends(get_supabase), 
+    org_id: Optional[str] = Depends(get_user_org_id),
+    authorization: Optional[str] = Header(None)
+):
+    admin_db = get_admin_supabase_client()
+    member_id = resolve_member_id_from_auth(authorization)
+    user_org_id = org_id
+    if member_id and not user_org_id:
+        mem_res = admin_db.table("members").select("organization_id").eq("id", member_id).execute().data or []
+        if mem_res:
+            user_org_id = mem_res[0].get("organization_id")
+
     query = db.table("clients").select("*").eq("is_deleted", False)
-    if org_id:
-        query = query.eq("organization_id", org_id)
+    if user_org_id:
+        query = query.or_(f"organization_id.eq.{user_org_id},organization_id.is.null")
     res = query.execute()
     return res.data
 
