@@ -229,16 +229,29 @@ def resolve_member_id_from_auth(authorization: Optional[str]) -> Optional[str]:
     """
     if not authorization:
         return None
+
+    admin_db = get_admin_supabase_client()
     email = get_email_from_token(authorization)
-    if not email:
-        return None
+    if email:
+        try:
+            member_res = admin_db.table("members").select("id").ilike("email", email).limit(1).execute()
+            if member_res.data:
+                return member_res.data[0]["id"]
+        except Exception as e:
+            logger.error(f"Failed to resolve member_id from email '{email}': {e}")
+
+    # Fallback to checking if JWT sub directly matches a members.id
     try:
-        admin_db = get_admin_supabase_client()
-        member_res = admin_db.table("members").select("id").ilike("email", email).limit(1).execute()
-        if member_res.data:
-            return member_res.data[0]["id"]
+        raw_token = authorization.replace("Bearer ", "").strip() if authorization.startswith("Bearer ") else authorization.strip()
+        payload = jwt.decode(raw_token, options={"verify_signature": False})
+        sub = payload.get("sub")
+        if sub:
+            mem_res = admin_db.table("members").select("id").eq("id", sub).limit(1).execute()
+            if mem_res.data:
+                return mem_res.data[0]["id"]
     except Exception as e:
-        logger.error(f"Failed to resolve member_id from email '{email}': {e}")
+        logger.debug(f"Fallback sub lookup failed: {e}")
+
     return None
 
 
@@ -4122,10 +4135,9 @@ async def create_candidate(
             req_data = job_res.data[0].get("requirements") or {}
             recruiter_id = req_data.get("created_by")
 
-    # Resolve the actual member_id (not raw JWT sub) for uploaded_by attribution
-    resolved_member_id = resolve_member_id_from_auth(authorization)
-    effective_uploader = resolved_member_id or (cand.uploaded_by if cand.uploaded_by else recruiter_id)
-    db_uploaded_by = effective_uploader
+    # uploaded_by must be a Supabase auth user UUID (profiles.id) to satisfy candidates_uploaded_by_fkey
+    auth_user_id = user_id or get_current_user_id(authorization)
+    db_uploaded_by = cand.uploaded_by if cand.uploaded_by else (auth_user_id or recruiter_id)
     
     user_org_id = get_user_org_id(authorization)
     if not user_org_id and cand.job_id:
