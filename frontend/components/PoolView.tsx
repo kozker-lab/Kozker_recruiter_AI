@@ -1053,6 +1053,7 @@ export default function PoolView() {
     
     if (files.length > 50) {
       showCustomAlert("Warning", "You can only upload up to 50 resumes at a time.");
+      if (e.target) e.target.value = "";
       return;
     }
     
@@ -1065,7 +1066,8 @@ export default function PoolView() {
       setBulkCVProgress(prev => prev ? { ...prev, current: i + 1, status: `Parsing ${file.name}...` } : null);
       try {
         let text = "";
-        if (file.type === "text/plain") {
+        const isTxt = file.name.toLowerCase().endsWith(".txt") || file.type === "text/plain";
+        if (isTxt) {
           const reader = new FileReader();
           text = await new Promise<string>((resolve) => {
             reader.onload = (evt) => resolve(evt.target?.result as string || "");
@@ -1076,10 +1078,14 @@ export default function PoolView() {
           text = result.text || "";
         }
         
-        if (text) {
+        if (text && text.trim()) {
           const parsed = parseResumeTextHeuristically(text);
-          const name = parsed.name || file.name.replace(/\.[^/.]+$/, "");
-          const email = parsed.email || `missing_${Date.now()}_${i}@example.com`;
+          const cleanBaseName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").trim();
+          const name = parsed.name || cleanBaseName || `Candidate ${i + 1}`;
+          const email = parsed.email || `candidate_${Date.now()}_${i}@imported-cv.com`;
+          
+          const fileExt = file.name.toLowerCase();
+          const validSource = fileExt.endsWith(".pdf") ? "pdf" : (fileExt.endsWith(".docx") || fileExt.endsWith(".doc") ? "docx" : "manual");
           
           mappedItems.push({
             full_name: name,
@@ -1088,12 +1094,13 @@ export default function PoolView() {
             skills: parsed.skills || "",
             experience_years: parsed.experience_years || 0,
             education: parsed.education || "",
-            working_or_not: parsed.workingOrNot || false,
+            working_or_not: parsed.workingOrNot !== undefined ? parsed.workingOrNot : true,
             raw_text: text,
             academic_details: parsed.academicDetails || null,
             achievements: parsed.achievements || null,
             resume_url: null,
-            summary: parsed.summary || null
+            summary: parsed.summary || null,
+            source: validSource
           });
         }
       } catch (err) {
@@ -1101,13 +1108,21 @@ export default function PoolView() {
       }
     }
     
+    // Reset file input target value so user can re-upload if needed
+    if (e.target) e.target.value = "";
+    
     setBulkCVProgress(prev => prev ? { ...prev, status: "Uploading candidates to database..." } : null);
     
     if (mappedItems.length > 0) {
-      uploadCsvMutation.mutate(mappedItems);
+      uploadCsvMutation.mutate(mappedItems, {
+        onError: (err: any) => {
+          setBulkCVProgress(null);
+          showCustomAlert("Error", err.message || "Failed to save bulk CV candidates.");
+        }
+      });
     } else {
       setBulkCVProgress(null);
-      showCustomAlert("Error", "No CVs could be parsed successfully.");
+      showCustomAlert("Error", "No CVs could be parsed successfully. Please ensure files are valid PDF, DOCX, or TXT documents.");
     }
   };
 

@@ -511,30 +511,58 @@ def download_resumes_background(candidates_list: List[Dict[str, str]], jwt_token
 
 # Text extraction helper
 def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
-    ext = filename.split(".")[-1].lower()
+    ext = filename.split(".")[-1].lower() if "." in filename else ""
     if ext == "pdf":
+        text = ""
         try:
             import pdfplumber
             with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
                 text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-            return text
+            if text and text.strip():
+                return text.strip()
         except Exception as e:
-            logger.error(f"PDF extraction error: {e}")
-            raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {e}")
+            logger.error(f"PDF extraction error with pdfplumber: {e}")
+
+        # Fallback to PyPDF2 or pypdf if available
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+            if text and text.strip():
+                return text.strip()
+        except Exception as e2:
+            logger.debug(f"PDF extraction fallback pypdf not available or failed: {e2}")
+
+        # Final fallback to raw printable text
+        try:
+            raw_str = file_bytes.decode("utf-8", errors="ignore")
+            cleaned = "".join(c if (32 <= ord(c) <= 126 or c in "\n\r\t") else " " for c in raw_str)
+            return cleaned.strip()
+        except Exception:
+            return ""
     elif ext in ["docx", "doc"]:
         try:
             import docx
             doc = docx.Document(io.BytesIO(file_bytes))
             text = "\n".join(p.text for p in doc.paragraphs)
-            return text
+            if text and text.strip():
+                return text.strip()
         except Exception as e:
             logger.error(f"DOCX extraction error: {e}")
-            raise HTTPException(status_code=400, detail=f"Failed to parse DOCX: {e}")
+
+        # Fallback to raw text extraction
+        try:
+            raw_str = file_bytes.decode("utf-8", errors="ignore")
+            cleaned = "".join(c if (32 <= ord(c) <= 126 or c in "\n\r\t") else " " for c in raw_str)
+            return cleaned.strip()
+        except Exception:
+            return ""
     else:
         try:
-            return file_bytes.decode("utf-8", errors="ignore")
+            return file_bytes.decode("utf-8", errors="ignore").strip()
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to read file as text: {e}")
+
 
 # Models
 class ClientModel(BaseModel):
@@ -645,6 +673,8 @@ class ChatMessageModel(BaseModel):
 
 class CSVUploadModel(BaseModel):
     items: List[Dict[str, Any]]
+    job_id: Optional[str] = None
+
 
 # Inbound Callback Validation Models
 class JobOpeningDraft(BaseModel):
@@ -3478,9 +3508,42 @@ async def link_candidate_to_job(job_id: str, cand_id: str, db: Client = Depends(
 
 # 5. Candidates & Applications
 @app.get("/api/v1/candidates")
-async def get_candidates(db: Client = Depends(get_supabase)):
-    res = db.table("candidates").select("*").eq("is_deleted", False).execute()
-    data = res.data or []
+async def get_candidates(
+    db: Client = Depends(get_supabase),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    admin_db = get_admin_supabase_client()
+    if user_id:
+        # Find candidate IDs linked to user's jobs or uploaded by user
+        user_reqs = admin_db.table("requirements").select("id").eq("created_by", user_id).eq("is_deleted", False).execute().data or []
+        req_ids = [r["id"] for r in user_reqs]
+        
+        user_job_ids = set()
+        user_jobs_by_creator = admin_db.table("job_openings").select("id").eq("created_by", user_id).eq("is_deleted", False).execute().data or []
+        for j in user_jobs_by_creator:
+            user_job_ids.add(j["id"])
+            
+        if req_ids:
+            user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
+            for j in user_jobs_by_req:
+                user_job_ids.add(j["id"])
+                
+        user_app_cands = set()
+        if user_job_ids:
+            user_apps = admin_db.table("applications").select("candidate_id").in_("job_opening_id", list(user_job_ids)).execute().data or []
+            for a in user_apps:
+                user_app_cands.add(a["candidate_id"])
+                
+        # Query candidates uploaded by user OR linked to user's jobs
+        all_cands = admin_db.table("candidates").select("*").eq("is_deleted", False).execute().data or []
+        data = [
+            c for c in all_cands 
+            if c.get("uploaded_by") == user_id or c.get("id") in user_app_cands or not c.get("uploaded_by")
+        ]
+    else:
+        res = admin_db.table("candidates").select("*").eq("is_deleted", False).execute()
+        data = res.data or []
+
     for cand in data:
         if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
             if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
@@ -3661,27 +3724,67 @@ async def get_candidate_history(candidate_id: str, db: Client = Depends(get_supa
     return formatted
 
 @app.get("/api/v1/applications")
-async def get_all_applications(db: Client = Depends(get_supabase)):
-    res = db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(id, name)))").execute()
-    data = res.data or []
-    for app_rec in data:
-        cand = app_rec.get("candidates") or {}
-        if cand and "parsed_resume_json" in cand and cand["parsed_resume_json"]:
+async def get_all_applications(
+    db: Client = Depends(get_supabase),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
+    admin_db = get_admin_supabase_client()
+    
+    user_job_ids = set()
+    user_cand_ids = set()
+    
+    if user_id:
+        # Requirements created by user
+        user_reqs = admin_db.table("requirements").select("id").eq("created_by", user_id).eq("is_deleted", False).execute().data or []
+        req_ids = [r["id"] for r in user_reqs]
+        
+        # Job openings created by user
+        user_jobs_by_creator = admin_db.table("job_openings").select("id").eq("created_by", user_id).eq("is_deleted", False).execute().data or []
+        for j in user_jobs_by_creator:
+            user_job_ids.add(j["id"])
+            
+        if req_ids:
+            user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
+            for j in user_jobs_by_req:
+                user_job_ids.add(j["id"])
+                
+        # Candidates uploaded by user
+        user_cands = admin_db.table("candidates").select("id").eq("uploaded_by", user_id).eq("is_deleted", False).execute().data or []
+        for c in user_cands:
+            user_cand_ids.add(c["id"])
+
+    res = admin_db.table("applications").select("*, candidates(*), job_openings(*, requirements(*, clients(id, name)))").execute()
+    raw_data = res.data or []
+    
+    formatted = []
+    for app_rec in raw_data:
+        job = app_rec.get("job_openings")
+        cand = app_rec.get("candidates")
+        
+        # Must have a valid non-deleted job opening AND a valid non-deleted candidate
+        if not job or job.get("is_deleted") or not cand or cand.get("is_deleted"):
+            continue
+            
+        # Recruiter Scoping: if user_id is present, application must belong to user's job or user's uploaded candidate
+        if user_id:
+            job_id = job.get("id")
+            cand_id = cand.get("id")
+            if job_id not in user_job_ids and cand_id not in user_cand_ids:
+                continue
+                
+        if "parsed_resume_json" in cand and cand["parsed_resume_json"]:
             if isinstance(cand["parsed_resume_json"], dict) and "raw_text" in cand["parsed_resume_json"]:
                 cand["raw_text"] = cand["parsed_resume_json"]["raw_text"]
         
-        # Format job_openings to contain clients and client_name for backward compatibility
-        job = app_rec.get("job_openings") or {}
-        if job:
-            req = job.get("requirements") or {}
-            cli = req.get("clients") or {}
-            job["clients"] = cli
-            job["client_name"] = cli.get("name", "Generic Client")
-            job["client_id"] = req.get("client_id")
-            # Remove nested requirements to keep payload clean
-            if "requirements" in job:
-                del job["requirements"]
-    return data
+        req = job.get("requirements") or {}
+        cli = req.get("clients") or {}
+        job["clients"] = cli
+        job["client_name"] = cli.get("name", "Generic Client")
+        job["client_id"] = req.get("client_id")
+        
+        formatted.append(app_rec)
+        
+    return formatted
 
 def send_application_confirmation_email(to_email: str, full_name: str, job_title: str, client_name: str, application_id: str, form_responses: dict):
     # Construct direct tracking portal link
@@ -4011,6 +4114,7 @@ async def upload_csv_candidates(
     authorization: Optional[str] = Header(None),
     user_id: Optional[str] = Depends(get_current_user_id)
 ):
+    admin_db = get_admin_supabase_client()
     inserted = 0
     skipped = 0
     candidates_with_gd_resumes = []
@@ -4028,8 +4132,16 @@ async def upload_csv_candidates(
         if not email or not full_name:
             continue
             
+        email = str(email).strip()
+        full_name = str(full_name).strip()
+        
+        # Enforce allowed constraint for candidates_source_check ('csv', 'pdf', 'docx', 'manual')
+        item_source = str(item.get("source") or "").lower().strip()
+        if item_source not in ["csv", "pdf", "docx", "manual"]:
+            item_source = "csv"
+        
         # Check if candidate email already exists (globally, including soft-deleted ones)
-        exists_res = db.table("candidates").select("*").eq("email", email).execute()
+        exists_res = admin_db.table("candidates").select("*").eq("email", email).execute()
         
         # Skills list parser
         skills_input = item.get("skills", "")
@@ -4041,7 +4153,7 @@ async def upload_csv_candidates(
             
         phone_input = item.get("phone")
         phone_val = str(phone_input).strip() if phone_input else None
-        if phone_val == "" or phone_val == "null":
+        if phone_val == "" or phone_val == "null" or phone_val == "None":
             phone_val = None
             
         exp_years = int(item.get("experience_years") or 0)
@@ -4050,6 +4162,9 @@ async def upload_csv_candidates(
         academic_val = item.get("academic_details")
         achievements_val = item.get("achievements")
         resume_url_val = item.get("resume_url")
+        raw_text_val = item.get("raw_text")
+        summary_val = item.get("summary")
+        target_job_id = item.get("job_id") or payload.job_id
         
         # Resolve working status boolean
         if isinstance(working_val, str):
@@ -4074,27 +4189,32 @@ async def upload_csv_candidates(
             existing_skills = existing_cand.get("skills") or []
             merged_skills = list(set(existing_skills + skills_list))
             
-            # Use the newly parsed experience instead of taking max
-            merged_exp = exp_years
-            
+            merged_exp = exp_years if exp_years > 0 else existing_cand.get("experience_years", 0)
             merged_education = education_val if education_val else existing_cand.get("education")
             merged_academic = academic_val if academic_val else existing_cand.get("academic_details")
             merged_achievements = achievements_val if achievements_val else existing_cand.get("achievements")
             
-            existing_raw = ""
-            if "parsed_resume_json" in existing_cand and isinstance(existing_cand["parsed_resume_json"], dict):
-                existing_raw = existing_cand["parsed_resume_json"].get("raw_text") or ""
+            existing_json = existing_cand.get("parsed_resume_json") if isinstance(existing_cand.get("parsed_resume_json"), dict) else {}
+            existing_raw = existing_json.get("raw_text") or ""
+            existing_summary = existing_json.get("summary") or ""
+            
+            merged_raw = raw_text_val if raw_text_val else existing_raw
+            merged_summary = summary_val if summary_val else existing_summary
+            
+            if not merged_raw:
+                prefix = "[Re-uploaded Deleted Profile from CSV]" if is_deleted else "[CSV Re-upload]"
+                merged_raw = f"{prefix}: {full_name}"
                 
-            prefix = "[Re-uploaded Deleted Profile from CSV]" if is_deleted else "[CSV Re-upload]"
-            merged_raw = f"{existing_raw}\n\n{prefix}: {full_name}" if existing_raw else f"Parsed from CSV: {full_name}"
+            parsed_resume_payload = {
+                "raw_text": merged_raw,
+                "summary": merged_summary
+            }
             
-            # If the resume URL is a Google Drive URL, set a placeholder while we fetch it in background
-            parsed_resume_payload = {"raw_text": merged_raw}
             if resume_url_val and is_google_drive_url(resume_url_val):
-                parsed_resume_payload = {"raw_text": "Downloading and extracting Google Drive resume..."}
+                parsed_resume_payload["raw_text"] = "Downloading and extracting Google Drive resume..."
             
-            # Update existing candidate details
-            db.table("candidates").update({
+            # Update existing candidate details using admin_db to bypass RLS restrictions for all users
+            admin_db.table("candidates").update({
                 "full_name": full_name,
                 "phone": phone_val if phone_val else existing_cand.get("phone"),
                 "skills": merged_skills,
@@ -4105,19 +4225,22 @@ async def upload_csv_candidates(
                 "achievements": merged_achievements,
                 "resume_url": resume_url_val if resume_url_val else existing_cand.get("resume_url"),
                 "parsed_resume_json": parsed_resume_payload,
-                "source": "csv",
+                "source": item_source,
                 "uploaded_by": user_id or existing_cand.get("uploaded_by"),
                 "is_deleted": False  # Reactivate candidate if it was soft-deleted
             }).eq("email", email).execute()
         else:
             inserted += 1
-            # If the resume URL is a Google Drive URL, set a placeholder while we fetch it in background
-            parsed_resume_payload = {"raw_text": f"Parsed from CSV: {full_name}"}
+            final_raw = raw_text_val if raw_text_val else f"Parsed from CSV: {full_name}"
+            parsed_resume_payload = {
+                "raw_text": final_raw,
+                "summary": summary_val or ""
+            }
             if resume_url_val and is_google_drive_url(resume_url_val):
-                parsed_resume_payload = {"raw_text": "Downloading and extracting Google Drive resume..."}
+                parsed_resume_payload["raw_text"] = "Downloading and extracting Google Drive resume..."
                 
-            # Insert new candidate
-            res = db.table("candidates").insert({
+            # Insert new candidate using admin_db to bypass RLS restrictions for all users
+            res = admin_db.table("candidates").insert({
                 "full_name": full_name,
                 "email": email,
                 "phone": phone_val,
@@ -4129,12 +4252,25 @@ async def upload_csv_candidates(
                 "working_or_not": working_bool,
                 "academic_details": academic_val,
                 "achievements": achievements_val,
-                "source": "csv",
-                "uploaded_by": user_id
+                "source": item_source,
+                "uploaded_by": user_id,
+                "job_id": target_job_id
             }).execute()
             
             if res.data:
                 candidate_id = res.data[0]["id"]
+                
+        # Link candidate to job if target_job_id is provided
+        if candidate_id and target_job_id:
+            try:
+                await handle_candidate_application(
+                    candidate_id=candidate_id,
+                    email=email,
+                    job_id=target_job_id,
+                    source="bulk_import"
+                )
+            except Exception as app_err:
+                logger.error(f"Failed to handle application for candidate {candidate_id} on job {target_job_id}: {app_err}")
                 
         # If candidate has Google Drive resume URL, add to background processing list
         if candidate_id and resume_url_val and is_google_drive_url(resume_url_val):
@@ -4143,6 +4279,8 @@ async def upload_csv_candidates(
                 "email": email,
                 "resume_url": resume_url_val
             })
+
+
             
     if candidates_with_gd_resumes:
         background_tasks.add_task(download_resumes_background, candidates_with_gd_resumes, jwt_token)
