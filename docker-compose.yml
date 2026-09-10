@@ -11,8 +11,6 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
-    volumes:
-      - ./backend:/app
     restart: always
 
   frontend:
