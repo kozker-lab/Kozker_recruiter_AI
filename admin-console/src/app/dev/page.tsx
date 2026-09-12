@@ -756,7 +756,7 @@ export default function DevProvisioningPage() {
             </div>
 
             {/* Database Memory Optimization & Log Pruning */}
-            <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
+            <div id="prune-logs-section" className="bg-white border-2 border-amber-500/30 rounded-lg p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-stone-200 pb-3">
                 <div className="flex items-center gap-2 text-stone-900 font-bold text-sm">
                   <RefreshCw className="w-4 h-4 text-amber-600" />
@@ -908,7 +908,21 @@ export default function DevProvisioningPage() {
                                 {u.status || 'active'}
                               </span>
                             </td>
-                            <td className="p-3 text-right">
+                            <td className="p-3 text-right flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPruneOrgId(org.id || u.organization_id);
+                                  const el = document.getElementById('prune-logs-section');
+                                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[10px] font-mono font-bold rounded border border-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                                title={`Prune activity logs for ${org.name || u.organization_id}`}
+                              >
+                                <RefreshCw className="w-3 h-3 text-amber-600" />
+                                <span>Prune Logs</span>
+                              </button>
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -1053,6 +1067,67 @@ export default function DevProvisioningPage() {
                   <option value="active">Active (Access Enabled)</option>
                   <option value="disabled">Suspended / Disabled</option>
                 </select>
+              </div>
+
+              {/* Section 5: Organization-Specific Activity Log Pruning */}
+              <div className="space-y-3 p-3 bg-amber-50/70 border border-amber-200/80 rounded-lg">
+                <div className="font-mono text-[10px] font-bold uppercase text-amber-900 tracking-wider flex items-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 text-amber-600" />
+                  <span>4. Prune Activity Logs ({selectedUser.organizations?.name || selectedUser.organization_id})</span>
+                </div>
+                <p className="text-[11px] text-stone-600">
+                  Prune historical user login/logout & system activity logs for this organization.
+                </p>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={pruneDays}
+                    onChange={(e) => setPruneDays(Number(e.target.value))}
+                    className="flex-1 p-1.5 bg-white border border-stone-200 rounded text-xs font-mono"
+                  >
+                    <option value={7}>Older than 7 Days</option>
+                    <option value={30}>Older than 30 Days</option>
+                    <option value={90}>Older than 90 Days</option>
+                    <option value={180}>Older than 180 Days</option>
+                    <option value={365}>Older than 365 Days</option>
+                    <option value={0}>Prune All Historical Logs</option>
+                  </select>
+                  <button
+                    type="button"
+                    disabled={isPruning}
+                    onClick={async () => {
+                      setIsPruning(true);
+                      try {
+                        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                        const targetOrg = selectedUser.organization_id || selectedUser.organizations?.id;
+                        const res = await fetch(`${backendUrl}/api/v1/activity_log/prune`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            ...(devToken ? { Authorization: `Bearer ${devToken}` } : {})
+                          },
+                          body: JSON.stringify({
+                            days_older_than: pruneDays,
+                            organization_id: targetOrg
+                          })
+                        });
+                        const data = await res.json();
+                        if (res.ok) {
+                          setSaveGovMsg({ error: '', success: `Pruned ${data.deleted_count || 0} activity logs for this organization!` });
+                        } else {
+                          setSaveGovMsg({ error: data.detail || 'Failed to prune logs', success: '' });
+                        }
+                      } catch (err: any) {
+                        setSaveGovMsg({ error: err.message, success: '' });
+                      } finally {
+                        setIsPruning(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-mono font-bold rounded cursor-pointer disabled:opacity-50 flex items-center gap-1 shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isPruning ? "Pruning..." : "Prune Now"}</span>
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center justify-between pt-3 border-t border-stone-200">
