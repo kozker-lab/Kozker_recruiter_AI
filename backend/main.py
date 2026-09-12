@@ -271,6 +271,11 @@ def get_current_user_id(
     authorization: Optional[str] = Header(None),
     x_user_email: Optional[str] = Header(None, alias="x-user-email")
 ) -> Optional[str]:
+    if not isinstance(authorization, str):
+        authorization = None
+    if not isinstance(x_user_email, str):
+        x_user_email = None
+
     # 1. Try X-User-Email header first
     if x_user_email and x_user_email.strip():
         clean_email = x_user_email.strip().lower()
@@ -333,7 +338,7 @@ def get_current_user_id(
 
 def get_email_from_token(authorization: Optional[str]) -> Optional[str]:
     """Extracts the user email from the JWT Bearer token claims."""
-    if not authorization:
+    if not authorization or not isinstance(authorization, str):
         return None
     token = None
     if authorization.startswith("Bearer "):
@@ -354,7 +359,7 @@ def get_email_from_token(authorization: Optional[str]) -> Optional[str]:
 
 
 def resolve_member_id_from_auth(authorization: Optional[str]) -> Optional[str]:
-    if not authorization:
+    if not authorization or not isinstance(authorization, str):
         return None
 
     admin_db = get_admin_supabase_client()
@@ -378,7 +383,17 @@ def resolve_member_id_from_auth(authorization: Optional[str]) -> Optional[str]:
     except Exception as e:
         logger.debug(f"Fallback sub lookup failed: {e}")
 
-    return None
+def filter_valid_uuids(id_list: Iterable[str]) -> List[str]:
+    valid = []
+    for item in id_list:
+        if not item or not isinstance(item, str):
+            continue
+        try:
+            uuid.UUID(item)
+            valid.append(item)
+        except ValueError:
+            pass
+    return valid
 
 
 def get_recruiter_owner_ids(
@@ -390,6 +405,11 @@ def get_recruiter_owner_ids(
     Ensures resources (candidates, requirements, jobs, applications) created by Recruiter A
     NEVER leak to Recruiter B.
     """
+    if not isinstance(authorization, str):
+        authorization = None
+    if not isinstance(x_user_email, str):
+        x_user_email = None
+
     if not authorization and not x_user_email:
         return set(), None
         
@@ -489,8 +509,6 @@ def process_approval_action(db: Client, entity_type: str, entity_id: str, action
             db.table("applications").update({
                 "stage": "approved"
             }).eq("id", entity_id).execute()
-
->>>>>>> feature/fix-bug
 
 def obfuscate_id(raw_id: str) -> str:
     if not raw_id:
@@ -1158,8 +1176,11 @@ async def get_clients(
     recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization, x_user_email)
     
     if recruiter_owner_ids:
-        user_reqs = admin_db.table("requirements").select("client_id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
-        client_ids = set(r["client_id"] for r in user_reqs if r.get("client_id"))
+        valid_uuids = filter_valid_uuids(recruiter_owner_ids)
+        client_ids = set()
+        if valid_uuids:
+            user_reqs = admin_db.table("requirements").select("client_id").in_("created_by", valid_uuids).eq("is_deleted", False).execute().data or []
+            client_ids = set(r["client_id"] for r in user_reqs if r.get("client_id"))
         
         all_cls = admin_db.table("clients").select("*").eq("is_deleted", False).execute().data or []
         return [c for c in all_cls if c["id"] in client_ids or c.get("created_by") in recruiter_owner_ids]
@@ -2023,8 +2044,10 @@ async def get_requirements(
     recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization, x_user_email)
     
     if recruiter_owner_ids:
-        res = admin_db.table("requirements").select("*").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute()
-        return res.data or []
+        valid_uuids = filter_valid_uuids(recruiter_owner_ids)
+        if valid_uuids:
+            res = admin_db.table("requirements").select("*").in_("created_by", valid_uuids).eq("is_deleted", False).execute()
+            return res.data or []
     return []
 
 @app.put("/api/v1/requirements/{req_id}")
@@ -2318,8 +2341,10 @@ async def get_activity_log(
     admin_db = get_admin_supabase_client()
     recruiter_owner_ids, _ = get_recruiter_owner_ids(authorization, x_user_email)
     if recruiter_owner_ids:
-        res = admin_db.table("activity_log").select("*").in_("actor_id", list(recruiter_owner_ids)).order("created_at", desc=True).execute()
-        return res.data or []
+        valid_uuids = filter_valid_uuids(recruiter_owner_ids)
+        if valid_uuids:
+            res = admin_db.table("activity_log").select("*").in_("actor_id", valid_uuids).order("created_at", desc=True).execute()
+            return res.data or []
     return []
 
 
@@ -2419,7 +2444,10 @@ async def get_jobs(
     recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization, x_user_email)
     
     if recruiter_owner_ids:
-        user_reqs = admin_db.table("requirements").select("id, title, client_id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+        valid_uuids = filter_valid_uuids(recruiter_owner_ids)
+        user_reqs = []
+        if valid_uuids:
+            user_reqs = admin_db.table("requirements").select("id, title, client_id").in_("created_by", valid_uuids).eq("is_deleted", False).execute().data or []
         req_map = {r["id"]: r for r in user_reqs}
         req_ids = list(req_map.keys())
         
@@ -3960,7 +3988,10 @@ async def get_candidates(
     recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization, x_user_email)
     
     if recruiter_owner_ids:
-        user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+        valid_uuids = filter_valid_uuids(recruiter_owner_ids)
+        user_reqs = []
+        if valid_uuids:
+            user_reqs = admin_db.table("requirements").select("id").in_("created_by", valid_uuids).eq("is_deleted", False).execute().data or []
         req_ids = [r["id"] for r in user_reqs]
         
         user_job_ids = set()
@@ -3996,10 +4027,11 @@ async def get_candidates(
 async def get_candidate_details(
     candidate_id: str, 
     db: Client = Depends(get_supabase),
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    x_user_email: Optional[str] = Header(None, alias="x-user-email")
 ):
     admin_db = get_admin_supabase_client()
-    recruiter_owner_ids, _ = get_recruiter_owner_ids(authorization)
+    recruiter_owner_ids, _ = get_recruiter_owner_ids(authorization, x_user_email)
     
     res = admin_db.table("candidates").select("*").eq("id", candidate_id).eq("is_deleted", False).execute()
     if not res.data:
@@ -4007,7 +4039,10 @@ async def get_candidate_details(
     cand = res.data[0]
     
     if recruiter_owner_ids:
-        user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
+        valid_uuids = filter_valid_uuids(recruiter_owner_ids)
+        user_reqs = []
+        if valid_uuids:
+            user_reqs = admin_db.table("requirements").select("id").in_("created_by", valid_uuids).eq("is_deleted", False).execute().data or []
         req_ids = [r["id"] for r in user_reqs]
         user_job_ids = set()
         if req_ids:
@@ -4200,10 +4235,11 @@ async def get_candidate_history(candidate_id: str, db: Client = Depends(get_supa
 @app.get("/api/v1/applications")
 async def get_all_applications(
     db: Client = Depends(get_supabase),
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
+    x_user_email: Optional[str] = Header(None, alias="x-user-email")
 ):
     admin_db = get_admin_supabase_client()
-    recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization)
+    recruiter_owner_ids, user_org_id = get_recruiter_owner_ids(authorization, x_user_email)
     
     if not recruiter_owner_ids:
         return []
@@ -4211,18 +4247,20 @@ async def get_all_applications(
     user_job_ids = set()
     user_cand_ids = set()
     
-    user_reqs = admin_db.table("requirements").select("id").in_("created_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
-    req_ids = [r["id"] for r in user_reqs]
-    
-    if req_ids:
-        user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
-        for j in user_jobs_by_req:
-            user_job_ids.add(j["id"])
-            
-    user_cands = admin_db.table("candidates").select("id").in_("uploaded_by", list(recruiter_owner_ids)).eq("is_deleted", False).execute().data or []
-    for c in user_cands:
-        user_cand_ids.add(c["id"])
+    valid_uuids = filter_valid_uuids(recruiter_owner_ids)
+    if valid_uuids:
+        user_reqs = admin_db.table("requirements").select("id").in_("created_by", valid_uuids).eq("is_deleted", False).execute().data or []
+        req_ids = [r["id"] for r in user_reqs]
         
+        if req_ids:
+            user_jobs_by_req = admin_db.table("job_openings").select("id").in_("requirement_id", req_ids).eq("is_deleted", False).execute().data or []
+            for j in user_jobs_by_req:
+                user_job_ids.add(j["id"])
+                
+        user_cands = admin_db.table("candidates").select("id").in_("uploaded_by", valid_uuids).eq("is_deleted", False).execute().data or []
+        for c in user_cands:
+            user_cand_ids.add(c["id"])
+            
     if not user_job_ids and not user_cand_ids:
         return []
 
