@@ -736,6 +736,8 @@ export default function DevProvisioningPage() {
                   </button>
                 </form>
               </div>
+            </div>
+
             {/* Database Memory Optimization & Log Pruning */}
             <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-stone-200 pb-3">
