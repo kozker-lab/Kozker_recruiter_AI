@@ -78,7 +78,7 @@ export default function DevProvisioningPage() {
     fetch('/api/dev/authenticate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dev_admin_key: 'kozker-dev-admin-secret-key-2026' })
+      body: JSON.stringify({ dev_admin_key: process.env.NEXT_PUBLIC_DEV_ADMIN_KEY || 'a7f9b8c2d1e0456789abcde0123456789abcdef0123456789abcdef0123456789' })
     })
       .then(res => res.json())
       .then(data => {
