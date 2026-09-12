@@ -39,6 +39,9 @@ export default function DevProvisioningPage() {
   const [isPruning, setIsPruning] = useState<boolean>(false);
   const [pruneMsg, setPruneMsg] = useState<{ error?: string; success?: string }>({});
 
+  // Directory Filter state ('admins_only' | 'all' | 'members_only')
+  const [directoryFilter, setDirectoryFilter] = useState<'admins_only' | 'all' | 'members_only'>('admins_only');
+
   const handlePruneLogs = async (e: React.FormEvent) => {
     e.preventDefault();
     setPruneMsg({});
@@ -831,14 +834,70 @@ export default function DevProvisioningPage() {
 
             {/* Provisioned Accounts Directory */}
             <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-3">
                 <div className="flex items-center gap-2 text-stone-900 font-bold text-sm">
                   <Users className="w-4 h-4 text-brand" />
-                  <span>Provisioned Organization Admin Accounts Directory ({users.length})</span>
+                  <span>Provisioned Accounts Directory ({
+                    users.filter(u => {
+                      const rolesList = (u.member_roles || []).map((mr: any) => mr.roles).filter(Boolean);
+                      let isAdmin = u.is_primary_admin === true;
+                      if (rolesList.length > 0 && rolesList[0]?.role_permissions) {
+                        const perms = Array.isArray(rolesList[0].role_permissions) ? rolesList[0].role_permissions[0] : rolesList[0].role_permissions;
+                        if (perms && perms.administrator !== undefined) isAdmin = perms.administrator !== false;
+                      }
+                      if (directoryFilter === 'admins_only') return u.is_primary_admin || isAdmin;
+                      if (directoryFilter === 'members_only') return !u.is_primary_admin && !isAdmin;
+                      return true;
+                    }).length
+                  })</span>
                 </div>
-                <span className="text-[10px] font-mono bg-amber-50 text-amber-800 px-2.5 py-1 rounded border border-amber-200 font-bold">
-                  Click any account row to configure Admin Access & Quotas
-                </span>
+
+                {/* Directory Role Scope Filter Buttons */}
+                <div className="flex items-center bg-stone-100 p-0.5 rounded-md border border-stone-200 self-start sm:self-auto text-xs font-mono">
+                  <button
+                    type="button"
+                    onClick={() => setDirectoryFilter('admins_only')}
+                    className={`px-3 py-1 font-bold uppercase rounded-sm transition-all cursor-pointer ${
+                      directoryFilter === 'admins_only' ? 'bg-stone-900 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    Organization Admins ({users.filter(u => {
+                      const rolesList = (u.member_roles || []).map((mr: any) => mr.roles).filter(Boolean);
+                      let isAdmin = u.is_primary_admin === true;
+                      if (rolesList.length > 0 && rolesList[0]?.role_permissions) {
+                        const perms = Array.isArray(rolesList[0].role_permissions) ? rolesList[0].role_permissions[0] : rolesList[0].role_permissions;
+                        if (perms && perms.administrator !== undefined) isAdmin = perms.administrator !== false;
+                      }
+                      return u.is_primary_admin || isAdmin;
+                    }).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDirectoryFilter('all')}
+                    className={`px-3 py-1 font-bold uppercase rounded-sm transition-all cursor-pointer ${
+                      directoryFilter === 'all' ? 'bg-stone-900 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    All Accounts ({users.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDirectoryFilter('members_only')}
+                    className={`px-3 py-1 font-bold uppercase rounded-sm transition-all cursor-pointer ${
+                      directoryFilter === 'members_only' ? 'bg-stone-900 text-white shadow-xs' : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    Non-Admin Members ({users.filter(u => {
+                      const rolesList = (u.member_roles || []).map((mr: any) => mr.roles).filter(Boolean);
+                      let isAdmin = u.is_primary_admin === true;
+                      if (rolesList.length > 0 && rolesList[0]?.role_permissions) {
+                        const perms = Array.isArray(rolesList[0].role_permissions) ? rolesList[0].role_permissions[0] : rolesList[0].role_permissions;
+                        if (perms && perms.administrator !== undefined) isAdmin = perms.administrator !== false;
+                      }
+                      return !u.is_primary_admin && !isAdmin;
+                    }).length})
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto text-xs">
@@ -855,14 +914,34 @@ export default function DevProvisioningPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-200">
-                    {users.length === 0 ? (
+                    {users.filter(u => {
+                      const rolesList = (u.member_roles || []).map((mr: any) => mr.roles).filter(Boolean);
+                      let isAdmin = u.is_primary_admin === true;
+                      if (rolesList.length > 0 && rolesList[0]?.role_permissions) {
+                        const perms = Array.isArray(rolesList[0].role_permissions) ? rolesList[0].role_permissions[0] : rolesList[0].role_permissions;
+                        if (perms && perms.administrator !== undefined) isAdmin = perms.administrator !== false;
+                      }
+                      if (directoryFilter === 'admins_only') return u.is_primary_admin || isAdmin;
+                      if (directoryFilter === 'members_only') return !u.is_primary_admin && !isAdmin;
+                      return true;
+                    }).length === 0 ? (
                       <tr>
                         <td colSpan={7} className="p-6 text-center text-stone-400 italic">
-                          No users provisioned yet. Use the provisioning form above to create user credentials.
+                          No matching accounts found for the selected directory filter.
                         </td>
                       </tr>
                     ) : (
-                      users.map(u => {
+                      users.filter(u => {
+                        const rolesList = (u.member_roles || []).map((mr: any) => mr.roles).filter(Boolean);
+                        let isAdmin = u.is_primary_admin === true;
+                        if (rolesList.length > 0 && rolesList[0]?.role_permissions) {
+                          const perms = Array.isArray(rolesList[0].role_permissions) ? rolesList[0].role_permissions[0] : rolesList[0].role_permissions;
+                          if (perms && perms.administrator !== undefined) isAdmin = perms.administrator !== false;
+                        }
+                        if (directoryFilter === 'admins_only') return u.is_primary_admin || isAdmin;
+                        if (directoryFilter === 'members_only') return !u.is_primary_admin && !isAdmin;
+                        return true;
+                      }).map(u => {
                         const rolesList = (u.member_roles || []).map((mr: any) => mr.roles).filter(Boolean);
                         let isAdmin = true;
                         if (rolesList.length > 0 && rolesList[0]?.role_permissions) {
