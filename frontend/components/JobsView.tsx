@@ -908,7 +908,8 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
     },
     onError: (err: any) => {
       console.error("saveJobStagesMutation failed:", err);
-      showCustomAlert("Error", `Failed to save stages/settings: ${err.message || err}`);
+      const errMsg = typeof err === "string" ? err : err?.message || err?.detail || (typeof err === "object" ? JSON.stringify(err) : String(err));
+      showCustomAlert("Error", `Failed to save stages/settings: ${errMsg}`);
     }
   });
 
@@ -925,7 +926,11 @@ export default function JobsView({ initialJobId, onNavigateToReview }: JobsViewP
 
   const stopMatchingMutation = useMutation({
     mutationFn: () => apiRequest<JobOpening>("PATCH", `/jobs/${selectedJobId}`, { processing_status: "ready" }),
-    onSuccess: () => {
+    onSuccess: (updatedJob) => {
+      queryClient.setQueryData(["jobs"], (oldData: JobOpening[] | undefined) => {
+        if (!oldData) return oldData;
+        return oldData.map(j => j.id === selectedJobId ? { ...j, processing_status: "ready" } : j);
+      });
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       showCustomAlert("Success", "AI Matching process stopped.");
     },

@@ -4,10 +4,17 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: kozker_backend
+    expose:
+      - "8000"
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
     env_file:
       - .env
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    volumes:
+      - ./backend:/app
     restart: always
 
   frontend:
@@ -18,24 +25,21 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-https://covhcpsyliesrgkjxhai.supabase.co}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b}
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-sb_publishable_V69YOpwZKjrT1BT8k609nQ_MBzXV80b}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
     container_name: kozker_frontend
+    environment:
+      - BACKEND_URL=http://backend:8000
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    expose:
+      - "3000"
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     env_file:
       - .env
     restart: always
     depends_on:
       - backend
-
-  admin-console:
-    build:
-      context: ./admin-console
-      dockerfile: Dockerfile
-    container_name: kozker_admin_console
-    ports:
-      - "3001:3000"
-    env_file:
-      - admin-console/.env
-    restart: always
 

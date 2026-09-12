@@ -45,23 +45,22 @@ export default function SignupPage() {
     }
 
     try {
-      const { data, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          }
-        }
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
+      const res = await fetch(`${apiBaseUrl}/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, full_name: fullName })
       });
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.detail || "Failed to register account.");
+      }
 
-      if (authError) throw authError;
-
-      // Handle cases where email confirmation is required
-      if (data.user && data.user.identities && data.user.identities.length === 0) {
-        setError("This email is already registered.");
-        setLoading(false);
-        return;
+      // Attempt automatic sign-in after account creation
+      try {
+        await supabase.auth.signInWithPassword({ email, password });
+      } catch (signInErr) {
+        console.warn("Auto sign-in notice:", signInErr);
       }
 
       setSuccess(true);
@@ -79,15 +78,15 @@ export default function SignupPage() {
         </div>
         <div className="space-y-2">
           <h2 className="text-2xl font-tight font-semibold text-neutral-white tracking-tight">
-            Check your email
+            Account Registered Successfully!
           </h2>
           <p className="text-neutral-400 text-sm">
-            We've sent a confirmation link to <span className="text-neutral-200 font-medium">{email}</span>
+            Your recruiter account for <span className="text-neutral-200 font-medium">{email}</span> is ready.
           </p>
         </div>
         <div className="pt-4">
-          <Link href="/auth/login" className="text-primary hover:text-primary/80 transition-colors text-sm underline underline-offset-4">
-            Return to login
+          <Link href="/auth/login" className="inline-block px-6 py-2.5 bg-primary text-neutral-white font-medium text-xs tracking-wider uppercase rounded-sm hover:bg-primary/90 transition-colors">
+            Proceed to Login
           </Link>
         </div>
       </div>
