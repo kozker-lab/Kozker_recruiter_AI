@@ -330,7 +330,7 @@ export default function RoundsPage() {
     filteredApps = filteredApps.slice(0, limit);
   }
 
-  // Group applications hierarchically by Client -> Job Opening
+  // Group applications hierarchically by Client -> Job Opening (sorted A-Z)
   const groupedApps = React.useMemo(() => {
     const clientsMap: Record<string, {
       client_name: string;
@@ -364,7 +364,33 @@ export default function RoundsPage() {
       clientsMap[clientName].jobs[jobId].applications.push(app);
     });
 
-    return clientsMap;
+    const sortedClientsMap: typeof clientsMap = {};
+    const sortedClientNames = Object.keys(clientsMap).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+    sortedClientNames.forEach(clientName => {
+      const cData = clientsMap[clientName];
+      const sortedJobsMap: typeof cData.jobs = {};
+      const sortedJobIds = Object.keys(cData.jobs).sort((a, b) => 
+        (cData.jobs[a].job_title || "").localeCompare(cData.jobs[b].job_title || "", undefined, { sensitivity: 'base' })
+      );
+
+      sortedJobIds.forEach(jobId => {
+        const jData = cData.jobs[jobId];
+        jData.applications.sort((a, b) => {
+          const nameA = a.candidates?.full_name || a.candidate_name || "";
+          const nameB = b.candidates?.full_name || b.candidate_name || "";
+          return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+        });
+        sortedJobsMap[jobId] = jData;
+      });
+
+      sortedClientsMap[clientName] = {
+        client_name: clientName,
+        jobs: sortedJobsMap
+      };
+    });
+
+    return sortedClientsMap;
   }, [filteredApps]);
 
   React.useEffect(() => {
@@ -542,7 +568,7 @@ export default function RoundsPage() {
             className="w-full px-2.5 py-1.5 bg-neutral-white border border-neutral-200 rounded-sm text-neutral-800 focus:outline-none"
           >
             <option value="all">All Clients</option>
-            {clients.map(c => (
+            {[...clients].sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: 'base' })).map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
@@ -562,6 +588,7 @@ export default function RoundsPage() {
             <option value="all">All Requirements</option>
             {requirements
               .filter(r => selectedClient === "all" || r.client_id === selectedClient)
+              .sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: 'base' }))
               .map(r => (
                 <option key={r.id} value={r.id}>{r.title}</option>
               ))}
@@ -579,6 +606,7 @@ export default function RoundsPage() {
             <option value="all">All Job Openings</option>
             {jobs
               .filter(j => selectedRequirement === "all" || j.requirement_id === selectedRequirement)
+              .sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: 'base' }))
               .map(j => (
                 <option key={j.id} value={j.id}>{j.title}</option>
               ))}
