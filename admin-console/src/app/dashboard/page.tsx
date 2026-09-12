@@ -26,6 +26,48 @@ export default function DashboardPage() {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [rollingUpdates, setRollingUpdates] = useState<any[]>([]);
 
+  // Log Pruning & Memory Maintenance state
+  const [pruneOrgId, setPruneOrgId] = useState<string>('all');
+  const [pruneDays, setPruneDays] = useState<number>(30);
+  const [isPruning, setIsPruning] = useState<boolean>(false);
+  const [pruneMsg, setPruneMsg] = useState<{ error?: string; success?: string }>({});
+  const [organizationsList, setOrganizationsList] = useState<any[]>([]);
+
+  const handlePruneLogs = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPruneMsg({});
+    setIsPruning(true);
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${backendUrl}/api/v1/activity_log/prune`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          days_older_than: pruneDays,
+          organization_id: pruneOrgId === 'all' ? undefined : pruneOrgId
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setPruneMsg({ error: data.detail || 'Failed to prune activity logs' });
+      } else {
+        setPruneMsg({
+          success: `Successfully pruned ${data.deleted_count || 0} historical log entries older than ${pruneDays === 0 ? 'all time' : pruneDays + ' days'}.`
+        });
+        fetch('/api/audit-logs')
+          .then(r => r.json())
+          .then(d => { if (d.audit_logs) setAuditLogs(d.audit_logs); })
+          .catch(() => {});
+      }
+    } catch (err: any) {
+      setPruneMsg({ error: err.message || 'Failed to prune logs' });
+    } finally {
+      setIsPruning(false);
+    }
+  };
+
   // Branch Modal states
   const [isNewBranchOpen, setIsNewBranchOpen] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
@@ -120,14 +162,15 @@ export default function DashboardPage() {
 
   const fetchAllData = async () => {
     try {
-      const [rRes, pRes, aRes, mRes, lRes, uRes, bRes] = await Promise.all([
+      const [rRes, pRes, aRes, mRes, lRes, uRes, bRes, oRes] = await Promise.all([
         fetch('/api/roles'),
         fetch('/api/pipelines'),
         fetch('/api/approvals/pending'),
         fetch('/api/members'),
         fetch('/api/audit-logs'),
         fetch('/api/updates'),
-        fetch('/api/branches')
+        fetch('/api/branches'),
+        fetch('/api/organizations')
       ]);
 
       const rData = await rRes.json();
@@ -137,6 +180,9 @@ export default function DashboardPage() {
       const lData = await lRes.json();
       const uData = await uRes.json();
       const bData = await bRes.json();
+      const oData = await oRes.json().catch(() => ({}));
+
+      if (oData.organizations) setOrganizationsList(oData.organizations);
 
       if (bData.branches) {
         setBranches(bData.branches);
@@ -1152,7 +1198,82 @@ export default function DashboardPage() {
 
           {/* TAB 5: SYSTEM AUDIT LEDGER */}
           {activeTab === 'audit' && (
-            <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
+            <div className="space-y-6">
+              {/* Database Memory Optimization & Log Pruning */}
+              <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-150 pb-3">
+                  <div className="flex items-center gap-2 text-stone-900 font-bold text-sm">
+                    <RefreshCw className="w-4 h-4 text-amber-600" />
+                    <span>Database Memory & Activity Log Maintenance</span>
+                  </div>
+                  <span className="text-[10px] font-mono bg-amber-50 text-amber-800 px-2.5 py-1 rounded border border-amber-200 font-bold">
+                    High Performance Log Cleanup
+                  </span>
+                </div>
+
+                <p className="text-xs text-stone-600">
+                  Prune system audit logs and auth event history older than a specified timeframe for individual organizations or globally across the platform.
+                </p>
+
+                {pruneMsg.error && (
+                  <div className="p-3 bg-red-50 text-red-700 text-xs rounded border border-red-200 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{pruneMsg.error}</span>
+                  </div>
+                )}
+
+                {pruneMsg.success && (
+                  <div className="p-3 bg-emerald-50 text-emerald-800 text-xs rounded border border-emerald-200 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>{pruneMsg.success}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handlePruneLogs} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1 text-xs">Target Scope</label>
+                    <select
+                      value={pruneOrgId}
+                      onChange={(e) => setPruneOrgId(e.target.value)}
+                      className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand font-mono"
+                    >
+                      <option value="all">All Organizations (Global System-Wide)</option>
+                      {organizationsList.map((org) => (
+                        <option key={org.id} value={org.id}>{org.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1 text-xs">Retention Cut-off Period</label>
+                    <select
+                      value={pruneDays}
+                      onChange={(e) => setPruneDays(Number(e.target.value))}
+                      className="w-full p-2 bg-stone-50 border border-stone-200 rounded text-xs focus:outline-none focus:border-brand font-mono"
+                    >
+                      <option value={7}>Older than 7 Days</option>
+                      <option value={30}>Older than 30 Days (1 Month)</option>
+                      <option value={90}>Older than 90 Days (3 Months)</option>
+                      <option value={180}>Older than 180 Days (6 Months)</option>
+                      <option value={365}>Older than 365 Days (1 Year)</option>
+                      <option value={0}>Prune All Historical Logs Immediately</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <button
+                      type="submit"
+                      disabled={isPruning}
+                      className="w-full px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-mono text-xs font-bold uppercase rounded shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{isPruning ? "Pruning Database..." : "Prune Activity Logs"}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-stone-150 pb-3">
                 <div className="flex items-center gap-2 text-stone-900 font-bold text-sm">
                   <History className="w-4 h-4 text-brand" />
@@ -1192,6 +1313,7 @@ export default function DashboardPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
             </div>
           )}
         </div>

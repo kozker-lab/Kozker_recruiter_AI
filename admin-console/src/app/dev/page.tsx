@@ -73,6 +73,23 @@ export default function DevProvisioningPage() {
     }
   };
 
+  useEffect(() => {
+    // Auto-authenticate for local dev portal view
+    fetch('/api/dev/authenticate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dev_admin_key: 'kozker-dev-admin-secret-key-2026' })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.dev_token) {
+          setDevToken(data.dev_token);
+          fetchDevData(data.dev_token);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Governance Modal state
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [editAdminAccess, setEditAdminAccess] = useState(true);
