@@ -23,20 +23,71 @@ export default function AuditLogsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showPruneModal, setShowPruneModal] = useState(false);
+  const [pruneDays, setPruneDays] = useState(30);
+  const [isPruning, setIsPruning] = useState(false);
+  const [pruneResultMsg, setPruneResultMsg] = useState("");
 
-  useEffect(() => {
-    fetch("/api/audit-logs")
+  const fetchLogs = () => {
+    setLoading(true);
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    fetch(`${backendUrl}/api/v1/activity_log`)
       .then((res) => res.json())
       .then((data) => {
-        if (data && Array.isArray(data.audit_logs)) {
-          setLogs(data.audit_logs);
-        } else if (Array.isArray(data)) {
-          setLogs(data);
+        if (Array.isArray(data)) {
+          setLogs(data.map((item: any) => ({
+            id: item.id,
+            created_at: item.created_at,
+            actor_name: item.actor_name,
+            action_type: item.action,
+            action_description: `${item.action} on ${item.entity_type}`,
+            target_entity_type: item.entity_type,
+            target_entity_id: item.entity_id,
+            old_state: item.metadata,
+            new_state: item.metadata
+          })));
         }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        fetch("/api/audit-logs")
+          .then((res) => res.json())
+          .then((data) => {
+            if (data && Array.isArray(data.audit_logs)) setLogs(data.audit_logs);
+            else if (Array.isArray(data)) setLogs(data);
+            setLoading(false);
+          })
+          .catch(() => setLoading(false));
+      });
+  };
+
+  useEffect(() => {
+    fetchLogs();
   }, []);
+
+  const handlePruneLogs = async () => {
+    setIsPruning(true);
+    setPruneResultMsg("");
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${backendUrl}/api/v1/activity_log/prune`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days_older_than: pruneDays })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPruneResultMsg(`Successfully pruned ${data.deleted_count || 0} activity logs.`);
+        fetchLogs();
+      } else {
+        setPruneResultMsg(`Error: ${data.detail || "Failed to prune logs"}`);
+      }
+    } catch (e: any) {
+      setPruneResultMsg(`Error: ${e.message}`);
+    } finally {
+      setIsPruning(false);
+    }
+  };
 
   const filteredLogs = logs.filter((l) => {
     if (!search.trim()) return true;
@@ -68,17 +119,77 @@ export default function AuditLogsPage() {
               <h1 className="text-xl font-bold tracking-tight text-white">Security & Audit Log Explorer</h1>
             </div>
             <p className="text-xs text-neutral-400 mt-1">
-              Real-time immutable security audit trail of recruiter operations, data mutations, and access logs.
+              Real-time immutable security audit trail of recruiter operations, auth events, and access logs.
             </p>
           </div>
-          <input
-            type="text"
-            placeholder="Search user email, action, or entity..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="px-3.5 py-2 bg-neutral-950 border border-neutral-800 rounded text-xs text-neutral-200 placeholder-neutral-500 w-full sm:w-80 focus:outline-none focus:border-amber-500 font-mono"
-          />
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <input
+              type="text"
+              placeholder="Search user email, action, or entity..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="px-3.5 py-2 bg-neutral-950 border border-neutral-800 rounded text-xs text-neutral-200 placeholder-neutral-500 w-full sm:w-80 focus:outline-none focus:border-amber-500 font-mono"
+            />
+            <button
+              onClick={() => {
+                setPruneResultMsg("");
+                setShowPruneModal(true);
+              }}
+              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-mono text-xs uppercase font-bold rounded transition-colors whitespace-nowrap cursor-pointer shadow-sm"
+            >
+              Prune Logs
+            </button>
+          </div>
         </div>
+
+        {showPruneModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <div className="bg-neutral-950 border border-neutral-800 p-6 rounded-lg max-w-md w-full space-y-4">
+              <h3 className="text-base font-bold text-white font-mono">Prune Activity & Audit Logs</h3>
+              <p className="text-xs text-neutral-400">
+                Select retention cutoff threshold to delete past activity logs to optimize memory and storage space.
+              </p>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1">Retention Period</label>
+                <select
+                  value={pruneDays}
+                  onChange={(e) => setPruneDays(Number(e.target.value))}
+                  className="w-full p-2 bg-neutral-900 border border-neutral-800 rounded text-xs text-neutral-200 focus:outline-none focus:border-amber-500 font-mono"
+                >
+                  <option value={7}>Older than 7 Days</option>
+                  <option value={30}>Older than 30 Days (1 Month)</option>
+                  <option value={90}>Older than 90 Days (3 Months)</option>
+                  <option value={180}>Older than 180 Days (6 Months)</option>
+                  <option value={365}>Older than 365 Days (1 Year)</option>
+                  <option value={0}>All Historical Logs (0 Days)</option>
+                </select>
+              </div>
+
+              {pruneResultMsg && (
+                <div className={`p-3 rounded text-xs border ${pruneResultMsg.startsWith("Error") ? "bg-red-500/10 border-red-500/30 text-red-400" : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"}`}>
+                  {pruneResultMsg}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setShowPruneModal(false)}
+                  className="px-3.5 py-1.5 border border-neutral-800 rounded text-xs text-neutral-300 hover:bg-neutral-900 cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handlePruneLogs}
+                  disabled={isPruning}
+                  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-mono text-xs font-bold uppercase rounded disabled:opacity-50 cursor-pointer"
+                >
+                  {isPruning ? "Pruning..." : "Confirm Prune"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="py-16 text-center text-xs text-neutral-500 font-mono">

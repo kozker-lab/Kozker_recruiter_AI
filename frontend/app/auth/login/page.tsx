@@ -70,6 +70,17 @@ export default function LoginPage() {
       });
 
       if (!authError) {
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/auth/log-event`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "user_login",
+            email: cleanEmail,
+            actor_name: cleanEmail,
+            organization_id: selectedOrg || undefined,
+            metadata: { login_method: "password", timestamp: new Date().toISOString() }
+          })
+        }).catch(() => {});
         window.location.href = "/dashboard";
         return;
       }
@@ -88,6 +99,17 @@ export default function LoginPage() {
           const ssoData = await ssoRes.json();
           if (ssoData.token) {
             document.cookie = `kozker_sso_token=${ssoData.token}; path=/; max-age=86400; SameSite=Lax`;
+            fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/auth/log-event`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "user_login",
+                email: cleanEmail,
+                actor_name: cleanEmail,
+                organization_id: selectedOrg || undefined,
+                metadata: { login_method: "sso", timestamp: new Date().toISOString() }
+              })
+            }).catch(() => {});
             window.location.href = "/dashboard";
             return;
           }
